@@ -17,6 +17,7 @@ import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote, type QuoteBinding }
 import { isWorkspaceId } from '@/lib/agent/workspace/paths';
 import type { WorkspaceStore, WsFile } from '@/lib/agent/workspace/store';
 import { checkBrowserTask, type BrowserStep, type BrowserStepResult } from './policy';
+import { checkTaskReady, taskRefOf, taskStep, type TaskRef } from '@/lib/agent/taskGraphStore';
 import { browserWallSec, browserWorstCaseUsd, type BrowserRunner } from './runner';
 
 export const BROWSER_RUN_CAP = 'agent.browser_run';
@@ -28,6 +29,8 @@ export interface BrowserRequest {
   steps: BrowserStep[];
   /** The user's own workspace the results go to; part of the signed plan. */
   workspaceId: string;
+  /** The task-graph node this task carries out (lib/agent/taskGraph); signed with the rest. */
+  task?: TaskRef;
 }
 
 export interface BrowserQuote {
@@ -87,7 +90,9 @@ export function browserRequestOf(v: unknown): BrowserRequest | null {
   if (!isWorkspaceId(r.workspaceId)) return null;
   const check = checkBrowserTask({ steps: r.steps });
   if (!check.ok) return null;
-  return { steps: check.plan.steps, workspaceId: r.workspaceId as string };
+  const task = taskRefOf(r.task);
+  if (r.task !== undefined && !task) return null;
+  return { steps: check.plan.steps, workspaceId: r.workspaceId as string, ...(task ? { task } : {}) };
 }
 
 export function quoteBrowserTask(deps: Pick<BrowserDeps, 'key' | 'now' | 'newId'>, input: { userId: string; request: unknown }): BrowserQuoteResult {
@@ -95,7 +100,9 @@ export function quoteBrowserTask(deps: Pick<BrowserDeps, 'key' | 'now' | 'newId'
   const check = checkBrowserTask({ steps: raw.steps });
   if (!check.ok) return fail('bad_input', check.error);
   if (!isWorkspaceId(raw.workspaceId)) return fail('bad_input', 'A workspace is needed for the results.');
-  const req: BrowserRequest = { steps: check.plan.steps, workspaceId: raw.workspaceId as string };
+  const task = taskRefOf(raw.task);
+  if (raw.task !== undefined && !task) return fail('bad_input', 'Task graph: the step reference is not readable.');
+  const req: BrowserRequest = { steps: check.plan.steps, workspaceId: raw.workspaceId as string, ...(task ? { task } : {}) };
   const key = deps.key();
   const jobId = deps.newId();
   const expiresAt = deps.now() + QUOTE_TTL_MS;
@@ -131,7 +138,9 @@ export async function runBrowserQuote(
   const check = checkBrowserTask({ steps: raw.steps });
   if (!check.ok) return fail('bad_input', check.error);
   if (!isWorkspaceId(raw.workspaceId)) return fail('bad_input', 'A workspace is needed for the results.');
-  const req: BrowserRequest = { steps: check.plan.steps, workspaceId: raw.workspaceId as string };
+  const task = taskRefOf(raw.task);
+  if (raw.task !== undefined && !task) return fail('bad_input', 'Task graph: the step reference is not readable.');
+  const req: BrowserRequest = { steps: check.plan.steps, workspaceId: raw.workspaceId as string, ...(task ? { task } : {}) };
   const key = deps.key();
   if (!key) return fail('not_configured', 'The browser is not configured on this server.');
   const v = verifyQuote(input.token, key, {
@@ -143,12 +152,27 @@ export async function runBrowserQuote(
     return fail('quote_invalid', 'This plan cannot be run.');
   }
   if (!deps.enabled()) return fail('browser_disabled', 'The browser is switched off on this server.');
+  // A task-graph step runs only when the steps it needs are done: checked before the quote is used up.
+  if (req.task) {
+    const ready = await checkTaskReady(deps.workspace(), input.userId, req.workspaceId, req.task, 'browser');
+    if (!ready.ok) return fail('bad_input', `Task graph: ${ready.error}`);
+  }
   const claim = await deps.claim(input.userId, `browser_run:${v.claims.j}`, Math.ceil(QUOTE_TTL_MS / 1000)).catch(() => 'unavailable' as const);
   if (claim === 'held') return fail('quote_used', 'This plan already ran.');
   if (claim !== 'claimed') return fail('guard_unavailable', 'The duplicate guard cannot be read right now, so nothing ran. Try again in a minute.');
 
+  let step: { end(o: { ok: true; outputs: string[] } | { ok: false; error: string }): Promise<void> } | null = null;
+  if (req.task) {
+    const st = await taskStep(deps.workspace(), input.userId, req.workspaceId, req.task, { kind: 'browser', id: v.claims.j, now: () => new Date(deps.now()) });
+    if (!st.ok) return fail('bad_input', `Task graph: ${st.error}`);
+    step = st;
+  }
+
   const r = await deps.runner(input.userId).run(check.plan, signal);
-  if (!r.ok) return fail(r.error, r.message);
+  if (!r.ok) {
+    await step?.end({ ok: false, error: r.message });
+    return fail(r.error, r.message);
+  }
 
   // Everything found goes to the workspace: the screenshots, each text read (with the page it came from), the step log.
   const folder = browserFolderOf(v.claims.j);
@@ -164,6 +188,7 @@ export async function runBrowserQuote(
   const log = r.steps.map(({ text, ...rest }) => (typeof text === 'string' ? { ...rest, textChars: text.length } : rest));
   files.push({ path: `${folder}/steps.json`, bytes: Buffer.from(JSON.stringify({ finalUrl: r.finalUrl, steps: log }, null, 2), 'utf8') });
   const saved = await deps.workspace().writeMany(input.userId, req.workspaceId, files, `browser:${v.claims.j}`);
+  await step?.end(saved.ok ? { ok: true, outputs: saved.written.map((f) => f.path) } : { ok: false, error: saved.message });
   const shown = r.steps.map((s) => (typeof s.text === 'string' && s.text.length > BROWSER_TEXT_SHOWN ? { ...s, text: `${s.text.slice(0, BROWSER_TEXT_SHOWN)}\n…` } : s));
   return {
     ok: true,

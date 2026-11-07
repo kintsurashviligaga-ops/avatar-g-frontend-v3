@@ -19,6 +19,7 @@ import { worstCaseUsd } from './budget';
 import { checkSandboxJob, SANDBOX_MAX, type SandboxLanguage, type SandboxLimits, type SandboxResult, type SandboxRunner } from './policy';
 import { isWorkspaceId, normalizeWsPath, WS_MAX_FILE_BYTES } from '@/lib/agent/workspace/paths';
 import type { WorkspaceStore, WsFile } from '@/lib/agent/workspace/store';
+import { checkTaskReady, taskRefOf, taskStep, type TaskRef } from '@/lib/agent/taskGraphStore';
 
 /** A workspace run brings back at most this many files the program wrote. */
 export const CODE_RUN_MAX_OUTPUT_FILES = 20;
@@ -38,6 +39,8 @@ export interface CodeRequest {
    * file the program writes is saved back as a new version. Part of the signed plan, so it cannot be swapped later.
    */
   workspaceId?: string;
+  /** The task-graph node this run carries out (lib/agent/taskGraph); needs a workspace, signed with the rest. */
+  task?: TaskRef;
 }
 
 export interface CodeQuote {
@@ -98,7 +101,10 @@ export function codeRequestOf(v: unknown): CodeRequest | null {
       : r.language === 'bash' || r.language === 'sh' ? 'shell' : r.language;
   if ((lang !== 'python' && lang !== 'node' && lang !== 'shell') || typeof r.code !== 'string') return null;
   if (r.workspaceId !== undefined && !isWorkspaceId(r.workspaceId)) return null;
-  return r.workspaceId ? { language: lang, code: r.code, workspaceId: r.workspaceId as string } : { language: lang, code: r.code };
+  if (!r.workspaceId) return r.task === undefined ? { language: lang, code: r.code } : null;
+  const task = r.task === undefined ? null : taskRefOf(r.task);
+  if (r.task !== undefined && !task) return null;
+  return { language: lang, code: r.code, workspaceId: r.workspaceId as string, ...(task ? { task } : {}) };
 }
 
 export function quoteCodeRun(deps: CodeDeps, input: { userId: string; request: unknown }): CodeQuoteResult {
@@ -155,6 +161,11 @@ export async function runCodeQuote(
   if (!check.ok) return fail('bad_input', check.error);
 
   if (!deps.enabled()) return fail('sandbox_disabled', 'Running code is switched off on this server.');
+  if (req.task) {
+    if (!deps.workspace || !req.workspaceId) return fail('not_configured', 'Workspaces are not configured on this server.');
+    const ready = await checkTaskReady(deps.workspace(), input.userId, req.workspaceId, req.task, 'code');
+    if (!ready.ok) return fail('bad_input', `Task graph: ${ready.error}`);
+  }
   const claim = await deps.claim(input.userId, `code_run:${v.claims.j}`, Math.ceil(QUOTE_TTL_MS / 1000)).catch(() => 'unavailable' as const);
   if (claim === 'held') return fail('quote_used', 'This plan already ran.');
   if (claim !== 'claimed') return fail('guard_unavailable', 'The duplicate guard cannot be read right now, so nothing ran. Try again in a minute.');
@@ -170,18 +181,33 @@ export async function runCodeQuote(
   const store = deps.workspace();
   const snap = await store.snapshot(input.userId, req.workspaceId);
   if (!snap.ok) return fail(snap.error === 'not_found' ? 'bad_input' : 'runner_failed', `Workspace: ${snap.message}`);
+  // A task-graph step starts before anything runs (refused when its needs are not done) and records how it ended.
+  let step: { end(o: { ok: true; outputs: string[] } | { ok: false; error: string }): Promise<void> } | null = null;
+  if (req.task) {
+    const st = await taskStep(store, input.userId, req.workspaceId, req.task, {
+      kind: 'code', id: v.claims.j, inputs: snap.files.map((f) => f.path), now: () => new Date(deps.now()),
+    });
+    if (!st.ok) return fail('bad_input', `Task graph: ${st.error}`);
+    step = st;
+  }
   const r: SandboxResult = await deps.runner(input.userId).run(check.plan, signal, {
     inputs: snap.files.map((f) => ({ path: f.path, bytes: f.bytes })),
     maxFiles: CODE_RUN_MAX_OUTPUT_FILES,
     maxFileBytes: WS_MAX_FILE_BYTES,
     accept: (p) => normalizeWsPath(p) === p,
   });
-  if (!r.ok) return fail(r.error, r.message);
+  if (!r.ok) {
+    await step?.end({ ok: false, error: r.message });
+    return fail(r.error, r.message);
+  }
   // Unchanged bytes are no new version (the store compares hashes), so only real results are listed.
   const before = new Map(snap.files.map((f) => [f.path, f.sha256]));
   const saved = await store.writeMany(input.userId, req.workspaceId, r.collected ?? [], `run:${v.claims.j}`);
   const workspace: CodeRunWorkspace = saved.ok
     ? { id: req.workspaceId, written: saved.written.filter((f) => before.get(f.path) !== f.sha256), skipped: r.skipped ?? [] }
     : { id: req.workspaceId, written: [], skipped: r.skipped ?? [], error: saved.message };
+  await step?.end(!saved.ok ? { ok: false, error: saved.message }
+    : r.exitCode !== 0 ? { ok: false, error: `exit code ${r.exitCode}` }
+      : { ok: true, outputs: workspace.written.map((f) => f.path) });
   return { ok: true, exitCode: r.exitCode, stdout: cutShown(r.stdout), stderr: cutShown(r.stderr), wallMs: r.wallMs, workspace };
 }

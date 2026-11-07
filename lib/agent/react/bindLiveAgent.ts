@@ -407,6 +407,9 @@ const editAsk = z.object({
 }).refine((a) => editAskOf(withSource(a)) !== null, { message: 'A field was set that its op does not take.' });
 
 /** A track the model passes on is the user's own lines: typed (lib/agent/media/editWords editAskOf takes no other). */
+/** A task-graph step a run carries out (lib/agent/taskGraphStore TaskRef). */
+const TASK_REF_INPUT = z.object({ graph: z.string().regex(/^tg_[a-z0-9]{6,32}$/), node: z.string().regex(/^[a-z][a-z0-9-]{0,23}$/) });
+
 /** One workspace action on Agent G's default workspace, as an observation (never a throw). */
 async function workspaceCall(
   ctx: AgentContext,
@@ -683,27 +686,30 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     description:
       "PLAN ONLY — run a short program in an isolated sandbox (no internet, no keys, 1 CPU, 60 s). Input {language: 'python'|'node'|'shell', code, workspace?: boolean}. " +
       'With workspace: true it runs in the user\'s workspace folder: it can read those files, and every file it writes is saved back. ' +
+      'task {graph, node} makes the run carry out that step of a task graph (workspace_task_plan). ' +
       'The program must print a short summary to stdout. Returns the plan; runs nothing until the user presses Start; free for the user.',
     input: z.object({
       language: z.enum(['python', 'node', 'shell']),
       code: z.string().min(1).max(64 * 1024),
       workspace: z.boolean().optional(),
+      task: TASK_REF_INPUT.optional(),
     }),
     offered: (ctx) => codeToolOn(ctx),
     limit: MAX_CODE_QUOTES_PER_RUN,
-    run: async ({ language, code, workspace }, ctx) => {
+    run: async ({ language, code, workspace, task }, ctx) => {
       const [{ quoteCodeRun }, { liveCodeDeps }] = await Promise.all([
         import('@/lib/agent/sandbox/codeQuote'),
         import('@/lib/agent/sandbox'),
       ]);
       let workspaceId: string | undefined;
+      if (task && !workspace) return { error: 'bad_input', message: 'A task-graph step runs in the workspace: set workspace: true.' };
       if (workspace && workspaceToolOn(ctx)) {
         const { liveWorkspaceStore, AGENT_WORKSPACE_TITLE } = await import('@/lib/agent/workspace/live');
         const w = await liveWorkspaceStore().ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
         if (!w.ok) return { error: w.error, message: w.message };
         workspaceId = w.workspace.id;
       }
-      const r = quoteCodeRun(await liveCodeDeps(), { userId: ctx.userId, request: { language, code, ...(workspaceId ? { workspaceId } : {}) } });
+      const r = quoteCodeRun(await liveCodeDeps(), { userId: ctx.userId, request: { language, code, ...(workspaceId ? { workspaceId, ...(task ? { task } : {}) } : {}) } });
       if (!r.ok) return { error: r.error, message: r.message };
       ctx.onCodeQuote?.(r);
       return {
@@ -728,7 +734,7 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       'PLAN ONLY — open public web pages in a sandboxed browser (no login, no keys, at most 20 steps, 5 screenshots, 2 minutes). ' +
       "Input {steps: [{op:'goto',url} | {op:'click',selector} | {op:'type',selector,text} | {op:'press',key} | {op:'wait',ms} | " +
       "{op:'text',selector?} | {op:'screenshot',name?}]}; the first step is goto. Results are saved in the user's workspace under browser/<task>/. " +
-      'Returns the plan; opens nothing until the user presses Start; free for the user.',
+      'task {graph, node} makes it carry out that step of a task graph. Returns the plan; opens nothing until the user presses Start; free for the user.',
     input: z.object({
       steps: z.array(z.object({
         op: z.enum(['goto', 'click', 'type', 'press', 'wait', 'text', 'screenshot']),
@@ -739,10 +745,11 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
         ms: z.number().optional(),
         name: z.string().max(40).optional(),
       })).min(1).max(20),
+      task: TASK_REF_INPUT.optional(),
     }),
     offered: (ctx) => browserToolOn(ctx),
     limit: MAX_BROWSER_QUOTES_PER_RUN,
-    run: async ({ steps }, ctx) => {
+    run: async ({ steps, task }, ctx) => {
       const [{ quoteBrowserTask }, { liveBrowserDeps }, { liveWorkspaceStore, AGENT_WORKSPACE_TITLE }] = await Promise.all([
         import('@/lib/agent/browser/quote'),
         import('@/lib/agent/browser'),
@@ -750,7 +757,7 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       ]);
       const w = await liveWorkspaceStore().ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
       if (!w.ok) return { error: w.error, message: w.message };
-      const r = quoteBrowserTask(await liveBrowserDeps(), { userId: ctx.userId, request: { steps, workspaceId: w.workspace.id } });
+      const r = quoteBrowserTask(await liveBrowserDeps(), { userId: ctx.userId, request: { steps, workspaceId: w.workspace.id, ...(task ? { task } : {}) } });
       if (!r.ok) return { error: r.error, message: r.message };
       ctx.onBrowserQuote?.(r);
       return {
@@ -857,10 +864,50 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     effect: 'versioned',
     description:
       "File a copy of one workspace file in the user's Library (pictures → Images, PDFs and other files → Docs). Input {path}. The workspace file is unchanged; the user can delete the Library copy. Free.",
-    input: z.object({ path: z.string().trim().min(1).max(200) }),
+    input: z.object({ path: z.string().trim().min(1).max(200), task: TASK_REF_INPUT.optional() }),
     offered: (ctx) => workspaceToolOn(ctx),
     limit: 3,
-    run: async ({ path }, ctx) => workspaceCall(ctx, { action: 'export', path }),
+    run: async ({ path, task }, ctx) => workspaceCall(ctx, { action: 'export', path, ...(task ? { task } : {}) }),
+  }),
+  defineTool({
+    name: 'workspace_render_pdf',
+    effect: 'versioned',
+    description:
+      "Draw a PDF from a JSON document spec in the workspace ({title, subtitle?, locale:'ka'|'en'|'ru', sections:[{heading, blocks:[" +
+      "{type:'paragraph',text} | {type:'bullets',items} | {type:'table',columns,rows} | {type:'chart',kind:'bar',labels,values,unit?,title?}]}]}). " +
+      'Georgian text is drawn correctly. Input {path: the .json spec, out?: the .pdf path, task?: {graph, node}}. Saves the PDF as a new version. Free.',
+    input: z.object({ path: z.string().trim().min(1).max(200), out: z.string().trim().min(1).max(200).optional(), task: TASK_REF_INPUT.optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path, out, task }, ctx) => workspaceCall(ctx, { action: 'render_pdf', path, ...(out ? { out } : {}), ...(task ? { task } : {}) }, (b) => ({ saved: b.file, from: b.from })),
+  }),
+  defineTool({
+    name: 'workspace_task_plan',
+    effect: 'versioned',
+    description:
+      "Write down a multi-step job as ONE task graph the user can follow (saved as tasks/<id>.json in the workspace). Input {title, nodes:[{id, kind:'browser'|'code'|'pdf'|'export', title, needs?: [earlier ids]}]} " +
+      "(at most 12; a node may only need earlier ones). Every later step names it with task {graph, node}: a step starts only when what it needs is done, and the graph records each run's inputs and outputs. Runs nothing; free.",
+    input: z.object({
+      title: z.string().trim().min(1).max(160),
+      nodes: z.array(z.object({
+        id: z.string().regex(/^[a-z][a-z0-9-]{0,23}$/),
+        kind: z.enum(['browser', 'code', 'pdf', 'export']),
+        title: z.string().trim().min(1).max(200),
+        needs: z.array(z.string()).max(12).optional(),
+      })).min(1).max(12),
+    }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 2,
+    run: async (plan, ctx) => workspaceCall(ctx, { action: 'task_plan', plan }, (b) => ({ graph: (b.graph as { id?: string })?.id, summary: b.summary })),
+  }),
+  defineTool({
+    name: 'workspace_task_read',
+    effect: 'inspect',
+    description: 'Where a task graph stands: one line per step (planned ○, running ✱, done ✓, failed ✗) with its outputs. Input {graph}. Changes nothing; free.',
+    input: z.object({ graph: z.string().regex(/^tg_[a-z0-9]{6,32}$/) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 4,
+    run: async ({ graph }, ctx) => workspaceCall(ctx, { action: 'task_read', graph }, (b) => ({ summary: b.summary })),
   }),
   // analyze_media: describe one attached file (or a public YouTube video) with Gemini, by reference. The model names the
   // file by its number, never a path; the answer is a description and starts nothing.

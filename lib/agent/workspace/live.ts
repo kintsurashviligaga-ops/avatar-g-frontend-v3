@@ -78,5 +78,9 @@ export function liveExportDeps(): import('./actions').ExportDeps {
       });
       return ok ? id : null;
     },
+    async renderPdf(spec) {
+      const { renderDocumentPdf } = await import('@/lib/documents/pdf');
+      return (await renderDocumentPdf(spec)).bytes;
+    },
   };
 }
