@@ -246,6 +246,10 @@ export const RATE_LIMITS = {
   // sandbox in the same $20 ledger as code runs, so fewer per day than code runs.
   BROWSER_RUN_USER:  { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:browser:user' } as const,
   BROWSER_RUN_BURST: { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:browser:min' } as const,
+  // SITE_STEP_* — Agent G acting on myavatar.ge in the user's tab (/api/agent/site/step): one flash call per step, a task is
+  // at most 25 steps, so 60 a minute and 1500 a day.
+  SITE_STEP_BURST:   { maxRequests: 60,  windowMs: 60_000,           keyPrefix: 'rl:sitestep:min' } as const,
+  SITE_STEP_USER:    { maxRequests: 1500, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:sitestep:user' } as const,
   // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
   // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
   // than any person writes to support.
