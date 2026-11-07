@@ -9943,7 +9943,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const siteAsk = browserOnRef.current && attachments.length === 0 ? openSiteAsk(text) : null;
     // A follow-up on the page the last run ended on (within 20 minutes): Agent G goes on from there, not from nothing.
     const last = lastBrowserRef.current;
-    const onPage = !siteAsk?.url && browserOnRef.current && attachments.length === 0 && last && Date.now() - last.at < 20 * 60_000 && pageFollowUp(text) ? last : null;
+    const onPage = !siteAsk && browserOnRef.current && attachments.length === 0 && last && Date.now() - last.at < 20 * 60_000 && pageFollowUp(text) ? last : null;
     if (siteAsk || onPage) {
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       void planBrowserAsk(text, onPage ? continueGoal(text, onPage.url) : openSiteGoal(text, siteAsk!), viaVoice);

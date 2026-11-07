@@ -29,6 +29,12 @@ const KNOWN: ReadonlyArray<readonly [RegExp, string]> = [
 /** A site named generically („საიტი", "website"): Agent G picks the address from the words. */
 const SITE_WORD = /(?:საიტ|ვებ-?გვერდ|website|web\s*page|\bsite\b|сайт)/iu;
 
+/**
+ * „გახსენი ინტერნეტის ბრაუზერი, მოიძიე …" is a NEW task, not a follow-up on the last page (GG 2026-11-07 10:31Z: it went
+ * back to myhome.ge from the run before). Agent G picks where to start.
+ */
+const BROWSER_WORD = /(?:ბრაუზერ|ინტერნეტ|browser|internet|браузер|интернет)/iu;
+
 export interface OpenSiteAsk {
   /** The address to open when the words name one (or a well-known site); null when only "a site" is named. */
   url: string | null;
@@ -43,7 +49,7 @@ export function openSiteAsk(text: string): OpenSiteAsk | null {
   if (!OPEN_VERB.test(t) && !(addr && SITE_WORD.test(t))) return null;
   if (addr) return { url: /^https?:\/\//i.test(addr) ? addr : `https://${addr}` };
   for (const [re, url] of KNOWN) if (re.test(t)) return { url };
-  return SITE_WORD.test(t) ? { url: null } : null;
+  return SITE_WORD.test(t) || BROWSER_WORD.test(t) ? { url: null } : null;
 }
 
 /** The goal Agent G gets: the user's words, plus the address when one was found, so it plans a goto there. */

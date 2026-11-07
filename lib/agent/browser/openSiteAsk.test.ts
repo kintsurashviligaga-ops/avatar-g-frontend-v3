@@ -61,3 +61,13 @@ describe('a follow-up on the page the browser is on (GG 2026-11-07 07:47Z)', () 
       'დააკლიკე პირველს\n\n(Continue on https://www.google.com/search?q=x in the browser: the first step is goto https://www.google.com/search?q=x, then do this there, then take a screenshot.)');
   });
 });
+
+describe('a new browser task is not a follow-up (GG 2026-11-07 10:31Z)', () => {
+  it('„open the browser and search…" starts fresh, Agent G picks where', () => {
+    expect(openSiteAsk('ეხლა გახსენი ინტერნეტის ბრაუზერი, მოიძიე სიმღერა 2Pac-ის All Eyez on Me')).toEqual({ url: null });
+    expect(openSiteAsk('open the browser and search for the weather in Tbilisi')).toEqual({ url: null });
+  });
+  it('a plain page action still is not an open ask', () => {
+    expect(openSiteAsk('ახლა ქვემოთ ჩასქროლე')).toBeNull();
+  });
+});
