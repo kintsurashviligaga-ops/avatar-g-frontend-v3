@@ -9,6 +9,7 @@ import { AppProviders } from "@/components/providers/AppProviders";
 import HtmlLangSync from "@/components/i18n/HtmlLangSync";
 import { seoLang, shareCards } from "@/lib/seo/metadata";
 import { AgentScreenPanel } from "@/components/agent/AgentScreenPanel";
+import { SiteAgentHost } from "@/components/agent/SiteAgentHost";
 
 // ISR (Iteration 3): the previous `force-dynamic` + `revalidate=0` forced `Cache-Control: no-store` on
 // the ENTIRE locale subtree — even the user-agnostic, build-prerendered marketing/pricing pages — so
@@ -115,6 +116,7 @@ export default async function LocaleLayout({
           <AppProviders>
             <PageTransitionWrapper>{children}</PageTransitionWrapper>
             <AgentScreenPanel locale={safeLocale} />
+            <SiteAgentHost locale={safeLocale} />
           </AppProviders>
         </QueryProvider>
       </NextIntlClientProvider>

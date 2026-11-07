@@ -208,6 +208,8 @@ import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agen
 import { continueGoal, openSiteAsk, openSiteGoal, pageFollowUp } from '@/lib/agent/browser/openSiteAsk';
 import { type SignedPlan } from '@/components/agent/PlanStartCard';
 import { AutoTaskCard, startsByItself } from '@/components/agent/AutoTaskCard';
+import { onSiteTaskResult, startSiteTask } from '@/components/agent/SiteAgentHost';
+import { siteAsk } from '@/lib/agent/site/siteAsk';
 import { ConnectorsButton } from '@/components/studio/ConnectorsButton';
 import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
@@ -9470,6 +9472,38 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       .catch(() => {});
     return () => { live = false; };
   }, []);
+  // Agent G on myavatar.ge itself (GG 2026-11-07 09:36Z: „move the cursor on the site and do everything"): is it open to this
+  // user? Then an ask like „გადადი ბიბლიოთეკაში და გადმოწერე ბოლო ვიდეო" runs in this tab (components/agent/SiteAgentHost);
+  // its answer comes back here as Agent G's message.
+  const siteOnRef = useRef(false);
+  const siteMsgRef = useRef<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/agent/site/step', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { enabled?: unknown } | null) => { if (live) siteOnRef.current = j?.enabled === true; })
+      .catch(() => {});
+    const off = onSiteTaskResult((r) => {
+      const id = siteMsgRef.current;
+      siteMsgRef.current = null;
+      const text = r.answer || (r.reason === 'user'
+        ? (locale === 'en' ? 'Stopped.' : locale === 'ru' ? 'Остановлено.' : 'შევაჩერე.')
+        : (locale === 'en' ? '⚠️ Agent G could not finish this on the page.' : locale === 'ru' ? '⚠️ Agent G не смог закончить это на странице.' : '⚠️ Agent G-მ ეს გვერდზე ვერ დაასრულა.'));
+      if (id) patchMsgById(id, (m) => ({ ...m, text, docWorking: undefined }));
+      else setMessages((prev) => [...prev, { role: 'assistant', text, notice: true }]);
+      persistChatTurn('assistant', text);
+    });
+    return () => { live = false; off(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
+  const runSiteAsk = useCallback((text: string, viaVoice: boolean) => {
+    const id = `agent-site-${Date.now()}`;
+    siteMsgRef.current = id;
+    const working = locale === 'en' ? 'On it — working on this page; the steps are on the right.' : locale === 'ru' ? 'Начинаю — работаю на этой странице, шаги справа.' : 'ვიწყებ — ამ გვერდზე ვმუშაობ, ნაბიჯები მარჯვნივ ჩანს.';
+    setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', id, text: working, notice: true, docWorking: Date.now() }]);
+    persistChatTurn('user', text);
+    startSiteTask(text);
+  }, [locale, persistChatTurn]);
   // Agent G plans the open-site ask (POST /api/agent/run: free, opens nothing); its signed browser plan becomes the Start card
   // under its reply. Without a plan its words are the answer (it may say why), never a claim that the page was opened.
   const planBrowserAsk = useCallback(async (text: string, goal: string, viaVoice: boolean) => {
@@ -9940,13 +9974,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     };
     // „გახსენი youtube" (GG 2026-11-07 06:58Z): the chat model has no browser, so an open-site ask goes to Agent G, which
     // plans the steps and puts its Start card here. Only for whoever the browser is open to; nothing opens before Start.
-    const siteAsk = browserOnRef.current && attachments.length === 0 ? openSiteAsk(text) : null;
+    if (siteOnRef.current && attachments.length === 0 && siteAsk(text)) {
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      runSiteAsk(text, viaVoice);
+      return true;
+    }
+    const openAsk = browserOnRef.current && attachments.length === 0 ? openSiteAsk(text) : null;
     // A follow-up on the page the last run ended on (within 20 minutes): Agent G goes on from there, not from nothing.
     const last = lastBrowserRef.current;
-    const onPage = !siteAsk?.url && browserOnRef.current && attachments.length === 0 && last && Date.now() - last.at < 20 * 60_000 && pageFollowUp(text) ? last : null;
-    if (siteAsk || onPage) {
+    const onPage = !openAsk?.url && browserOnRef.current && attachments.length === 0 && last && Date.now() - last.at < 20 * 60_000 && pageFollowUp(text) ? last : null;
+    if (openAsk || onPage) {
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-      void planBrowserAsk(text, onPage ? continueGoal(text, onPage.url) : openSiteGoal(text, siteAsk!), viaVoice);
+      void planBrowserAsk(text, onPage ? continueGoal(text, onPage.url) : openSiteGoal(text, openAsk!), viaVoice);
       return true;
     }
     const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
