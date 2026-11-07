@@ -1,4 +1,4 @@
-import { openSiteAsk, openSiteGoal } from './openSiteAsk';
+import { continueGoal, openSiteAsk, openSiteGoal, pageFollowUp } from './openSiteAsk';
 
 describe('openSiteAsk', () => {
   test.each([
@@ -46,5 +46,18 @@ describe('the chat hands an open-site ask to Agent G (GG 2026-11-07 06:58Z)', ()
     expect(turn.slice(0, site)).toContain('browserOnRef.current');
     expect(src).toContain("fetch('/api/agent/browser/run', { credentials: 'same-origin' })");
     expect(src).toContain('<PlanStartCard key={`b-${m.browserPlan.token.slice(-12)}`} kind="browser"');
+  });
+});
+
+describe('a follow-up on the page the browser is on (GG 2026-11-07 07:47Z)', () => {
+  test.each(['ახლა ეს დააკლიკე', 'ჩამოსქროლე ქვემოთ', 'იქ მოძებნე ვაკე', 'click the first result', 'прокрути вниз'])('%s acts on the page', (t) => {
+    expect(pageFollowUp(t)).toBe(true);
+  });
+  test.each(['რა არის ეს?', 'მადლობა', 'what is the price?', ''])('%s is not', (t) => {
+    expect(pageFollowUp(t)).toBe(false);
+  });
+  test('the goal starts from the last address', () => {
+    expect(continueGoal(' დააკლიკე პირველს ', 'https://www.google.com/search?q=x')).toBe(
+      'დააკლიკე პირველს\n\n(Continue on https://www.google.com/search?q=x in the browser: the first step is goto https://www.google.com/search?q=x, then do this there, then take a screenshot.)');
   });
 });

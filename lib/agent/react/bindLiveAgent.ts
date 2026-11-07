@@ -169,7 +169,11 @@ export const AGENT_BROWSER_NOTE =
   'plan; it opens nothing. The steps run only when the user presses Start, in a fresh sandboxed browser with no ' +
   'login, no cookies and no keys (never plan a sign-in or a payment). What it reads and the screenshots are saved in ' +
   'the user\'s workspace under browser/<task>/ (text-1.txt, <name>.png, steps.json), where a later workspace program ' +
-  'or workspace_read_file can use them. Never say the page was opened and never invent its content.';
+  'or workspace_read_file can use them. Never say the page was opened and never invent its content. ' +
+  'Sites that show their content only after a login (Instagram, Facebook, TikTok feeds): do not plan them directly; plan a ' +
+  'Google search instead (https://www.google.com/search?q=site:instagram.com+...) and screenshot the results. When the ' +
+  'goal says to continue on an address, the first step is goto that address. Always end with a screenshot so the user ' +
+  'sees the page. Never answer that the browser or search is unavailable without having called quote_browser_task.';
 
 /** Added when Google Drive is open to this user: only the files they picked, read only. */
 export const AGENT_DRIVE_NOTE =

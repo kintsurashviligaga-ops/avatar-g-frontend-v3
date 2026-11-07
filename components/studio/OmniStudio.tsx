@@ -205,7 +205,7 @@ import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, an
 import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
-import { openSiteAsk, openSiteGoal } from '@/lib/agent/browser/openSiteAsk';
+import { continueGoal, openSiteAsk, openSiteGoal, pageFollowUp } from '@/lib/agent/browser/openSiteAsk';
 import { PlanStartCard, type SignedPlan } from '@/components/agent/PlanStartCard';
 import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
@@ -9456,6 +9456,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // „გახსენი youtube" in the chat (lib/agent/browser/openSiteAsk): is the browser open to this user? Asked once; the route
   // answers { enabled } for everyone (never 404), and a failed read keeps the ask in the chat as before.
   const browserOnRef = useRef(false);
+  // Where the last browser run in this chat ended (PlanStartCard onDone): a follow-up („ახლა ეს დააკლიკე") goes on from it.
+  const lastBrowserRef = useRef<{ url: string; at: number } | null>(null);
   useEffect(() => {
     let live = true;
     void fetch('/api/agent/browser/run', { credentials: 'same-origin' })
@@ -9469,7 +9471,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const planBrowserAsk = useCallback(async (text: string, goal: string, viaVoice: boolean) => {
     const id = `agent-browser-${Date.now()}`;
     const planning = locale === 'en' ? 'Agent G is planning the browser steps…' : locale === 'ru' ? 'Agent G планирует шаги браузера…' : 'Agent G ბრაუზერის ნაბიჯებს გეგმავს…';
-    setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', id, text: planning, notice: true }]);
+    // A spinner and the seconds so far while Agent G plans (GG 2026-11-07 07:47Z: it looked as if nothing happened).
+    setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', id, text: planning, notice: true, docWorking: Date.now() }]);
     persistChatTurn('user', text);
     let reply: string;
     let plan: SignedPlan | undefined;
@@ -9487,7 +9490,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } catch {
       reply = locale === 'en' ? '⚠️ Agent G could not be reached.' : locale === 'ru' ? '⚠️ Agent G недоступен.' : '⚠️ Agent G-სთან კავშირი ვერ დამყარდა.';
     }
-    patchMsgById(id, (m) => ({ ...m, text: reply, ...(plan ? { browserPlan: plan } : {}) }));
+    patchMsgById(id, (m) => ({ ...m, text: reply, docWorking: undefined, ...(plan ? { browserPlan: plan } : {}) }));
     persistChatTurn('assistant', reply);
   }, [locale, patchMsgById, persistChatTurn]);
   // Follow one run to its end on this card. Each read is the run as the server has it; the card draws nothing itself.
@@ -9930,9 +9933,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // „გახსენი youtube" (GG 2026-11-07 06:58Z): the chat model has no browser, so an open-site ask goes to Agent G, which
     // plans the steps and puts its Start card here. Only for whoever the browser is open to; nothing opens before Start.
     const siteAsk = browserOnRef.current && attachments.length === 0 ? openSiteAsk(text) : null;
-    if (siteAsk) {
+    // A follow-up on the page the last run ended on (within 20 minutes): Agent G goes on from there, not from nothing.
+    const last = lastBrowserRef.current;
+    const onPage = !siteAsk?.url && browserOnRef.current && attachments.length === 0 && last && Date.now() - last.at < 20 * 60_000 && pageFollowUp(text) ? last : null;
+    if (siteAsk || onPage) {
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-      void planBrowserAsk(text, openSiteGoal(text, siteAsk), viaVoice);
+      void planBrowserAsk(text, onPage ? continueGoal(text, onPage.url) : openSiteGoal(text, siteAsk!), viaVoice);
       return true;
     }
     const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
@@ -10673,7 +10679,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.analyzeJob && <AgentAnalyzeCard state={m.analyzeJob} locale={locale} />}
                 {m.role === 'assistant' && m.browserPlan && (
                   <div className="mt-3 w-full max-w-[36rem]" data-testid="agent-browser-plan">
-                    <PlanStartCard key={`b-${m.browserPlan.token.slice(-12)}`} kind="browser" plan={m.browserPlan} locale={locale} />
+                    <PlanStartCard key={`b-${m.browserPlan.token.slice(-12)}`} kind="browser" plan={m.browserPlan} locale={locale} onDone={(r) => { lastBrowserRef.current = { url: r.finalUrl, at: Date.now() }; }} />
                   </div>
                 )}
                 {m.role === 'assistant' && m.montage && m.videoUrl && (

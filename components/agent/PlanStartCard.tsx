@@ -6,7 +6,9 @@
  * presses Start; Stop aborts the request (the server stops the sandbox and settles its spend). What the run saved in the
  * user's workspace is listed with a download button each, so the next step can name those files.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { browserStepLabel, type PlannedStep } from '@/lib/agent/browser/stepLabel';
 
 type Lang = 'ka' | 'en' | 'ru';
 interface WsFile { path: string; v: number; bytes: number }
@@ -58,12 +60,52 @@ type Phase =
   | { phase: 'done'; steps?: StepView[]; stdout?: string; stderr?: string; exitCode?: number; wallMs?: number; workspace?: RunWorkspace }
   | { phase: 'failed'; message: string };
 
-export function PlanStartCard({ kind, plan, locale }: { kind: PlanKind; plan: SignedPlan; locale: string }) {
+/** A screenshot the run saved, shown in the card (GG 2026-11-07 07:47Z: „არ ჩანს რომ რამეს აკეთებს"). */
+function ShotImage({ workspaceId, path }: { workspaceId: string; path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/agent/workspace', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'link', workspaceId, path }),
+    }).then((r) => r.json()).then((j: { url?: unknown }) => {
+      if (live && typeof j?.url === 'string' && /^https:\/\//.test(j.url)) setUrl(j.url);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [workspaceId, path]);
+  if (!url) return <div data-testid="browser-shot-loading" style={{ height: 120, borderRadius: 10, background: 'rgba(255,255,255,0.05)' }} />;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" data-testid="browser-shot">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt={path.split('/').pop() ?? 'screenshot'} style={{ width: '100%', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)' }} />
+    </a>
+  );
+}
+
+/** Seconds since `t0`, ticking once a second while the run is on. */
+function useElapsed(t0: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (t0 === null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [t0]);
+  return t0 === null ? 0 : Math.max(0, Math.floor((now - t0) / 1000));
+}
+
+/** What a finished browser run hands the chat: where it ended, so the next ask can go on from that page. */
+export interface BrowserRunDone { finalUrl: string; title?: string }
+
+export function PlanStartCard({ kind, plan, locale, onDone }: { kind: PlanKind; plan: SignedPlan; locale: string; onDone?: (r: BrowserRunDone) => void }) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const t = T[lang];
   const [state, setState] = useState<Phase>({ phase: 'quoted' });
   const abort = useRef<AbortController | null>(null);
   const q = plan.quote;
+  const planned: PlannedStep[] = kind === 'browser' && Array.isArray((plan.request as { steps?: unknown })?.steps)
+    ? ((plan.request as { steps: PlannedStep[] }).steps) : [];
+  const elapsed = useElapsed(state.phase === 'running' ? state.t0 : null);
+  const clock = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 
   async function start() {
     if (state.phase === 'running') return;
@@ -79,6 +121,10 @@ export function PlanStartCard({ kind, plan, locale }: { kind: PlanKind; plan: Si
       if (!j || j.ok !== true) {
         setState({ phase: 'failed', message: typeof j?.message === 'string' ? j.message : `${t.failed} (${res.status})` });
         return;
+      }
+      if (kind === 'browser' && typeof j.finalUrl === 'string' && /^https?:\/\//.test(j.finalUrl)) {
+        const titled = (Array.isArray(j.steps) ? (j.steps as StepView[]) : []).filter((x) => x.title).pop();
+        try { onDone?.({ finalUrl: j.finalUrl, ...(titled?.title ? { title: titled.title } : {}) }); } catch { /* the card goes on */ }
       }
       setState({
         phase: 'done',
@@ -112,10 +158,21 @@ export function PlanStartCard({ kind, plan, locale }: { kind: PlanKind; plan: Si
           {(plan.request as { code: string }).code}
         </pre>
       )}
+      {planned.length > 0 && state.phase !== 'done' && (
+        <ol data-testid="browser-planned-steps" style={{ margin: '10px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {planned.map((st, i) => (
+            <li key={i} style={{ fontSize: 12.5, color: state.phase === 'running' ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.55)', display: 'flex', gap: 6 }}>
+              <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 16 }}>{i + 1}.</span>{browserStepLabel(st, lang)}
+            </li>
+          ))}
+        </ol>
+      )}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         {state.phase === 'quoted' && <button type="button" style={btn(true)} onClick={() => void start()}>{t.start}</button>}
         {state.phase === 'running' && <>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', alignSelf: 'center' }}>{t.running}</span>
+          <span data-testid="plan-running" style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Loader2 size={14} className="animate-spin" aria-hidden />{t.running} {clock}
+          </span>
           <button type="button" style={btn(false)} onClick={() => abort.current?.abort()}>{t.stop}</button>
         </>}
       </div>
@@ -128,6 +185,9 @@ export function PlanStartCard({ kind, plan, locale }: { kind: PlanKind; plan: Si
               {s.text && <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6 }}>{s.text}</pre>}
             </div>
           ))}
+          {kind === 'browser' && state.workspace && !state.workspace.error && state.workspace.written
+            .filter((f) => /\.png$/i.test(f.path))
+            .map((f) => <ShotImage key={f.path} workspaceId={state.workspace!.id} path={f.path} />)}
           {typeof state.exitCode === 'number' && <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)' }}>{t.exit} {state.exitCode}</div>}
           {state.stdout && <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: 'rgba(255,255,255,0.8)', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, maxHeight: 220, overflow: 'auto' }}>{state.stdout}</pre>}
           {state.stderr && <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: '#fca5a5', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, maxHeight: 160, overflow: 'auto' }}>{state.stderr}</pre>}

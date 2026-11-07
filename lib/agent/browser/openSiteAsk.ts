@@ -51,3 +51,20 @@ export function openSiteGoal(text: string, ask: OpenSiteAsk): string {
   const words = text.trim();
   return ask.url ? `${words}\n\n(Open ${ask.url} in the browser and take a screenshot.)` : words;
 }
+
+/**
+ * Words that act on the page the browser is on („ახლა ეს დააკლიკე", "scroll down", "search for X there"). GG 2026-11-07
+ * 07:47Z: after a page was opened, the next ask started from nothing. Only asked right after a browser run (the chat
+ * keeps where it ended), so a plain question is never taken for one.
+ */
+const PAGE_ACTION = /(?:დააკლიკ|დააჭირ|დაკლიკ|ჩამოსქროლ|ჩამოსქროლე|ქვემოთ|ზემოთ|გადაახვიე|ჩაწერე|მოძებნე|მოიძიე|აირჩიე|შედი|გადადი|გახს|გადაიღე|სქრინ|შემდეგ\s+გვერდ|(?:^|[^a-z])(?:click|tap|press|scroll|type|search|select|choose|next\s+page|screenshot|go\s+(?:back|down|up))(?![a-z])|нажми|кликни|прокрути|введи|найди|выбери)/iu;
+
+export function pageFollowUp(text: string): boolean {
+  const t = text.trim();
+  return !!t && t.length <= 500 && PAGE_ACTION.test(t);
+}
+
+/** The goal for a follow-up: the user's words, done on the page the last run ended on. */
+export function continueGoal(text: string, lastUrl: string): string {
+  return `${text.trim()}\n\n(Continue on ${lastUrl} in the browser: the first step is goto ${lastUrl}, then do this there, then take a screenshot.)`;
+}
