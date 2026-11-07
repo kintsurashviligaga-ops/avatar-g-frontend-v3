@@ -133,6 +133,7 @@ export async function runBrowserQuote(
   deps: BrowserDeps,
   input: { userId: string; request: unknown; token: unknown },
   signal: AbortSignal,
+  onLive?: (l: import('./runner').BrowserLive) => void,
 ): Promise<BrowserRunResult> {
   const raw = (input.request ?? {}) as Record<string, unknown>;
   const check = checkBrowserTask({ steps: raw.steps });
@@ -168,7 +169,7 @@ export async function runBrowserQuote(
     step = st;
   }
 
-  const r = await deps.runner(input.userId).run(check.plan, signal);
+  const r = await deps.runner(input.userId).run(check.plan, signal, onLive);
   if (!r.ok) {
     await step?.end({ ok: false, error: r.message });
     return fail(r.error, r.message);

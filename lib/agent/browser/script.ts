@@ -106,6 +106,8 @@ try {
     }
     out.steps.push(r);
     out.finalUrl = page.url();
+    // The live view (GG 2026-11-07 08:38Z, like Manus): a small picture of the page after every step, read while it runs.
+    await page.screenshot({ path: 'live.jpg', type: 'jpeg', quality: 45 }).catch(() => {});
     await save();
     if (!r.ok) break;
   }

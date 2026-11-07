@@ -11,7 +11,7 @@ import { Check, Loader2, X } from 'lucide-react';
 import { browserStepLabel, type PlannedStep } from '@/lib/agent/browser/stepLabel';
 import {
   AUTO_TASK_LIMITS, envelopeUsd, runAutoTask,
-  type AutoTaskEvent, type AutoTaskIO, type BrowserOut, type CodeOut, type PlanOut, type SignedPlanLike,
+  type AutoTaskEvent, type AutoTaskIO, type BrowserOut, type CodeOut, type LiveOut, type PlanOut, type SignedPlanLike,
 } from '@/lib/agent/task/autoTask';
 import { ShotImage } from './PlanStartCard';
 
@@ -28,7 +28,7 @@ const STARTED = new Set<string>();
 /** A plan the user is charged nothing for (the browser: credits 0) starts by itself, like any agent the user just asked. */
 export const startsByItself = (plan: SignedPlanLike) => Number(plan.quote.credits) === 0;
 
-interface RoundView { round: number; kind: 'browser' | 'code'; plan: SignedPlanLike; result?: BrowserOut | CodeOut }
+interface RoundView { round: number; kind: 'browser' | 'code'; plan: SignedPlanLike; result?: BrowserOut | CodeOut; live?: LiveOut }
 type Phase = 'quoted' | 'running' | 'done' | 'stopped';
 
 async function post(url: string, body: unknown, signal: AbortSignal): Promise<Record<string, unknown> | null> {
@@ -40,10 +40,42 @@ const signed = (x: unknown): SignedPlanLike | undefined =>
   x && typeof x === 'object' && typeof (x as SignedPlanLike).token === 'string' && (x as SignedPlanLike).quote && typeof (x as SignedPlanLike).quote === 'object' ? (x as SignedPlanLike) : undefined;
 
 export const fetchAutoTaskIO: AutoTaskIO = {
-  async runBrowser(plan, signal) {
-    const j = await post('/api/agent/browser/run', { action: 'run', request: plan.request, token: plan.token }, signal);
-    if (j?.ok !== true) return { ok: false, message: typeof j?.message === 'string' ? j.message : `HTTP ${String(j?.__status)}` };
-    return j as unknown as BrowserOut;
+  async runBrowser(plan, signal, onLive) {
+    // Streamed: one JSON line per change while the browser works (the live view), the result last.
+    const r = await fetch('/api/agent/browser/run', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, signal,
+      body: JSON.stringify({ action: 'run', request: plan.request, token: plan.token, stream: true }),
+    });
+    const fail = (j: Record<string, unknown> | null, status: number): BrowserOut => ({ ok: false, message: typeof j?.message === 'string' ? j.message : `HTTP ${status}` });
+    if (!r.ok || !r.body || !(r.headers.get('content-type') ?? '').includes('ndjson')) {
+      const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
+      return j?.ok === true ? (j as unknown as BrowserOut) : fail(j, r.status);
+    }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let result: Record<string, unknown> | null = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (value) buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const raw = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!raw) continue;
+        let o: Record<string, unknown> | null = null;
+        try { o = JSON.parse(raw) as Record<string, unknown>; } catch { continue; }
+        if (o.type === 'live' && onLive) {
+          onLive({
+            steps: Array.isArray(o.steps) ? (o.steps as LiveOut['steps']) : [],
+            url: typeof o.url === 'string' ? o.url : '',
+            ...(typeof o.jpeg === 'string' ? { picture: `data:image/jpeg;base64,${o.jpeg}` } : {}),
+          });
+        } else if (o.type === 'result') result = (o.body as Record<string, unknown>) ?? null;
+      }
+      if (done) break;
+    }
+    return result?.ok === true ? (result as unknown as BrowserOut) : fail(result, r.status);
   },
   async runCode(plan, signal) {
     const j = await post('/api/agent/sandbox/run', { action: 'run', request: plan.request, token: plan.token }, signal);
@@ -95,6 +127,7 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
   function onEvent(e: AutoTaskEvent) {
     if (e.type === 'round') { setThinking(false); setRounds((r) => [...r, { round: e.round, kind: e.kind, plan: e.plan }]); }
     else if (e.type === 'browser_done' || e.type === 'code_done') setRounds((r) => r.map((x) => (x.round === e.round ? { ...x, result: e.result } : x)));
+    else if (e.type === 'live') setRounds((r) => r.map((x) => (x.round === e.round ? { ...x, live: e.live } : x)));
     else if (e.type === 'thinking') setThinking(true);
     else if (e.type === 'done') {
       setThinking(false); setPhase('done'); setEnd(null); setT1(Date.now());
@@ -149,15 +182,25 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
                 {steps.length > 0 && (
                   <ul data-testid="auto-task-steps" style={{ margin: 0, padding: '0 0 0 20px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {steps.map((st, i) => {
-                      const done = res && res.ok ? (res as BrowserOut & { ok: true }).steps?.[i] : undefined;
+                      const done = res && res.ok ? (res as BrowserOut & { ok: true }).steps?.[i] : !res ? r.live?.steps[i] : undefined;
                       return (
                         <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: done ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.5)' }}>
-                          {done ? (done.ok ? <Check size={12} color="#38bdf8" aria-hidden /> : <X size={12} color="#fca5a5" aria-hidden />) : !res ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <span style={{ width: 12 }} />}
+                          {done ? (done.ok ? <Check size={12} color="#38bdf8" aria-hidden /> : <X size={12} color="#fca5a5" aria-hidden />) : !res && i === (r.live?.steps.length ?? 0) ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <span style={{ width: 12 }} />}
                           {browserStepLabel(st, lang)}
                         </li>
                       );
                     })}
                   </ul>
+                )}
+                {!res && r.live && (r.live.url || r.live.picture) && (
+                  <div data-testid="auto-task-live" style={{ marginLeft: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', background: '#0b0f17', maxWidth: 520 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 11.5, color: 'rgba(255,255,255,0.6)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <span style={{ width: 7, height: 7, borderRadius: 999, background: '#ef4444' }} aria-hidden />LIVE
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.live.url}</span>
+                    </div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {r.live.picture && <img src={r.live.picture} alt="" style={{ display: 'block', width: '100%', height: 'auto' }} />}
+                  </div>
                 )}
                 {res && !res.ok && <div style={{ fontSize: 12.5, color: '#fca5a5', paddingLeft: 20 }}>{res.message}</div>}
                 {res && res.ok && r.kind === 'code' && (res as { stdout?: string }).stdout && (

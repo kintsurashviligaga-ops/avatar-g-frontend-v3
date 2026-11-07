@@ -25,10 +25,13 @@ export type BrowserOut =
 export type CodeOut =
   | { ok: true; stdout?: string; stderr?: string; exitCode?: number; workspace?: { id: string; written: WsFileOut[] } }
   | { ok: false; message: string };
+/** The browser right now, while a round runs: steps so far, the page, a small picture (a data: URL). */
+export interface LiveOut { steps: Array<{ op: string; ok: boolean; url?: string; title?: string }>; url: string; picture?: string }
+
 export interface PlanOut { ok: boolean; answer: string | null; browser?: SignedPlanLike; code?: SignedPlanLike; message?: string }
 
 export interface AutoTaskIO {
-  runBrowser(plan: SignedPlanLike, signal: AbortSignal): Promise<BrowserOut>;
+  runBrowser(plan: SignedPlanLike, signal: AbortSignal, onLive?: (l: LiveOut) => void): Promise<BrowserOut>;
   runCode(plan: SignedPlanLike, signal: AbortSignal): Promise<CodeOut>;
   plan(goal: string, signal: AbortSignal): Promise<PlanOut>;
   now(): number;
@@ -40,6 +43,7 @@ export type AutoTaskEvent =
   | { type: 'browser_done'; round: number; result: BrowserOut }
   | { type: 'code_done'; round: number; result: CodeOut }
   | { type: 'thinking'; round: number }
+  | { type: 'live'; round: number; live: LiveOut }
   | { type: 'done'; answer: string; lastUrl?: string }
   | { type: 'stopped'; reason: 'user' | 'rounds' | 'time' | 'failed'; message?: string; lastUrl?: string };
 
@@ -117,7 +121,8 @@ export async function runAutoTask(
     if (!next) break;
     emit({ type: 'round', round, kind: next.kind, plan: next.plan });
     if (next.kind === 'browser') {
-      const r: BrowserOut = await io.runBrowser(next.plan, signal).catch((e: unknown) => ({ ok: false as const, message: e instanceof Error ? e.message : 'failed' }));
+      const rnd = round;
+      const r: BrowserOut = await io.runBrowser(next.plan, signal, (live) => emit({ type: 'live', round: rnd, live })).catch((e: unknown) => ({ ok: false as const, message: e instanceof Error ? e.message : 'failed' }));
       if (signal.aborted) { emit({ type: 'stopped', reason: 'user', lastUrl }); return; }
       emit({ type: 'browser_done', round, result: r });
       if (r.ok && r.finalUrl) lastUrl = r.finalUrl;

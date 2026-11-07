@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AutoTaskCard, startsByItself } from './AutoTaskCard';
 import type { AutoTaskIO } from '@/lib/agent/task/autoTask';
 
@@ -52,5 +52,26 @@ describe('AutoTaskCard (GG 2026-11-07: start once, Agent G carries on)', () => {
     // Mounted again (a re-render, a language switch): it does not run a second time.
     render(<AutoTaskCard goal="open" first={{ kind: 'browser', plan: free }} locale="ka" io={io} autoStart />);
     expect(ran).toEqual(['t7']);
+  });
+
+  test('while a round runs it shows the LIVE page and ticks the steps done so far', async () => {
+    let live: ((l: { steps: Array<{ op: string; ok: boolean }>; url: string; picture?: string }) => void) | undefined;
+    let release: () => void = () => {};
+    const io: AutoTaskIO = {
+      async runBrowser(_p, _s, onLive) { live = onLive; await new Promise<void>((r) => { release = r; }); return { ok: true, finalUrl: 'https://example.com/', steps: [{ op: 'goto', ok: true }, { op: 'screenshot', ok: true }] }; },
+      async runCode() { return { ok: false, message: 'no' }; },
+      async plan() { return { ok: true, answer: 'Done.' }; },
+      now: () => 0,
+    };
+    const free = { ...plan(9), quote: { ...plan(9).quote, credits: 0 } };
+    render(<AutoTaskCard goal="open" first={{ kind: 'browser', plan: free }} locale="en" io={io} autoStart />);
+    await waitFor(() => expect(live).toBeTruthy());
+    act(() => live!({ steps: [{ op: 'goto', ok: true }], url: 'https://example.com/9', picture: 'data:image/jpeg;base64,/9j/' }));
+    const view = await screen.findByTestId('auto-task-live');
+    expect(view.textContent).toContain('LIVE');
+    expect(view.textContent).toContain('https://example.com/9');
+    expect(view.querySelector('img')?.getAttribute('src')).toBe('data:image/jpeg;base64,/9j/');
+    release();
+    await waitFor(() => expect(screen.queryByTestId('auto-task-live')).toBeNull());
   });
 });
