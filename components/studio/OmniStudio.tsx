@@ -6317,9 +6317,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         .filter((x) => x && typeof x.url === 'string' && /^https?:\/\//i.test(x.url)).slice(0, 8)
         .map((x) => ({ url: x.url, ...(typeof x.title === 'string' && x.title.trim() ? { title: x.title.trim().slice(0, 120) } : {}) }));
       const plan = agentAudioPlanOf(d.audioQuote);
+      // A browser plan from the call (GG 2026-11-07 07:38Z, „ვერ ხსნის და არ აკლიკებს"): its Start card, as a typed ask's.
+      const bq = d.browserQuote as Partial<SignedPlan> | undefined;
+      const browserPlan: SignedPlan | undefined = bq && typeof bq === 'object' && typeof bq.token === 'string' && bq.token
+        && bq.quote && typeof bq.quote === 'object' ? (bq as SignedPlan) : undefined;
       const head = locale === 'en' ? 'Agent G (from the voice call):' : locale === 'ru' ? 'Agent G (из голосового звонка):' : 'Agent G (ხმოვანი ზარიდან):';
       const add: Msg[] = [];
-      if (answer) add.push({ role: 'assistant', text: `**${head}**\n\n${answer}`, ...(sources.length ? { sources } : {}) });
+      if (answer || browserPlan) {
+        const words = answer || (locale === 'en' ? 'The plan is ready. Press Start to open the page.' : locale === 'ru' ? 'План готов. Нажмите «Старт», чтобы открыть страницу.' : 'გეგმა მზადაა. გვერდის გასახსნელად დააჭირეთ „დაწყებას".');
+        add.push({ role: 'assistant', text: `**${head}**\n\n${words}`, ...(sources.length ? { sources } : {}), ...(browserPlan ? { browserPlan } : {}) });
+      }
       if (plan) {
         add.push({
           role: 'assistant', id: `aga-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: audioQuoteText(plan.quote, locale),

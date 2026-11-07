@@ -9,6 +9,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ensureBucket } from '@/lib/orchestrator/storage-adapter';
 import { WORKSPACE_BUCKET, WS_MAX_FILE_BYTES } from './paths';
 import { workspaceStore, type BlobStore, type WorkspaceStore } from './store';
+import { isMissingObject } from './missingObject';
 
 type BucketApi = Parameters<typeof ensureBucket>[0];
 
@@ -26,9 +27,9 @@ export function supabaseBlobs(bucket: string = WORKSPACE_BUCKET): BlobStore {
       const { data, error } = await c.storage.from(bucket).download(path);
       if (error || !data) {
         // A missing object is an answer (null); anything else is storage failing, and the store says so.
-        const status = (error as { statusCode?: string | number; status?: number } | null);
-        const code = Number(status?.statusCode ?? status?.status ?? 0);
-        if (code === 404 || code === 400 || /not.?found|does not exist/i.test(error?.message ?? '')) return null;
+        if (await isMissingObject(error)) return null;
+        // eslint-disable-next-line no-console
+        console.error('[workspace] storage read failed:', error?.message ?? 'no data');
         throw new Error(error?.message ?? 'download failed');
       }
       return Buffer.from(await data.arrayBuffer());
@@ -37,7 +38,11 @@ export function supabaseBlobs(bucket: string = WORKSPACE_BUCKET): BlobStore {
       const c = sb();
       await ensure(c);
       const { error } = await c.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
-      if (error) throw new Error(error.message);
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.error('[workspace] storage write failed:', error.message);
+        throw new Error(error.message);
+      }
     },
     async remove(paths) {
       if (!paths.length) return;

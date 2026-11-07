@@ -9,6 +9,8 @@ describe('openSiteAsk', () => {
     ['გადადი https://example.ge/page', 'https://example.ge/page'],
     ['Go to wikipedia please', 'https://www.wikipedia.org'],
     ['открой ютуб', 'https://www.youtube.com'],
+    ['გახსეჯი საიტი magticom.ge', 'https://magticom.ge'], // GG 07:39Z, a typo
+    ['magticom.ge საიტი მაჩვენე', 'https://magticom.ge'],
   ])('%s → %s', (text, url) => {
     expect(openSiteAsk(text)).toEqual({ url });
   });

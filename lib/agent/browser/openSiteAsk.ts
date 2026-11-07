@@ -7,7 +7,8 @@
  */
 
 /** Opening verbs, as stems (Georgian has no \b): ka, en, ru. */
-const OPEN_VERB = /(?:გა(?:მი)?ხსენ|გახსნა|შედი|შემიყვან|გადადი|ეწვიე|დაათვალიერ|(?:^|[^a-z])(?:open|visit|browse|go\s+to)(?![a-z])|откр[ыо]|зайди|перейди)/iu;
+/** The open stem covers typos too (GG 2026-11-07 07:39Z typed it with a typo). */
+const OPEN_VERB = /(?:გა(?:მი)?ხს|შედი|შემიყვან|გადადი|ეწვიე|დაათვალიერ|(?:^|[^a-z])(?:open|visit|browse|go\s+to)(?![a-z])|откр[ыо]|зайди|перейди)/iu;
 
 /** A web address: example.com, www.example.ge/path, https://… */
 const ADDRESS = /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+(?:com|ge|org|net|io|ai|dev|app|gov|edu|info|co|uk|de|ru|tv|me)(?:\/[^\s]*)?/i;
@@ -36,8 +37,10 @@ export interface OpenSiteAsk {
 /** An "open this site" ask, or null. The words must say open/visit AND name a site, an address or "a site". */
 export function openSiteAsk(text: string): OpenSiteAsk | null {
   const t = text.trim();
-  if (!t || t.length > 500 || !OPEN_VERB.test(t)) return null;
+  if (!t || t.length > 500) return null;
   const addr = t.match(ADDRESS)?.[0];
+  // An address named as a site (magticom.ge + "site") is an open ask even when the verb is misspelt past the stem.
+  if (!OPEN_VERB.test(t) && !(addr && SITE_WORD.test(t))) return null;
   if (addr) return { url: /^https?:\/\//i.test(addr) ? addr : `https://${addr}` };
   for (const [re, url] of KNOWN) if (re.test(t)) return { url };
   return SITE_WORD.test(t) ? { url: null } : null;
