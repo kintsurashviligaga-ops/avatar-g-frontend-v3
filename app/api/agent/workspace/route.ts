@@ -3,7 +3,7 @@
  *
  *   GET                         { enabled } for THIS user; never 404, so the UI asks first.
  *   POST { action, ... }        lib/agent/workspace/actions: list, create, files, read, write, delete, restore,
- *                               history, link, export, render_pdf, task_plan, task_read. The user id is the session's,
+ *                               history, link, export, render_pdf, premiere_xml, task_plan, task_read. The user id is the session's,
  *                               never the body's.
  *
  * Every file lives in a PRIVATE bucket under the user's own id; a write or delete is a new version, so nothing the user

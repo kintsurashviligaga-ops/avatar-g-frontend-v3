@@ -889,6 +889,19 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     run: async ({ path, out, task }, ctx) => workspaceCall(ctx, { action: 'render_pdf', path, ...(out ? { out } : {}), ...(task ? { task } : {}) }, (b) => ({ saved: b.file, from: b.from })),
   }),
   defineTool({
+    name: 'workspace_premiere_xml',
+    effect: 'versioned',
+    description:
+      "Turn a montage into a Premiere Pro project the user opens on their computer (Premiere has no web app). Write a JSON spec in the workspace first: " +
+      "{title, fps?: 24|25|30|50|60 (30), width?, height?, clips:[{file, durationSec, inSec?, outSec?, name?}], music?: {file, durationSec, startSec?}} " +
+      "(clips in order; file = the clip's workspace path). Input {path: the .json spec, out?: the .xml path, task?: {graph, node}}. Saves the .xml and returns the media names: " +
+      'tell the user to download the .xml and those files into ONE folder, then in Premiere File → Import the .xml and Link Media on the first clip. Free.',
+    input: z.object({ path: z.string().trim().min(1).max(200), out: z.string().trim().min(1).max(200).optional(), task: TASK_REF_INPUT.optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path, out, task }, ctx) => workspaceCall(ctx, { action: 'premiere_xml', path, ...(out ? { out } : {}), ...(task ? { task } : {}) }, (b) => ({ saved: b.file, from: b.from, media: b.media })),
+  }),
+  defineTool({
     name: 'workspace_task_plan',
     effect: 'versioned',
     description:
