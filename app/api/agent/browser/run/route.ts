@@ -73,6 +73,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (body?.action === 'run') {
     const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.BROWSER_RUN_USER);
     if (capped) return capped;
+    if (body.stream === true) {
+      // The live view (GG 2026-11-07 08:38Z): one JSON line per change while it runs — {type:'live', steps, url, jpeg?}
+      // (base64) — then {type:'result', status, body}, the same body the plain answer has.
+      const enc = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(ctrl) {
+          const line = (o: unknown) => { try { ctrl.enqueue(enc.encode(`${JSON.stringify(o)}\n`)); } catch { /* closed */ } };
+          const r = await runBrowserQuote(deps, { userId: user.id, request: body.request, token: body.token }, req.signal, (l) => {
+            line({ type: 'live', steps: l.steps, url: l.url, ...(l.jpeg ? { jpeg: l.jpeg.toString('base64') } : {}) });
+          });
+          line({ type: 'result', status: r.ok ? 200 : STATUS[r.error], body: r });
+          try { ctrl.close(); } catch { /* closed */ }
+        },
+      });
+      return new NextResponse(stream, { status: 200, headers: { ...NO_STORE, 'Content-Type': 'application/x-ndjson; charset=utf-8', 'X-Accel-Buffering': 'no' } });
+    }
     const r = await runBrowserQuote(deps, { userId: user.id, request: body.request, token: body.token }, req.signal);
     return NextResponse.json(r, { status: r.ok ? 200 : STATUS[r.error], headers: NO_STORE });
   }

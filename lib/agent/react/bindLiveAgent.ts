@@ -173,7 +173,9 @@ export const AGENT_BROWSER_NOTE =
   'Sites that show their content only after a login (Instagram, Facebook, TikTok feeds): do not plan them directly; plan a ' +
   'Google search instead (https://www.google.com/search?q=site:instagram.com+...) and screenshot the results. When the ' +
   'goal says to continue on an address, the first step is goto that address. Always end with a screenshot so the user ' +
-  'sees the page. Never answer that the browser or search is unavailable without having called quote_browser_task.';
+  'sees the page. To find something (a video, a product, an article), plan goto the site\'s search address, wait 2000, ' +
+  'links (so you can name the results and give the direct link), then screenshot. ' +
+  'Never answer that the browser or search is unavailable without having called quote_browser_task.';
 
 /** Added when Google Drive is open to this user: only the files they picked, read only. */
 export const AGENT_DRIVE_NOTE =
@@ -738,11 +740,11 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     description:
       'PLAN ONLY — open public web pages in a sandboxed browser (no login, no keys, at most 20 steps, 5 screenshots, 2 minutes). ' +
       "Input {steps: [{op:'goto',url} | {op:'click',selector} | {op:'type',selector,text} | {op:'press',key} | {op:'wait',ms} | " +
-      "{op:'text',selector?} | {op:'screenshot',name?}]}; the first step is goto. Results are saved in the user's workspace under browser/<task>/. " +
+      "{op:'text',selector?} | {op:'links',selector?} | {op:'screenshot',name?}]} (links = the page's links as „text — address“ lines); the first step is goto. Results are saved in the user's workspace under browser/<task>/. " +
       'task {graph, node} makes it carry out that step of a task graph. Returns the plan; opens nothing until the user presses Start; free for the user.',
     input: z.object({
       steps: z.array(z.object({
-        op: z.enum(['goto', 'click', 'type', 'press', 'wait', 'text', 'screenshot']),
+        op: z.enum(['goto', 'click', 'type', 'press', 'wait', 'text', 'links', 'screenshot']),
         url: z.string().max(2000).optional(),
         selector: z.string().max(300).optional(),
         text: z.string().max(500).optional(),

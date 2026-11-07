@@ -207,7 +207,7 @@ import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
 import { continueGoal, openSiteAsk, openSiteGoal, pageFollowUp } from '@/lib/agent/browser/openSiteAsk';
 import { type SignedPlan } from '@/components/agent/PlanStartCard';
-import { AutoTaskCard } from '@/components/agent/AutoTaskCard';
+import { AutoTaskCard, startsByItself } from '@/components/agent/AutoTaskCard';
 import { ConnectorsButton } from '@/components/studio/ConnectorsButton';
 import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
@@ -9488,7 +9488,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const body = (await res.json().catch(() => null)) as { answer?: unknown; browserQuote?: SignedPlan } | null;
       plan = body?.browserQuote && typeof body.browserQuote.token === 'string' ? body.browserQuote : undefined;
       const answer = typeof body?.answer === 'string' ? body.answer.trim() : '';
-      reply = answer || (plan
+      // A plan that costs the user nothing starts by itself (GG 2026-11-07 08:30Z, Manus): the model's „press Start" is not shown.
+      const starts = !!plan && startsByItself(plan);
+      reply = starts
+        ? (locale === 'en' ? 'On it — the steps are below as I work.' : locale === 'ru' ? 'Начинаю — шаги видны ниже по ходу работы.' : 'ვიწყებ — ნაბიჯები ქვემოთ ჩანს, სანამ ვმუშაობ.')
+        : answer || (plan
         ? (locale === 'en' ? 'The plan is ready. Press Start to open the page.' : locale === 'ru' ? 'План готов. Нажмите «Старт», чтобы открыть страницу.' : 'გეგმა მზადაა. გვერდის გასახსნელად დააჭირეთ „დაწყებას".')
         : (locale === 'en' ? '⚠️ Agent G could not plan the browser steps. Try again.' : locale === 'ru' ? '⚠️ Agent G не смог спланировать шаги браузера. Попробуйте ещё раз.' : '⚠️ Agent G-მ ბრაუზერის ნაბიჯები ვერ დაგეგმა. სცადეთ თავიდან.'));
     } catch {
@@ -10684,6 +10688,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.browserPlan && (
                   <div className="mt-3 w-full max-w-[36rem]" data-testid="agent-browser-plan">
                     <AutoTaskCard key={`b-${m.browserPlan.token.slice(-12)}`} goal={m.browserGoal || m.text} first={{ kind: 'browser', plan: m.browserPlan }} locale={locale}
+                      autoStart={startsByItself(m.browserPlan)}
                       onFinish={(r) => {
                         if (r.lastUrl) lastBrowserRef.current = { url: r.lastUrl, at: Date.now() };
                         if (r.answer) {

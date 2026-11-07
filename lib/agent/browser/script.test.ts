@@ -32,6 +32,7 @@ const maybe = exe && existsSync(exe) ? describe : describe.skip;
 
 const PAGE = `<!doctype html><html><head><title>ტესტი</title></head><body>
 <main><h1>კურსი</h1><p id="rate">USD 2.71</p>
+<ul id="res"><li><a href="/watch?v=1">2Pac - All Eyez On Me</a></li><li><a href="/watch?v=1">2Pac - All Eyez On Me</a></li><li><a href="/watch?v=2" aria-label="Remix"></a></li><li><a href="javascript:void 0">x</a></li></ul>
 <form action="/search"><input id="q" name="q"><input id="pw" type="password"><button id="go">go</button></form></main></body></html>`;
 
 maybe('browser driver on a real Chromium', () => {
@@ -81,6 +82,12 @@ maybe('browser driver on a real Chromium', () => {
     expect(result.steps[5].text).toBe('ლარი');
     expect(result.finalUrl).toContain('/search?q=');
     expect(shot?.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  }, 90_000);
+
+  it('reads the links as „text — address“ lines: absolute, each once, named by text or label (GG 08:35Z)', async () => {
+    const { result } = await drive([{ op: 'goto', url: `${base}/` }, { op: 'links', selector: '#res' }]);
+    expect(result.steps[1]).toMatchObject({ op: 'links', ok: true });
+    expect(result.steps[1].text).toBe(`2Pac - All Eyez On Me — ${base}/watch?v=1\nRemix — ${base}/watch?v=2`);
   }, 90_000);
 
   it('refuses to type into a password field and stops there', async () => {

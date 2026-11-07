@@ -133,6 +133,7 @@ export async function runBrowserQuote(
   deps: BrowserDeps,
   input: { userId: string; request: unknown; token: unknown },
   signal: AbortSignal,
+  onLive?: (l: import('./runner').BrowserLive) => void,
 ): Promise<BrowserRunResult> {
   const raw = (input.request ?? {}) as Record<string, unknown>;
   const check = checkBrowserTask({ steps: raw.steps });
@@ -168,7 +169,7 @@ export async function runBrowserQuote(
     step = st;
   }
 
-  const r = await deps.runner(input.userId).run(check.plan, signal);
+  const r = await deps.runner(input.userId).run(check.plan, signal, onLive);
   if (!r.ok) {
     await step?.end({ ok: false, error: r.message });
     return fail(r.error, r.message);
@@ -181,8 +182,8 @@ export async function runBrowserQuote(
   let n = 0;
   for (const s of r.steps) {
     if (s.url) lastUrl = s.url;
-    if (s.op === 'text' && s.ok && typeof s.text === 'string') {
-      files.push({ path: `${folder}/text-${++n}.txt`, bytes: Buffer.from(`${lastUrl}\n\n${s.text}`, 'utf8') });
+    if ((s.op === 'text' || s.op === 'links') && s.ok && typeof s.text === 'string') {
+      files.push({ path: `${folder}/${s.op === 'links' ? 'links' : 'text'}-${++n}.txt`, bytes: Buffer.from(`${lastUrl}\n\n${s.text}`, 'utf8') });
     }
   }
   const log = r.steps.map(({ text, ...rest }) => (typeof text === 'string' ? { ...rest, textChars: text.length } : rest));

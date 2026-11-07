@@ -80,6 +80,20 @@ try {
         await page.waitForTimeout(s.ms);
       } else if (s.op === 'text') {
         r.text = cut(s.selector ? await page.locator(s.selector).first().innerText() : await page.locator('body').innerText());
+      } else if (s.op === 'links') {
+        const pairs = await page.locator((s.selector ? s.selector + ' ' : '') + 'a[href]').evaluateAll((els) => els.map((a) => [
+          String(a.innerText || a.getAttribute('title') || a.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+          String(a.href || ''),
+        ]));
+        const seen = new Set();
+        const lines = [];
+        for (const [t, h] of pairs) {
+          if (!t || !/^https?:\/\//.test(h) || seen.has(h)) continue;
+          seen.add(h);
+          lines.push(t + ' — ' + h);
+          if (lines.length >= 80) break;
+        }
+        r.text = cut(lines.join('\n'));
       } else if (s.op === 'screenshot') {
         await page.screenshot({ path: 'shots/' + s.name + '.png' });
         r.shot = s.name;
@@ -92,6 +106,8 @@ try {
     }
     out.steps.push(r);
     out.finalUrl = page.url();
+    // The live view (GG 2026-11-07 08:38Z, like Manus): a small picture of the page after every step, read while it runs.
+    await page.screenshot({ path: 'live.jpg', type: 'jpeg', quality: 45 }).catch(() => {});
     await save();
     if (!r.ok) break;
   }

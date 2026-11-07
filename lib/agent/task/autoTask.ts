@@ -25,10 +25,13 @@ export type BrowserOut =
 export type CodeOut =
   | { ok: true; stdout?: string; stderr?: string; exitCode?: number; workspace?: { id: string; written: WsFileOut[] } }
   | { ok: false; message: string };
+/** The browser right now, while a round runs: steps so far, the page, a small picture (a data: URL). */
+export interface LiveOut { steps: Array<{ op: string; ok: boolean; url?: string; title?: string }>; url: string; picture?: string }
+
 export interface PlanOut { ok: boolean; answer: string | null; browser?: SignedPlanLike; code?: SignedPlanLike; message?: string }
 
 export interface AutoTaskIO {
-  runBrowser(plan: SignedPlanLike, signal: AbortSignal): Promise<BrowserOut>;
+  runBrowser(plan: SignedPlanLike, signal: AbortSignal, onLive?: (l: LiveOut) => void): Promise<BrowserOut>;
   runCode(plan: SignedPlanLike, signal: AbortSignal): Promise<CodeOut>;
   plan(goal: string, signal: AbortSignal): Promise<PlanOut>;
   now(): number;
@@ -40,6 +43,7 @@ export type AutoTaskEvent =
   | { type: 'browser_done'; round: number; result: BrowserOut }
   | { type: 'code_done'; round: number; result: CodeOut }
   | { type: 'thinking'; round: number }
+  | { type: 'live'; round: number; live: LiveOut }
   | { type: 'done'; answer: string; lastUrl?: string }
   | { type: 'stopped'; reason: 'user' | 'rounds' | 'time' | 'failed'; message?: string; lastUrl?: string };
 
@@ -69,6 +73,18 @@ export function observationOf(round: number, kind: 'browser' | 'code', r: Browse
   return lines.join('\n');
 }
 
+/**
+ * How the last answer is written (GG 2026-11-07 08:35Z, Manus's report): what was done, step by step, what was seen,
+ * what was chosen and why, the direct link, and what was NOT done — in the user's language, only from what was found.
+ */
+export const REPORT =
+  "Write it in the user's language as a short numbered report of what you did: 1) what you understood the task to be; " +
+  '2) that you used an isolated cloud browser, not their own browser; 3) each page you opened, with its address; ' +
+  '4) what you saw there: the relevant results by name (from the page text or links found above); 5) which one you ' +
+  'chose and why (title, channel or source, length or price when shown); 6) the direct link as a Markdown link. Then ' +
+  'one line on what you did NOT do (you did not play, sign in, buy or post anything). Use only what the steps above ' +
+  'found; if something was not found, say so instead of guessing.';
+
 /** The goal for the next round: the user's task, everything found so far, and what to do next. */
 export function nextGoal(goal: string, observations: string[], lastUrl: string | undefined, roundsLeft: number): string {
   let found = observations.join('\n\n');
@@ -84,8 +100,8 @@ export function nextGoal(goal: string, observations: string[], lastUrl: string |
       ? `If the task needs more browsing, call quote_browser_task for the next steps${lastUrl ? ` (the first step is goto ${lastUrl} to go on from that page)` : ''} ` +
         'and end with a screenshot; if a calculation helps, quote_code_run. ' +
         `You have ${roundsLeft} more round${roundsLeft === 1 ? '' : 's'}. Otherwise, or if the page cannot give more, ` +
-        'answer the user now, fully, in their language, with what you found and the links.'
-      : 'No more rounds: answer the user now, fully, in their language, with what you found and the links.',
+        `answer the user now. ${REPORT}`
+      : `No more rounds: answer the user now. ${REPORT}`,
   ].join('\n');
 }
 
@@ -105,7 +121,8 @@ export async function runAutoTask(
     if (!next) break;
     emit({ type: 'round', round, kind: next.kind, plan: next.plan });
     if (next.kind === 'browser') {
-      const r: BrowserOut = await io.runBrowser(next.plan, signal).catch((e: unknown) => ({ ok: false as const, message: e instanceof Error ? e.message : 'failed' }));
+      const rnd = round;
+      const r: BrowserOut = await io.runBrowser(next.plan, signal, (live) => emit({ type: 'live', round: rnd, live })).catch((e: unknown) => ({ ok: false as const, message: e instanceof Error ? e.message : 'failed' }));
       if (signal.aborted) { emit({ type: 'stopped', reason: 'user', lastUrl }); return; }
       emit({ type: 'browser_done', round, result: r });
       if (r.ok && r.finalUrl) lastUrl = r.finalUrl;
