@@ -24,6 +24,7 @@ describe('browser policy', () => {
     const r = checkBrowserTask({ steps: [
       { op: 'goto', url: 'https://www.nbg.gov.ge/en/monetary-policy' },
       { op: 'text', selector: 'main' },
+      { op: 'links' },
       { op: 'screenshot', name: 'rates' },
       { op: 'goto', url: 'https://example.com/' },
       { op: 'screenshot' },
@@ -31,7 +32,8 @@ describe('browser policy', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.plan.hosts).toEqual(['www.nbg.gov.ge', 'example.com']);
-    expect(r.plan.steps[4]).toEqual({ op: 'screenshot', name: 'shot-2' });
+    expect(r.plan.steps[2]).toEqual({ op: 'links' });
+    expect(r.plan.steps[5]).toEqual({ op: 'screenshot', name: 'shot-2' });
   });
 
   it('refuses what it must', () => {

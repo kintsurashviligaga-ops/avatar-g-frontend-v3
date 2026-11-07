@@ -35,6 +35,8 @@ export type BrowserStep =
   | { op: 'press'; key: string }
   | { op: 'wait'; ms: number }
   | { op: 'text'; selector?: string }
+  /** The page's links as „text — address“ lines (GG 08:35Z: name the results and give the direct link, like Manus). */
+  | { op: 'links'; selector?: string }
   | { op: 'screenshot'; name: string };
 
 export interface BrowserPlan {
@@ -117,6 +119,11 @@ export function checkBrowserTask(task: unknown): BrowserCheck {
       case 'text': {
         if (r.selector !== undefined && !str(r.selector, SELECTOR_MAX)) return { ok: false, error: `${at}: selector` };
         steps.push(r.selector ? { op: 'text', selector: r.selector as string } : { op: 'text' });
+        break;
+      }
+      case 'links': {
+        if (r.selector !== undefined && !str(r.selector, SELECTOR_MAX)) return { ok: false, error: `${at}: selector` };
+        steps.push(r.selector ? { op: 'links', selector: r.selector as string } : { op: 'links' });
         break;
       }
       case 'screenshot': {

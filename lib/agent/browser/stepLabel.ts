@@ -15,9 +15,9 @@ const cut = (s: string | undefined, n = 40) => {
 
 export function browserStepLabel(s: PlannedStep, lang: Lang): string {
   const L = {
-    ka: { goto: 'გახსნა', click: 'დაჭერა', type: 'ჩაწერა', press: 'ღილაკი', wait: 'ლოდინი', text: 'ტექსტის წაკითხვა', shot: 'სქრინშოტი', sec: 'წმ', page: 'გვერდიდან' },
-    en: { goto: 'Open', click: 'Click', type: 'Type', press: 'Press', wait: 'Wait', text: 'Read the text', shot: 'Screenshot', sec: 's', page: 'of the page' },
-    ru: { goto: 'Открыть', click: 'Нажать', type: 'Ввести', press: 'Клавиша', wait: 'Ждать', text: 'Прочитать текст', shot: 'Скриншот', sec: 'с', page: 'страницы' },
+    ka: { goto: 'გახსნა', click: 'დაჭერა', type: 'ჩაწერა', press: 'ღილაკი', wait: 'ლოდინი', text: 'ტექსტის წაკითხვა', links: 'შედეგების და ბმულების წაკითხვა', shot: 'სქრინშოტი', sec: 'წმ', page: 'გვერდიდან' },
+    en: { goto: 'Open', click: 'Click', type: 'Type', press: 'Press', wait: 'Wait', text: 'Read the text', links: 'Read the results and links', shot: 'Screenshot', sec: 's', page: 'of the page' },
+    ru: { goto: 'Открыть', click: 'Нажать', type: 'Ввести', press: 'Клавиша', wait: 'Ждать', text: 'Прочитать текст', links: 'Прочитать результаты и ссылки', shot: 'Скриншот', sec: 'с', page: 'страницы' },
   }[lang];
   switch (s.op) {
     case 'goto': return `${L.goto} ${host(s.url)}`;
@@ -26,6 +26,7 @@ export function browserStepLabel(s: PlannedStep, lang: Lang): string {
     case 'press': return `${L.press}: ${cut(s.key, 20)}`;
     case 'wait': return `${L.wait} ${Math.round((s.ms ?? 0) / 100) / 10} ${L.sec}`;
     case 'text': return s.selector ? `${L.text}: ${cut(s.selector)}` : `${L.text} ${L.page}`;
+    case 'links': return L.links;
     case 'screenshot': return L.shot;
     default: return s.op;
   }

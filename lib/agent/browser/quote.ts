@@ -181,8 +181,8 @@ export async function runBrowserQuote(
   let n = 0;
   for (const s of r.steps) {
     if (s.url) lastUrl = s.url;
-    if (s.op === 'text' && s.ok && typeof s.text === 'string') {
-      files.push({ path: `${folder}/text-${++n}.txt`, bytes: Buffer.from(`${lastUrl}\n\n${s.text}`, 'utf8') });
+    if ((s.op === 'text' || s.op === 'links') && s.ok && typeof s.text === 'string') {
+      files.push({ path: `${folder}/${s.op === 'links' ? 'links' : 'text'}-${++n}.txt`, bytes: Buffer.from(`${lastUrl}\n\n${s.text}`, 'utf8') });
     }
   }
   const log = r.steps.map(({ text, ...rest }) => (typeof text === 'string' ? { ...rest, textChars: text.length } : rest));
