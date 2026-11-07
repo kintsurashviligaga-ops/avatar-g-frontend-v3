@@ -6,7 +6,7 @@
  * what it found and plans the next steps by itself (lib/agent/task/autoTask), every round drawn as it happens — a
  * spinner on what runs, ✓ on what is done, the screenshots as they are saved. Stop ends it before the next step.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, X } from 'lucide-react';
 import { browserStepLabel, type PlannedStep } from '@/lib/agent/browser/stepLabel';
 import {
@@ -17,10 +17,16 @@ import { ShotImage } from './PlanStartCard';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T = {
-  ka: { title: 'Agent G-ის დავალება', start: 'დაწყება', stop: 'შეჩერება', limits: (r: number, m: number, usd: number) => `მაქს. ${r} რაუნდი · ${m} წთ · ≤ $${usd.toFixed(2)} · Agent G თავად გააგრძელებს`, round: 'რაუნდი', browser: 'ბრაუზერი', code: 'პროგრამა', thinking: 'Agent G ნახულს აანალიზებს და შემდეგ ნაბიჯს გეგმავს…', done: 'დასრულდა', stopped: 'შეჩერდა', failed: 'ვერ შესრულდა', time: 'დრო ამოიწურა', rounds: 'რაუნდები ამოიწურა', running: 'მიმდინარეობს' },
-  en: { title: 'Agent G task', start: 'Start', stop: 'Stop', limits: (r: number, m: number, usd: number) => `Up to ${r} rounds · ${m} min · ≤ $${usd.toFixed(2)} · Agent G carries on by itself`, round: 'Round', browser: 'Browser', code: 'Program', thinking: 'Agent G is looking at what it found and planning the next step…', done: 'Done', stopped: 'Stopped', failed: 'Failed', time: 'Out of time', rounds: 'Out of rounds', running: 'Running' },
-  ru: { title: 'Задача Agent G', start: 'Старт', stop: 'Стоп', limits: (r: number, m: number, usd: number) => `До ${r} раундов · ${m} мин · ≤ $${usd.toFixed(2)} · Agent G продолжит сам`, round: 'Раунд', browser: 'Браузер', code: 'Программа', thinking: 'Agent G смотрит, что нашёл, и планирует следующий шаг…', done: 'Готово', stopped: 'Остановлено', failed: 'Не удалось', time: 'Время вышло', rounds: 'Раунды закончились', running: 'Выполняется' },
+  ka: { title: 'Agent G-ის დავალება', start: 'დაწყება', stop: 'შეჩერება', limits: (r: number, m: number, usd: number) => `მაქს. ${r} რაუნდი · ${m} წთ · ≤ $${usd.toFixed(2)} · Agent G თავად გააგრძელებს`, round: 'რაუნდი', browser: 'ბრაუზერი', code: 'პროგრამა', thinking: 'Agent G ნახულს აანალიზებს და შემდეგ ნაბიჯს გეგმავს…', done: 'დასრულდა', stopped: 'შეჩერდა', failed: 'ვერ შესრულდა', time: 'დრო ამოიწურა', rounds: 'რაუნდები ამოიწურა', running: 'მიმდინარეობს', working: 'მუშაობს', took: (c: string) => `დასრულდა ${c}-ში` },
+  en: { title: 'Agent G task', start: 'Start', stop: 'Stop', limits: (r: number, m: number, usd: number) => `Up to ${r} rounds · ${m} min · ≤ $${usd.toFixed(2)} · Agent G carries on by itself`, round: 'Round', browser: 'Browser', code: 'Program', thinking: 'Agent G is looking at what it found and planning the next step…', done: 'Done', stopped: 'Stopped', failed: 'Failed', time: 'Out of time', rounds: 'Out of rounds', running: 'Running', working: 'Working for', took: (c: string) => `Done in ${c}` },
+  ru: { title: 'Задача Agent G', start: 'Старт', stop: 'Стоп', limits: (r: number, m: number, usd: number) => `До ${r} раундов · ${m} мин · ≤ $${usd.toFixed(2)} · Agent G продолжит сам`, round: 'Раунд', browser: 'Браузер', code: 'Программа', thinking: 'Agent G смотрит, что нашёл, и планирует следующий шаг…', done: 'Готово', stopped: 'Остановлено', failed: 'Не удалось', time: 'Время вышло', rounds: 'Раунды закончились', running: 'Выполняется', working: 'Работает', took: (c: string) => `Готово за ${c}` },
 } as const;
+
+const clock = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+/** Tasks already started on this page, by plan token: a card mounted again (a re-render, a language switch) never runs it twice. */
+const STARTED = new Set<string>();
+/** A plan the user is charged nothing for (the browser: credits 0) starts by itself, like any agent the user just asked. */
+export const startsByItself = (plan: SignedPlanLike) => Number(plan.quote.credits) === 0;
 
 interface RoundView { round: number; kind: 'browser' | 'code'; plan: SignedPlanLike; result?: BrowserOut | CodeOut }
 type Phase = 'quoted' | 'running' | 'done' | 'stopped';
@@ -54,8 +60,10 @@ export const fetchAutoTaskIO: AutoTaskIO = {
   now: () => Date.now(),
 };
 
-export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFinish }: {
+export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFinish, autoStart = false }: {
   goal: string;
+  /** Start on mount, once per plan (GG 2026-11-07 08:30Z: Manus starts as soon as it is asked). */
+  autoStart?: boolean;
   first: { kind: 'browser' | 'code'; plan: SignedPlanLike };
   locale: string;
   io?: AutoTaskIO;
@@ -69,6 +77,18 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
   const [thinking, setThinking] = useState(false);
   const [end, setEnd] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const [t0, setT0] = useState<number | null>(null);
+  const [t1, setT1] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (phase !== 'running') return;
+    const h = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(h);
+  }, [phase]);
+  useEffect(() => {
+    if (autoStart && !STARTED.has(first.plan.token)) void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const firstSteps: PlannedStep[] = first.kind === 'browser' && Array.isArray((first.plan.request as { steps?: unknown })?.steps)
     ? (first.plan.request as { steps: PlannedStep[] }).steps : [];
 
@@ -77,17 +97,19 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
     else if (e.type === 'browser_done' || e.type === 'code_done') setRounds((r) => r.map((x) => (x.round === e.round ? { ...x, result: e.result } : x)));
     else if (e.type === 'thinking') setThinking(true);
     else if (e.type === 'done') {
-      setThinking(false); setPhase('done'); setEnd(t.done);
+      setThinking(false); setPhase('done'); setEnd(null); setT1(Date.now());
       try { onFinish?.({ answer: e.answer, ...(e.lastUrl ? { lastUrl: e.lastUrl } : {}) }); } catch { /* the card goes on */ }
     } else {
-      setThinking(false); setPhase('stopped');
+      setThinking(false); setPhase('stopped'); setT1(Date.now());
       setEnd(e.reason === 'user' ? t.stopped : e.reason === 'time' ? t.time : e.reason === 'rounds' ? t.rounds : `${t.failed}${e.message ? `: ${e.message}` : ''}`);
       try { onFinish?.({ ...(e.lastUrl ? { lastUrl: e.lastUrl } : {}) }); } catch { /* the card goes on */ }
     }
   }
 
   async function start() {
-    if (phase !== 'quoted') return;
+    if (phase !== 'quoted' || STARTED.has(first.plan.token)) return;
+    STARTED.add(first.plan.token);
+    setT0(Date.now()); setNow(Date.now());
     const ac = new AbortController();
     abort.current = ac;
     setPhase('running');
@@ -99,7 +121,13 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
   return (
     <div data-testid="auto-task-card" style={{ border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.05)', borderRadius: 14, padding: 16 }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', letterSpacing: '0.04em', marginBottom: 6 }}>{t.title}</div>
-      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{t.limits(AUTO_TASK_LIMITS.rounds, AUTO_TASK_LIMITS.wallMs / 60_000, usd)}</div>
+      {t0 !== null && (
+        <div data-testid="auto-task-clock" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: phase === 'done' ? '#38bdf8' : 'rgba(255,255,255,0.85)', marginBottom: 4 }}>
+          {phase === 'running' ? <Loader2 size={15} className="animate-spin" aria-hidden /> : phase === 'done' ? <Check size={15} aria-hidden /> : null}
+          {phase === 'running' ? `${t.working} ${clock(now - t0)}` : phase === 'done' ? t.took(clock((t1 ?? now) - t0)) : clock((t1 ?? now) - t0)}
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{t.limits(AUTO_TASK_LIMITS.rounds, AUTO_TASK_LIMITS.wallMs / 60_000, usd)}</div>
       {phase === 'quoted' && firstSteps.length > 0 && (
         <ol data-testid="auto-task-first-steps" style={{ margin: '10px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
           {firstSteps.map((st, i) => <li key={i} style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)' }}>{i + 1}. {browserStepLabel(st, lang)}</li>)}
@@ -118,7 +146,19 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
                   {icon}{t.round} {r.round} · {r.kind === 'browser' ? t.browser : t.code}
                   {res && res.ok && r.kind === 'browser' && (res as { finalUrl?: string }).finalUrl && <span style={{ fontWeight: 400, color: 'rgba(255,255,255,0.5)' }}> · {new URL((res as { finalUrl: string }).finalUrl).host}</span>}
                 </div>
-                {steps.length > 0 && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', paddingLeft: 20 }}>{steps.map((s) => browserStepLabel(s, lang)).join(' → ')}</div>}
+                {steps.length > 0 && (
+                  <ul data-testid="auto-task-steps" style={{ margin: 0, padding: '0 0 0 20px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {steps.map((st, i) => {
+                      const done = res && res.ok ? (res as BrowserOut & { ok: true }).steps?.[i] : undefined;
+                      return (
+                        <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: done ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.5)' }}>
+                          {done ? (done.ok ? <Check size={12} color="#38bdf8" aria-hidden /> : <X size={12} color="#fca5a5" aria-hidden />) : !res ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <span style={{ width: 12 }} />}
+                          {browserStepLabel(st, lang)}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
                 {res && !res.ok && <div style={{ fontSize: 12.5, color: '#fca5a5', paddingLeft: 20 }}>{res.message}</div>}
                 {res && res.ok && r.kind === 'code' && (res as { stdout?: string }).stdout && (
                   <pre style={{ margin: '0 0 0 20px', fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6 }}>{(res as { stdout: string }).stdout}</pre>
