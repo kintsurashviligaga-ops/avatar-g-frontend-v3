@@ -208,6 +208,7 @@ import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agen
 import { continueGoal, openSiteAsk, openSiteGoal, pageFollowUp } from '@/lib/agent/browser/openSiteAsk';
 import { type SignedPlan } from '@/components/agent/PlanStartCard';
 import { AutoTaskCard } from '@/components/agent/AutoTaskCard';
+import { ConnectorsButton } from '@/components/studio/ConnectorsButton';
 import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
@@ -12609,6 +12610,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
               <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
+            {/* Connectors — right beside „+" (GG 2026-11-07 07:56Z), Manus-style: every service Agent G can work with, in one list. */}
+            {!guest && (
+              <ConnectorsButton locale={locale}
+                className={chatOnly
+                  ? `${chatRound} text-app-text/90 hover:bg-app-border/10 ${chatSingleRow ? 'order-first' : ''}`
+                  : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'} />
+            )}
             {/* Attach — the paperclip right beside „+", where people look for it (owner, 2026-10-03); it used to be the
                 first row of the „+" sheet. Drawn only for a tool that takes files; the tooltip says what this one takes. */}
             {attachTarget.onAttach && (
