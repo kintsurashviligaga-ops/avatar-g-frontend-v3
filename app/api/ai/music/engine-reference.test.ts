@@ -24,7 +24,6 @@ jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(),
 jest.mock('../../../../lib/chat/mediaKeys', () => ({ hasUdioApiKey: jest.fn() }));
 jest.mock('../../../../lib/audio/trimAudio', () => ({ trimAudioToDuration: jest.fn(async () => null) }));
 jest.mock('../../../../lib/audio/transcode', () => ({ transcodeVoiceToMp3: jest.fn() }));
-jest.mock('../../../../lib/audio/rvc', () => ({ convertSongWithRvc: jest.fn() }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ getUserVoiceModel: jest.fn(async () => null), DEMO_VOICE_USER_ID: 'demo' }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
   uploadAndSign: jest.fn(async () => 'https://storage.example/signed.mp3'),

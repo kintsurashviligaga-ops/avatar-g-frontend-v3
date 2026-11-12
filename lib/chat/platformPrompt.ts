@@ -100,8 +100,8 @@ const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
 
 /**
  * The tools whose every engine is outside Google + ElevenLabs. Their routes always refuse before any charge (MASTER TASK
- * v3.1, lib/providers/mediaPolicy GATED_ENTRIES: lipsync / heygen, remix `character`, motion-control, model3d); the
- * test pins each to its gated route.
+ * v3.1, lib/providers/mediaPolicy GATED_ENTRIES: remix `character`, model3d; the lip-sync / HeyGen and Motion Control
+ * routes were deleted in v5.1 M-14); the test pins each to its gated (or removed) route.
  */
 export const OUTSIDE_ENGINE_TOOLS: readonly ToolId[] = ['avatar', 'swap', 'motion', 'model3d'];
 
@@ -211,7 +211,7 @@ function priceBlock(topUp: string, closed: readonly ToolId[], spoken: boolean): 
   return [
     `PRICES (cr = credits; 1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾; ${chat}): image ${cr(C.image_generate)} each;`,
     `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
-    // The film's lip-sync pass was the old avatar engine (/api/video/lipsync), which is always refused, so it is not
+    // The film's lip-sync pass was the old avatar engine (/api/video/lipsync, removed in v5.1 M-14), so it is not
     // priced; the Veo avatar is its own 8 s clip at the Veo price.
     `${open('product') ? 'product ad = a Fast film of its length; ' : ''}chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
     `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip; ` : ''}touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
