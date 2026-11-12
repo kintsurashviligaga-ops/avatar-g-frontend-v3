@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
-import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
 import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
@@ -266,7 +265,7 @@ export class ServiceManager {
   }
 
   private async runTextToImage(rawRequest: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    // ⚠️ ONE TRANSLATION FOR EVERY LEG. Imagen and the Gemini image model read `request.userPrompt` verbatim and are
+    // ⚠️ ONE TRANSLATION FOR EVERY LEG. The Gemini image model reads `request.userPrompt` verbatim and are
     // trained overwhelmingly on English — so a Georgian brief was noise and each fell back to its priors, returning a
     // competent image unrelated to the request. Rebinding the request here fixes it at the single entry point. Only the
     // DESCRIPTION passes through — this path carries no lyrics, dialogue or on-screen copy. Fail-open:
@@ -275,13 +274,9 @@ export class ServiceManager {
     const request: ServiceManagerRequest = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
 
     // ⚠️ GOOGLE ONLY (MASTER TASK v3.1, audit F-04): no outside engine runs, whatever was configured or picked and
-    // whatever MEDIA_GOOGLE_ONLY says. Imagen (prompt-only, when enabled) → Google's own image model (lib/ai/geminiImage,
-    // the model the NanoBanana reseller sold, called directly) → an honest failure. The FLUX, NanoBanana and Grok legs
-    // are gone, and no miss moves to another vendor.
-    if (hasGeminiImagenProvider() && !request.imageUrl) {
-      const imagen = await this.tryImagenImage(request);
-      if (imagen) return imagen;
-    }
+    // whatever MEDIA_GOOGLE_ONLY says. Google's own image model (lib/ai/geminiImage, the model the NanoBanana reseller
+    // sold, called directly) → an honest failure. The FLUX, NanoBanana and Grok legs are gone, and no miss moves to
+    // another vendor. The Imagen 4 leg is gone too (v5.1 M-14): Google retired the model and it was 404 on Vertex.
     return (await this.tryGeminiImage(request, 'google-only')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
   }
 
@@ -347,70 +342,6 @@ export class ServiceManager {
         },
       };
     } catch {
-      return null;
-    }
-  }
-
-  /**
-   * IMAGEN 4 (§1.6.2 / §3.2.2). Imagen returns base64 bytes inline — no operation to poll — so the image is
-   * hosted here and the caller receives a normal signed https URL, identical in shape to the other engines.
-   * Returns null on ANY miss so `runTextToImage` moves on to Gemini image (Google). NEVER throws. Callers check
-   * imagenApplies first.
-   */
-  private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
-    const opts = request.selectedOptions || {};
-    const count = Number(this.getOption(opts, ['numberOfImages', 'imageCount', 'n'])) || 1;
-    const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
-    const aspect = this.normalizeAspectRatio(this.getOption(opts, ['aspect', 'aspectRatio', 'ratio'])) || undefined;
-
-    try {
-      const images = await generateImagenImages({
-        prompt: request.userPrompt,
-        ...(aspect ? { aspectRatio: aspect } : {}),
-        numberOfImages: count,
-        ...(negativePrompt ? { negativePrompt } : {}),
-      });
-      if (!images?.length) return null;
-
-      const stamp = Date.now();
-      const hosted = await Promise.all(
-        images.map((img, i) => {
-          const ext = img.mimeType.includes('jpeg') || img.mimeType.includes('jpg') ? 'jpg' : 'png';
-          return uploadBufferAndSign('renders', `imagen/${request.sessionId}/${stamp}-${i}.${ext}`, img.buffer, img.mimeType, 604_800)
-            .catch(() => null);
-        }),
-      );
-      const urls = hosted.filter((u): u is string => typeof u === 'string' && !!u);
-      // Generated but undeliverable (storage miss) → a miss rather than a broken success.
-      if (!urls.length) return null;
-
-      const model = geminiImagenModel();
-      // eslint-disable-next-line no-console
-      console.log(`[imagen] ${model} produced ${urls.length}/${images.length} hosted image(s)`);
-      return {
-        success: true,
-        provider: 'nanobanana', // surface provider union has no 'gemini' member; the real engine is in metadata
-        operation: 'text-to-image',
-        responseType: 'image',
-        message: 'Image generation completed successfully.',
-        assetUrl: urls[0] as string,
-        assetType: 'image',
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'nanobanana' as const,
-          imageProvider: 'gemini-imagen',
-          model,
-          operation: 'text-to-image',
-          outputType: 'image',
-          sessionId: request.sessionId,
-          promptHash: this.hashPrompt(request.userPrompt),
-          confidence: request.confidence,
-          images: urls,
-        },
-      };
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[imagen] threw → trying Gemini image:', err instanceof Error ? err.message : err);
       return null;
     }
   }

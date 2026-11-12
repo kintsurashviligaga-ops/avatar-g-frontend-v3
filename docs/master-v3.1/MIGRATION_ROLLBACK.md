@@ -229,7 +229,7 @@ These are still read by routes the stack keeps, so they stay until jobs from bef
 - **One budgeted contract call per model** to turn "unverified" rows into verified fixtures: `gemini-3.1-flash-image`, Lyria 3 clip and Pro (and vocals), the Veo 3.1 tiers, Cloud TTS synthesis, and one short Georgian line on Gemini-TTS. The spec forbids repeated billed probes, so this is one listed batch for GG's approval.
 - **A durable outbox table** for refused bookings, so a kept booking survives an instance. It is a shared database change (#121).
 - **Timed speech-to-text** (Cloud Speech-to-Text, Chirp) to bring film subtitles back, only if GG asks.
-- **The Imagen 4 leg** (`GEMINI_IMAGEN_ENABLED`, opt-in): left in place by #132; it can be removed if GG wants it gone.
+- ~~**The Imagen 4 leg** (`GEMINI_IMAGEN_ENABLED`, opt-in): left in place by #132; it can be removed if GG wants it gone.~~ Removed in v5.1 M-14 (the model is retired).
 
 ## Follow-ups (not in Phase 1)
 

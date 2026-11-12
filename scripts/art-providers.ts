@@ -339,7 +339,7 @@ export function createImagenArtClient(o: ImagenArtClientOptions): ArtClient {
     prepare(endpoint, input) {
       const s = plainSoulShot(endpoint, input);
       if (!IMAGEN_ASPECTS.has(s.aspectRatio)) throw refuse(`Imagen has no ${s.aspectRatio} aspect ratio`);
-      // No seed: the Gemini API's Imagen takes none. 'allow_all' as lib/ai/geminiImagen.ts sends it (the key's provisioning).
+      // No seed: the Gemini API's Imagen takes none. 'allow_all' as the removed app leg sent it (the key's provisioning).
       return {
         endpoint: IMAGEN_MODEL,
         input: { instances: [{ prompt: s.prompt }], parameters: { sampleCount: s.images, aspectRatio: s.aspectRatio, personGeneration: 'allow_all' } },

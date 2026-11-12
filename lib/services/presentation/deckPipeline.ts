@@ -2,7 +2,7 @@
  * lib/services/presentation/deckPipeline.ts — outline → visuals → rasterised slides.
  *
  *   1 outline  Gemini via llmText, with a deterministic fallback (never fails the job)
- *   2 visuals  optional picture per slide: Google's image model (gemini-3.1-flash-image), or Imagen 4 when switched on
+ *   2 visuals  optional picture per slide: Google's image model (gemini-3.1-flash-image)
  *   3 render   SVG → PNG via resvg with the bundled FiraGO fonts → hosted
  *
  * WHY PNG AND NOT SERVER-SIDE PDF: pdfkit is not in `serverComponentsExternalPackages` and has no file
@@ -16,7 +16,6 @@
  */
 import 'server-only';
 import { Resvg } from '@resvg/resvg-js';
-import { generateImagenImages, mapImagenAspect, hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
@@ -28,22 +27,16 @@ import { generateOutline } from './deckOutline';
 import { buildSlideSvg, buildCoverSvg } from './slideSvg';
 import { SLIDE_W, SLIDE_H, type Deck, type DeckRequest, type Slide } from './deckPlan';
 
-export type DeckImageEngine = 'imagen' | 'gemini-image';
+export type DeckImageEngine = 'gemini-image';
 
-/** Which engine draws the slide pictures: Imagen 4 only when switched on, else Google's image model, else none. */
+/** Which engine draws the slide pictures: Google's image model, else none (Imagen 4 is retired, v5.1 M-14). */
 export function deckImageEngine(): DeckImageEngine | null {
-  if (hasGeminiImagenProvider()) return 'imagen';
   if (!googleImageTransportBlocker()) return 'gemini-image';
   return null;
 }
 
 /** One 16:9 slide picture as bytes, or null on any miss. Never throws. */
 async function deckVisual(engine: DeckImageEngine | null, prompt: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
-  if (engine === 'imagen') {
-    const images = await generateImagenImages({ prompt, aspectRatio: mapImagenAspect('16:9'), numberOfImages: 1 }).catch(() => null);
-    const first = images?.[0];
-    return first ? { buffer: first.buffer, mimeType: first.mimeType || 'image/png' } : null;
-  }
   if (engine === 'gemini-image') {
     const img = await generateGeminiImage({ prompt, aspectRatio: '16:9' }).catch(() => null);
     if (!img?.base64) return null;
@@ -129,10 +122,9 @@ export async function runDeckBuild(
     stepsRun.push('outline');
 
     // ── LEG 2 · visuals ────────────────────────────────────────────────────────────────────────────
-    // ⚠️ A DECK WOULD HAVE COME OUT TEXT-ONLY IN PRODUCTION. Imagen 4 is opt-in (GEMINI_IMAGEN_ENABLED) and was never
-    // switched on, so the visuals leg never ran even though the deck is priced as illustrated. The picture engine is now Google's
-    // image model — the same gemini-3.1-flash-image the Image service runs on Vertex — and Imagen 4 is used only when
-    // it is explicitly switched on.
+    // ⚠️ A DECK WOULD HAVE COME OUT TEXT-ONLY IN PRODUCTION. Imagen 4 was opt-in and never switched on, so the visuals
+    // leg never ran even though the deck is priced as illustrated. The picture engine is Google's image model — the same
+    // gemini-3.1-flash-image the Image service runs on Vertex. The Imagen 4 option is gone (retired model, v5.1 M-14).
     const imageEngine = deckImageEngine();
     const wantImages = req.withImages && imageEngine !== null;
     let imagesMissing = 0;
@@ -149,7 +141,7 @@ export async function runDeckBuild(
       // Nothing here is sequential by nature: a slide's visual depends only on its own prompt, and the
       // results are written back by index. Running them in fixed batches keeps slide order, the
       // `imagesMissing` tally and the per-slide degradation bit-for-bit identical, while collapsing the
-      // leg to ~a third. The width is deliberately small — Imagen is metered per request and this is a
+      // leg to ~a third. The width is deliberately small — the image model is metered per request and this is a
       // fan-out, not a flood; the per-slide `.catch(() => null)` still absorbs every individual miss.
       const VISUAL_CONCURRENCY = 3;
       const buildVisual = async (i: number): Promise<void> => {

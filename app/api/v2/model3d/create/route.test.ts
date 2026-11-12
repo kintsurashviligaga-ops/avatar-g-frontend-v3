@@ -19,9 +19,6 @@ jest.mock('../../../../../lib/services/model3d/replicate3dClient', () => ({
   submitReconstruction: jest.fn(async () => ({ ok: true, predictionId: 'pred123' })),
   hasReplicate3dProvider: jest.fn(() => true),
 }));
-jest.mock('../../../../../lib/ai/geminiImagen', () => ({
-  generateImagenImages: jest.fn(async () => [{ buffer: Buffer.from('png'), mimeType: 'image/png' }]),
-}));
 jest.mock('../../../../../lib/orchestrator/storage-adapter', () => ({ uploadBufferAndSign: jest.fn() }));
 jest.mock('../../../../../lib/services/resolveUpload', () => ({ resolveUploadRef: jest.fn() }));
 jest.mock('../../../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(), recordJobSettle: jest.fn() }));
@@ -32,7 +29,6 @@ import { POST } from './route';
 import { createSupabaseServerClient } from '../../../../../lib/supabase/server';
 import { checkRateLimit } from '../../../../../lib/api/rate-limit';
 import { submitReconstruction } from '../../../../../lib/services/model3d/replicate3dClient';
-import { generateImagenImages } from '../../../../../lib/ai/geminiImagen';
 import { uploadBufferAndSign } from '../../../../../lib/orchestrator/storage-adapter';
 import { resolveUploadRef } from '../../../../../lib/services/resolveUpload';
 import { createJob, recordJobSettle } from '../../../../../lib/orchestrator/jobs';
@@ -74,7 +70,6 @@ describe.each([
     expect(checkRateLimit).not.toHaveBeenCalled();
     expect(deductCredits).not.toHaveBeenCalled();
     expect(refundDebitByRef).not.toHaveBeenCalled();
-    expect(generateImagenImages).not.toHaveBeenCalled();
     expect(resolveUploadRef).not.toHaveBeenCalled();
     expect(uploadBufferAndSign).not.toHaveBeenCalled();
     expect(submitReconstruction).not.toHaveBeenCalled();
