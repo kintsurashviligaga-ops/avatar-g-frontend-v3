@@ -346,6 +346,31 @@ describe('the run', () => {
     expect(readFileSync(path.join(out, 'media/gemini-tts.wav')).equals(sentWav)).toBe(true);
   });
 
+  test('a TTS model that answers in a WAV container (gemini-3.8-flash-tts) still feeds Chirp that WAV', async () => {
+    const dir = tmp();
+    const out = path.join(dir, 'out');
+    const tts: Call = {
+      id: 'tts-38-ka', model: 'gemini-3.8-flash-tts', kind: 'sync', estimateUsd: 0.01,
+      url: 'https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent',
+      body: { contents: [{ role: 'user', parts: [{ text: 'გამარჯობა' }] }] },
+    };
+    const chirp: Call = {
+      id: 'chirp-ka-38', model: 'chirp_3', kind: 'sync', estimateUsd: 0.01, requires: ['tts-38-ka'],
+      url: 'https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize',
+      body: { config: { autoDecodingConfig: {}, model: 'chirp_3', languageCodes: ['ka-GE'] }, content: '{{tts-38-ka.wavBase64}}' },
+    };
+    const wav = wavFromPcm16(Buffer.alloc(48_000, 5), 24_000);
+    const net = fakeNetwork([
+      () => reply({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/wav', data: wav.toString('base64') } }] } }] }),
+      () => reply({ results: [{ alternatives: [{ transcript: 'გამარჯობა' }], languageCode: 'ka-ge' }], metadata: { totalBilledDuration: '1s' } }),
+    ]);
+    const summary = await run({ project: PROJECT, plan: writePlan(dir, plan([tts, chirp])), out, dryRun: false, resume: false }, { ...quiet, fetch: net.fetch, token: () => TOKEN });
+    expect(net.sent).toHaveLength(2);
+    expect(Buffer.from(JSON.parse(String(net.sent[1]!.init.body)).content, 'base64').equals(wav)).toBe(true);
+    expect(summary.results[0]).toMatchObject({ id: 'tts-38-ka', media: { mimeType: 'audio/wav', sampleRate: 24_000, durationSec: 1 } });
+    expect(summary.results[1]).toMatchObject({ id: 'chirp-ka-38', transcript: 'გამარჯობა' });
+  });
+
   test('the voices list picks the voice the synthesis uses, and the fixture keeps only that language', async () => {
     const dir = tmp();
     const out = path.join(dir, 'out');
