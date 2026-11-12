@@ -253,7 +253,9 @@ export const QUICK_RUN_MS = 60_000;
  * A quick run's step models, fastest first. Vertex probe 2026-10-25 with Agent G's prompt: 3.6 Flash 3.0–3.6 s,
  * 3.1 Flash-Lite 2.1 s; 3.8 Flash 4.9 s with thinking 'low' once, then over 33 s in GG's Live call.
  */
-export const QUICK_STEP_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] as const;
+// 3.6 Flash (the measured fastest) is retired by Vertex on 2026-11-19, so 3.5 Flash takes its place; its speed with this
+// prompt is UNVERIFIED (same thinking 'minimal' family).
+export const QUICK_STEP_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'] as const;
 /** A quick run's attempt never takes longer than this, so the fallback and the next steps keep their time. */
 export const QUICK_STEP_TIMEOUT_MS = 20_000;
 
