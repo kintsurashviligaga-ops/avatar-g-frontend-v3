@@ -13,8 +13,7 @@
       "lib/orchestrator/unpolledSettleRuntime.ts",
       "lib/replicate/client.ts",
       "lib/security/csp.js",
-      "lib/services/model3d/replicate3dClient.ts",
-      "lib/video/videoProviderCascade.ts"
+      "lib/services/model3d/replicate3dClient.ts"
     ],
     "openai": [
       "lib/agent-g/voice/stt.ts",
@@ -31,21 +30,15 @@
     "runway": [
       "lib/ai/runway.ts"
     ],
-    "kling": [
-      "lib/video/videoProviderCascade.ts"
-    ],
+    "kling": [],
     "higgsfield": [
       "lib/providers/higgsfield/client.ts"
     ],
     "liveavatar": [],
     "ltx": [
-      "lib/security/csp.js",
-      "lib/system/provider-health.ts",
-      "lib/video/videoProviderCascade.ts"
+      "lib/security/csp.js"
     ],
-    "luma": [
-      "lib/video/videoProviderCascade.ts"
-    ],
+    "luma": [],
     "stability": [],
     "worldlabs": [],
     "xai": [],

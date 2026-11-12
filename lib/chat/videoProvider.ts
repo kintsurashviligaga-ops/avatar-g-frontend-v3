@@ -3,37 +3,14 @@
  * =========================
  * Single source of truth for "can the video render path actually fire?".
  *
- * The 30-second film pipeline historically degraded silently: when neither the
- * LTX credential (any alias) NOR the Replicate failover token was provisioned,
- * `renderClip` returned `skipped` for every leg, the storyboard engine had
- * ALREADY run, and the user watched the pipeline crawl to the ~38% mark before
- * collapsing into "Video skipped (no provider)" — having potentially consumed a
- * founder free-film slot / wallet debit for infrastructure that was never wired.
+ * `hasVideoProvider()` is the strict pre-flight a pipeline runs BEFORE planning scenes or touching the ledger, so a
+ * missing engine is a clean, localized, zero-cost halt instead of a half-burned transaction. Google only (MASTER TASK
+ * v3.1): the engine is Veo on Vertex AI. The LTX key aliases and the Replicate failover token no longer count (v5.1
+ * M-14) — their routes refuse every call, so counting them let a pipeline start that could never render.
  *
- * This module gates the WHOLE pipeline at the door: `hasVideoProvider()` is the
- * strict pre-flight the orchestrator runs BEFORE planning scenes or touching the
- * ledger. A missing provider becomes a clean, localized, zero-cost halt instead
- * of a half-burned transaction.
- *
- * Kept free of `server-only`, Next, and Supabase imports so it is unit-testable
- * in isolation: it reads ONLY an injected env map and returns names + booleans,
- * never a secret value. Mirrors the alias contract of `ltxKey` + the assemble
- * route's Replicate failover env.
+ * Kept free of `server-only`, Next, and Supabase imports so it is unit-testable in isolation: it reads ONLY an
+ * injected env map and returns booleans, never a secret value.
  */
-
-import { hasLtxApiKey, LTX_API_KEY_ALIASES } from './ltxKey';
-
-/** The Replicate failover token name — arms LTX clip failover when LTX is down. */
-export const REPLICATE_API_KEY_ALIASES = ['REPLICATE_API_TOKEN'] as const;
-
-/** True when REPLICATE_API_TOKEN carries a non-empty value. */
-export function hasReplicateToken(env: NodeJS.ProcessEnv = process.env): boolean {
-  for (const name of REPLICATE_API_KEY_ALIASES) {
-    const v = env[name];
-    if (typeof v === 'string' && v.trim().length > 0) return true;
-  }
-  return false;
-}
 
 /** What Veo on Vertex AI needs besides the project and bucket: Workload Identity (all four) or a service-account key. */
 const VEO_VERTEX_WIF_VARS = [
@@ -61,7 +38,7 @@ export function hasVeoVertexEnv(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /**
- * True iff at least one video render provider is configured.
+ * True iff the video render engine (Veo on Vertex AI) is configured.
  *
  * ⚠️ THIS DID NOT COUNT VEO, AND THAT IS A TRAP FOR ANYONE MOVING TO A GEMINI-ONLY SETUP. The predicate
  * was `hasLtxApiKey(env) || hasReplicateToken(env)`, while Veo has been the PRIMARY clip engine for some
@@ -77,67 +54,7 @@ export function hasVeoVertexEnv(env: NodeJS.ProcessEnv = process.env): boolean {
  * silent-skip-after-spend trap") — Veo was simply never added when it became primary.
  */
 export function hasVideoProvider(env: NodeJS.ProcessEnv = process.env): boolean {
-  return hasVeoVertexEnv(env) || hasLtxApiKey(env) || hasReplicateToken(env);
-}
-
-/** Names-only presence snapshot for diagnostics / the client status dot. */
-export interface VideoProviderStatus {
-  /** Either LTX or Replicate is present → the render path can fire. */
-  ready: boolean;
-  ltx: boolean;
-  replicate: boolean;
-  /** Full alias precedence lists consulted (names only, never values). */
-  checkedEnv: {
-    ltx: readonly string[];
-    replicate: readonly string[];
-  };
-}
-
-export function computeVideoProviderStatus(env: NodeJS.ProcessEnv = process.env): VideoProviderStatus {
-  const ltx = hasLtxApiKey(env);
-  const replicate = hasReplicateToken(env);
-  return {
-    ready: ltx || replicate,
-    ltx,
-    replicate,
-    checkedEnv: {
-      ltx: LTX_API_KEY_ALIASES,
-      replicate: REPLICATE_API_KEY_ALIASES,
-    },
-  };
-}
-
-/** Which provider the video render path should drive as PRIMARY (null = halt). */
-export type VideoPrimaryProvider = 'ltx' | 'replicate' | null;
-
-export interface VideoPrimaryDecision {
-  /** The provider to render with first. `null` means no provider — caller halts. */
-  primary: VideoPrimaryProvider;
-  /**
-   * Machine-readable rationale, surfaced verbatim in response metadata
-   * (`primaryProviderReason`) so a Replicate-only render is observably explained
-   * rather than looking like a silent LTX bypass.
-   */
-  reason: 'ltx-key-present' | 'ltx-key-absent' | 'no-provider';
-}
-
-/**
- * Single source of truth for the LTX-vs-Replicate PRIMARY selection.
- *
- * LTX is the director provider and wins whenever its key is present (any alias).
- * With NO LTX key, a provisioned Replicate token is promoted from "402 failover"
- * to the PRIMARY render path — this is what lets a Replicate-only deployment
- * actually emit clips instead of passing the `hasVideoProvider` pre-flight and
- * then skipping every leg AFTER a founder slot / wallet debit was reserved.
- * With neither, the decision is a clean `null` halt (the pipeline must not spend).
- *
- * Pure + env-injectable so the just-shipped Replicate-primary behavior is
- * testable without standing up the heavy `ServiceManager`.
- */
-export function selectVideoPrimaryProvider(env: NodeJS.ProcessEnv = process.env): VideoPrimaryDecision {
-  if (hasLtxApiKey(env)) return { primary: 'ltx', reason: 'ltx-key-present' };
-  if (hasReplicateToken(env)) return { primary: 'replicate', reason: 'ltx-key-absent' };
-  return { primary: null, reason: 'no-provider' };
+  return hasVeoVertexEnv(env);
 }
 
 /**

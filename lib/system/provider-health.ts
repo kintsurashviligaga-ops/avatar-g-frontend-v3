@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
 import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
 import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
@@ -12,8 +11,8 @@ import { googleAiConfigured } from '@/lib/ai/google/transport';
  */
 export const PROBE_DEADLINE_MS = 8_000;
 
-// HeyGen and World Labs were removed (v5.1 M-14, GG 2026-11-12): no route calls them, so they are not probed.
-type ProviderName = 'openai' | 'udio' | 'ltx' | 'anthropic' | 'gemini';
+// HeyGen, World Labs and LTX were removed (v5.1 M-14, GG 2026-11-12): no route calls them, so they are not probed.
+type ProviderName = 'openai' | 'udio' | 'anthropic' | 'gemini';
 
 export type ProviderAuditEntry = {
   provider: ProviderName;
@@ -34,7 +33,6 @@ export type ServiceRoutingAudit = {
 const PROVIDER_ENV: Record<ProviderName, string> = {
   openai: 'OPENAI_API_KEY',
   udio: 'UDIO_API_KEY',
-  ltx: 'LTX_VIDEO_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   // Not a key: Gemini runs on Vertex AI under Workload Identity (MASTER TASK v3.1), so the row names the project variable.
   gemini: 'GCP_PROJECT_ID',
@@ -43,7 +41,6 @@ const PROVIDER_ENV: Record<ProviderName, string> = {
 const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provider: ProviderName }> = [
   { category: 'audio', provider: 'openai' },
   { category: 'music', provider: 'udio' },
-  { category: 'video', provider: 'ltx' },
   { category: 'text', provider: 'gemini' },
   { category: 'code', provider: 'anthropic' },
 ];
@@ -51,15 +48,13 @@ const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provide
 function hasKey(provider: ProviderName): boolean {
   // An AI Studio key is not a Gemini credential under v3.1: Gemini is "configured" when Vertex AI can serve it.
   if (provider === 'gemini') return googleAiConfigured();
-  // PHASE 45/46 §1 — LTX and Udio ship under several historical aliases; honour all.
-  if (provider === 'ltx') return resolveLtxApiKey() !== null;
+  // PHASE 45/46 §1 — Udio ships under several historical aliases; honour all.
   if (provider === 'udio') return resolveUdioApiKey() !== null;
   const env = PROVIDER_ENV[provider];
   return typeof process.env[env] === 'string' && String(process.env[env]).trim().length > 0;
 }
 
 function getKey(provider: ProviderName): string {
-  if (provider === 'ltx') return resolveLtxApiKey() || '';
   if (provider === 'udio') return resolveUdioApiKey() || '';
   return String(process.env[PROVIDER_ENV[provider]] || '').trim();
 }
@@ -149,37 +144,6 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       const payload = await response.json().catch(() => null);
       const credits = extractCredits(payload);
       return { ok: response.ok || response.status === 400 || response.status === 404, detail: `HTTP ${response.status}`, creditsRemaining: credits };
-    }
-
-    if (provider === 'ltx') {
-      // LTX Studio is a Lightricks product. Try the canonical hosts in order;
-      // a 401/403 response is treated as "endpoint reachable, key validates" — that's
-      // a healthy probe signal even when the key is wrong.
-      const candidates = [
-        'https://api.lightricks.com/v1/account',
-        'https://api.ltx.studio/v1/account',
-        'https://api.ltx.video/v1/tasks/healthcheck',
-      ];
-      let lastStatus = 0;
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${key}` },
-            cache: 'no-store',
-          });
-          lastStatus = response.status;
-          if (response.ok) {
-            return { ok: true, detail: `${url} HTTP 200`, creditsRemaining: null };
-          }
-          if (response.status === 401 || response.status === 403) {
-            // Endpoint exists; key may be wrong but the probe target is valid.
-            return { ok: true, detail: `${url} reachable (auth ${response.status})`, creditsRemaining: null };
-          }
-        } catch {
-          // Network error / DNS failure — try next candidate
-        }
-      }
-      return { ok: false, detail: `No LTX probe URL reachable (last status ${lastStatus})`, creditsRemaining: null };
     }
 
     return { ok: false, detail: 'No probe for this provider', creditsRemaining: null };
