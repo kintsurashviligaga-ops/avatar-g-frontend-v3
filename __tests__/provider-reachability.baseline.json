@@ -65,7 +65,6 @@
       "gemini_developer_api"
     ],
     "app/api/cron/drain-renders/route.ts": [
-      "heygen",
       "replicate"
     ],
     "app/api/cron/research-sweep/route.ts": [
@@ -124,12 +123,6 @@
     "app/api/genjutsu/status/route.ts": [
       "higgsfield"
     ],
-    "app/api/heygen/avatar/route.ts": [
-      "heygen"
-    ],
-    "app/api/heygen/presenter/route.ts": [
-      "heygen"
-    ],
     "app/api/image/assets/[id]/route.ts": [
       "nanobananaapi"
     ],
@@ -159,9 +152,6 @@
     ],
     "app/api/image/operations/validate/route.ts": [
       "nanobananaapi"
-    ],
-    "app/api/motion-control/status/route.ts": [
-      "replicate"
     ],
     "app/api/pipeline/remix/route.ts": [
       "heygen",
@@ -205,10 +195,6 @@
       "luma",
       "replicate",
       "runway"
-    ],
-    "app/api/video/lipsync/route.ts": [
-      "heygen",
-      "replicate"
     ],
     "app/api/video/remix/route.ts": [
       "heygen",

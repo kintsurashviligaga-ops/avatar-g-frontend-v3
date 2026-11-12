@@ -697,25 +697,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     analytics.prompt(service, text);
     try {
       if (service === 'avatar') {
-        const startRes = await fetch('/api/heygen/avatar', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ script: text }),
-        });
-        const startData = await startRes.json() as { videoId?: string; error?: string };
-        if (!startData?.videoId) throw new Error(startData?.error || copy.errorGeneric);
-        let videoUrl: string | null = null;
-        for (let i = 0; i < 24; i++) {
-          await new Promise(r => setTimeout(r, 5000));
-          const poll = await fetch(`/api/heygen/avatar?videoId=${encodeURIComponent(startData.videoId)}`);
-          if (!poll.ok) continue;
-          const pd = await poll.json() as { status?: string; url?: string; error?: string };
-          if (pd?.status === 'completed' && pd?.url) { videoUrl = pd.url; break; }
-          if (pd?.status === 'failed') throw new Error(pd?.error || copy.errorGeneric);
-        }
-        if (!videoUrl) throw new Error('HeyGen: timed out');
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url: videoUrl! } } : msg));
-        setCredits(c => c - cost);
-        mediaGenerated = true;
+        // The HeyGen avatar route was removed (v5.1 M-14, GG 2026-11-12); this unmounted panel has no avatar engine.
+        throw new Error(copy.errorGeneric);
 
       } else if (service === 'image') {
         if (batchMode) {
