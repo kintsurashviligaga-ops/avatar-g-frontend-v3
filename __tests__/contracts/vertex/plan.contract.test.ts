@@ -71,8 +71,13 @@ const PLAN = JSON.parse(readFileSync(path.join(__dirname, '../../../scripts/cert
   capUsd: number;
   calls: PlanCall[];
 };
+// The 2026-11-12 plan (v5.1 D-02 / D-03): the 3.8 read-aloud probe and the free entitlement probes.
+const PLAN3 = JSON.parse(readFileSync(path.join(__dirname, '../../../scripts/certify/vertex-contract-plan-3.json'), 'utf8')) as {
+  capUsd: number;
+  calls: PlanCall[];
+};
 const call = (id: string): PlanCall => {
-  const c = PLAN.calls.find((x) => x.id === id);
+  const c = [...PLAN.calls, ...PLAN3.calls].find((x) => x.id === id);
   if (!c) throw new Error(`no planned call ${id}`);
   return c;
 };
@@ -146,8 +151,18 @@ test('Lyria Pro: the music route composes a 60 s instrumental as planned', async
   expect(sent).toEqual([{ url: plannedUrl(c), method: 'POST', body: c.body }]);
 });
 
-test('Gemini TTS: the read-aloud route sends the planned Georgian request (voice Aoede, no languageCode)', async () => {
-  const c = call('gemini-tts');
+test('the 2026-11-12 plan stays under $0.05, generates nothing but one Georgian 3.8 line, and never uses the Developer API', () => {
+  const { total, cap } = validatePlan(PLAN3);
+  expect(cap).toBeLessThanOrEqual(0.05);
+  expect(total).toBeLessThanOrEqual(cap);
+  for (const c of PLAN3.calls) expect(c.url).not.toContain('generativelanguage');
+  const billed = PLAN3.calls.filter((c) => c.estimateUsd > 0).map((c) => c.id);
+  expect(billed).toEqual(['tts-38-ka', 'chirp-ka-38']);
+  for (const c of PLAN3.calls.filter((x) => x.estimateUsd === 0)) expect(c.kind === 'get' || c.url.endsWith(':countTokens')).toBe(true);
+});
+
+test('Gemini TTS: the read-aloud route sends the planned Georgian 3.8 request (voice Aoede, no languageCode, no directive)', async () => {
+  const c = call('tts-38-ka');
   expect(ttsModel()).toBe(c.model);
   answers.push(json({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;codec=pcm;rate=24000', data: Buffer.alloc(48_000).toString('base64') } }] } }] }));
   const res = await readAloud(new NextRequest('https://myavatar.ge/api/tts/gemini', {

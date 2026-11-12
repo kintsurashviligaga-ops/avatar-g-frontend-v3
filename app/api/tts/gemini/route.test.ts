@@ -122,7 +122,11 @@ const VERTEX_ENV = {
   GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
 };
+// The default read-aloud model since 2026-11-12 (v5.1 D-02): Gemini 3.8 Flash TTS on Vertex AI.
 const VERTEX_TTS_URL =
+  'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent';
+// The default before it, still allowlisted for a rollback (GEMINI_TTS_MODEL) and the owner's trial.
+const LEGACY_TTS_URL =
   'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent';
 let fetchSpy: jest.SpyInstance;
 const sent = (i = 0): SentBody => JSON.parse(String((fetchSpy.mock.calls[i]![1] as RequestInit).body)) as SentBody;
@@ -190,7 +194,7 @@ test('empty text is a 400 and nothing is called', async () => {
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('a signed-in caller gets a WAV from Vertex AI (bearer token, no key); the directive is kept, Aoede is the default', async () => {
+test('a signed-in caller gets a WAV from Vertex AI (bearer token, no key); no directive (3.8 reads a transcript), Aoede is the default', async () => {
   const res = await POST(post({ text: 'გამარჯობა, როგორ ხარ?', locale: 'ka' }));
   expect(res.status).toBe(200);
   expect(res.headers.get('content-type')).toBe('audio/wav');
@@ -204,7 +208,7 @@ test('a signed-in caller gets a WAV from Vertex AI (bearer token, no key); the d
   expect(sentHeaders().Authorization).toBe('Bearer vertex-token');
   expect(sentHeaders()['x-goog-api-key']).toBeUndefined();
   const b = sent();
-  expect(b.contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: გამარჯობა, როგორ ხარ?');
+  expect(b.contents[0]!.parts[0]!.text).toBe('გამარჯობა, როგორ ხარ?');
   expect(b.generationConfig.responseModalities).toEqual(['AUDIO']);
   expect(b.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Aoede');
   // Georgian never carries a languageCode (ka-GE is not a documented SpeechConfig language).
@@ -225,7 +229,7 @@ test('the contract headers name the version, the layout and the frame count of t
   expect(res.headers.get('x-speech-sample-rate')).toBe('24000');
   expect(res.headers.get('x-speech-channels')).toBe('1');
   expect(res.headers.get('x-speech-frames')).toBe('24000');
-  expect(res.headers.get('x-speech-model')).toBe('gemini-2.5-flash-preview-tts');
+  expect(res.headers.get('x-speech-model')).toBe('gemini-3.8-flash-tts');
   expect(res.headers.get('x-voice-name')).toBe('Aoede');
   expect(res.headers.get('x-voice-provider')).toBe('gemini-native');
   expect(res.headers.get('content-length')).toBe(String(44 + 48_000));
@@ -296,7 +300,7 @@ test(`exactly ${SPEECH_MAX_CHARS} characters (after trimming) are sent whole`, a
   const text = 'ა'.repeat(SPEECH_MAX_CHARS);
   const res = await POST(post({ text: `  ${text}\n`, locale: 'ka' }));
   expect(res.status).toBe(200);
-  expect(sent().contents[0]!.parts[0]!.text).toBe(`Read aloud verbatim: ${text}`);
+  expect(sent().contents[0]!.parts[0]!.text).toBe(text);
 });
 
 test('gender=male → Charon (unchanged contract)', async () => {
@@ -459,7 +463,7 @@ test('books the reported usage on the TTS model with the user id', async () => {
   await POST(post({ text: 'hello there', locale: 'en' }));
   expect(bookMock).toHaveBeenCalledTimes(1);
   expect(bookMock.mock.calls[0]![0]).toMatchObject({
-    model: 'gemini-2.5-flash-preview-tts',
+    model: 'gemini-3.8-flash-tts',
     inputTokens: 12,
     outputTokens: 25,
     totalTokens: 37,
@@ -469,16 +473,18 @@ test('books the reported usage on the TTS model with the user id', async () => {
 
 test('without usageMetadata the output is estimated from the audio length (1 s of audio → 32 tokens)', async () => {
   await POST(post({ text: 'hello', locale: 'en' }));
-  expect(bookMock.mock.calls[0]![0]).toMatchObject({ model: 'gemini-2.5-flash-preview-tts', outputTokens: 32 });
+  expect(bookMock.mock.calls[0]![0]).toMatchObject({ model: 'gemini-3.8-flash-tts', outputTokens: 32 });
 });
 
-test('an allowlisted GEMINI_TTS_MODEL is used; an unknown one falls back to the verified default', async () => {
-  process.env.GEMINI_TTS_MODEL = 'models/gemini-3.8-flash-tts';
+test('an allowlisted GEMINI_TTS_MODEL is used (the rollback to 2.5 keeps its directive); an unknown one is the default', async () => {
+  process.env.GEMINI_TTS_MODEL = 'models/gemini-2.5-flash-preview-tts';
   await POST(post({ text: 'hello', locale: 'en' }));
-  expect(sentUrl(0)).toContain('/models/gemini-3.8-flash-tts:generateContent');
+  expect(sentUrl(0)).toBe(LEGACY_TTS_URL);
+  expect(sent(0).contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: hello');
   process.env.GEMINI_TTS_MODEL = 'gemini-9-evil/../x';
   await POST(post({ text: 'hello', locale: 'en' }));
-  expect(sentUrl(1)).toContain('/models/gemini-2.5-flash-preview-tts:generateContent');
+  expect(sentUrl(1)).toBe(VERTEX_TTS_URL);
+  expect(sent(1).contents[0]!.parts[0]!.text).toBe('hello');
 });
 
 describe("the owner's listening trial (body.model)", () => {
@@ -503,22 +509,22 @@ describe("the owner's listening trial (body.model)", () => {
     expect(sentUrl(0)).toContain('/models/gemini-3.8-flash-lite-tts:generateContent');
     expect(sent(0).contents[0]!.parts[0]!.text).toBe('hello');
     await POST(post({ text: 'hello', locale: 'en', model: 'gemini-2.5-flash-preview-tts' }));
-    expect(sentUrl(1)).toBe(VERTEX_TTS_URL);
+    expect(sentUrl(1)).toBe(LEGACY_TTS_URL);
     expect(sent(1).contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: hello');
   });
 
-  test('anyone else asking for a model gets the usual one, with the directive', async () => {
+  test('anyone else asking for a model gets the usual one (3.8, no directive)', async () => {
     mockAdmin = false;
-    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-2.5-flash-preview-tts' }));
     expect(res.status).toBe(200);
     expect(sentUrl()).toBe(VERTEX_TTS_URL);
-    expect(sent().contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: hello');
-    expect(res.headers.get('x-speech-model')).toBe('gemini-2.5-flash-preview-tts');
+    expect(sent().contents[0]!.parts[0]!.text).toBe('hello');
+    expect(res.headers.get('x-speech-model')).toBe('gemini-3.8-flash-tts');
   });
 
   test('an admin check that fails is a "no" (closed), never the requested model', async () => {
     mockAdmin = 'throws';
-    await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    await POST(post({ text: 'hello', locale: 'en', model: 'gemini-2.5-flash-preview-tts' }));
     expect(sentUrl()).toBe(VERTEX_TTS_URL);
   });
 
@@ -634,7 +640,7 @@ test('a budget refusal is a 503 before Google is called', async () => {
   expect(res.status).toBe(503);
   expect(await res.json()).toMatchObject({ error: 'budget_exhausted' });
   expect(fetchSpy).not.toHaveBeenCalled();
-  expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-2.5-flash-preview-tts');
+  expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-3.8-flash-tts');
 });
 
 test('a spend ledger that cannot be read is a 503 before Google is called (the real guard, failing closed)', async () => {
