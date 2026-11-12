@@ -168,7 +168,7 @@
       "served": [
         "Video with a Georgian line"
       ],
-      "note": "M-3 moves it to 1.2 flash",
+      "note": "M-3 (#295) moves new clips to 1.2; 1.1 stays served for continuing clips it made and as the VERTEX_OMNI_MODEL rollback",
       "servedOutsideModelsTs": true
     },
     {
@@ -177,7 +177,11 @@
       "releaseDate": "2026-11-05",
       "retirementDate": "2027-11-05",
       "source": "P1",
-      "served": []
+      "served": [
+        "Video with a Georgian line (from M-3, PR #295)"
+      ],
+      "note": "Guarded before #295 merges, so the guard is green whichever of #293 / #295 lands first",
+      "servedOutsideModelsTs": true
     },
     {
       "id": "veo-3.1-generate-001",
