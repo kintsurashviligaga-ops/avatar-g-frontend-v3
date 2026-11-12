@@ -31,15 +31,18 @@ export const PRICE_BOOK = {
    * the owner's card 2026-10-25 16:51Z („720p ✦69 + 1080p ✦102"); 4 · 6 · 8 s — a clip in which a character says a
    * Georgian line, which Omni says in their own voice — on the card 2026-10-26 10:55Z („Omni ამ ფასებით"). The rule
    * recomputes every one from unitEconomics' video.omni.* lines (the 2026-10-25 Vertex probe and Google's list price).
+   * v5.1 M-3: on Omni 1.2 Flash ($12.00 / 1M video out, was $17.50) the rule falls ~32% and every row follows it
+   * (was 720p 28 · 42 · 55 · 69, 1080p 42 · 62 · 82 · 102). GG card 2026-11-12 14:22Z ("Lower to your 100% rule").
    */
-  omniClip: { '720p': { 4: 28, 6: 42, 8: 55, 10: 69 }, '1080p': { 4: 42, 6: 62, 8: 82, 10: 102 } },
+  omniClip: { '720p': { 4: 20, 6: 29, 8: 38, 10: 47 }, '1080p': { 4: 29, 6: 43, 8: 57, 10: 71 } },
   /**
    * An uploaded video edited or extended by Gemini Omni Flash, by resolution and by the seconds it renders (an edit: the
    * video's own length, rounded up to 4 · 6 · 8 · 10 s; an extend: the new seconds). Set on the owner's card 2026-10-25
    * 17:04Z („კი, ორივე"); the rule (unitEconomics' video.omni-edit.* lines, the 2026-10-25 probe) is at most these — two
-   * sit one credit above it (720p 6 s, 1080p 4 s and 6 s), as GG set them.
+   * sat one credit above it (720p 6 s, 1080p 4 s and 6 s), as GG set them. v5.1 M-3: on Omni 1.2 every row is the rule
+   * (was 720p 34 · 48 · 61 · 74, 1080p 48 · 68 · 88 · 108). GG card 2026-11-12 14:22Z.
    */
-  omniEdit: { '720p': { 4: 34, 6: 48, 8: 61, 10: 74 }, '1080p': { 4: 48, 6: 68, 8: 88, 10: 108 } },
+  omniEdit: { '720p': { 4: 25, 6: 35, 8: 44, 10: 53 }, '1080p': { 4: 35, 6: 48, 8: 62, 10: 76 } },
   /** What a film scene adds to its clip: the storyboard frame, ~8 s of narration and music bed, cropping and hosting. */
   filmScene: 7,
   /** Once per film: the plan and the assembly. */

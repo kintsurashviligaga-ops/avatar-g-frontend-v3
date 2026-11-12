@@ -39,7 +39,7 @@ import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 import { CLIP_SPEECH_MAX_CHARS, asksForCuts, asksForMusic, asksForSubtitles, clipNegativePrompt, clipSpeechFits, composeClipPrompt, speaksGeorgian, spokenText } from '@/lib/video/clipPrompt';
 import { readClipPrompt } from '@/lib/video/clipSpeech';
 import { DIRECT_CLIP_BODY_MAX_BYTES, directClipCredits, directClipEngine, directClipResolution, parseDirectClipRequest, type DirectClipRequest, type DirectClipSpeech } from '@/lib/video/directClip';
-import { submitOmniClip } from '@/lib/video/omniClip';
+import { OMNI_MODEL, submitOmniClip } from '@/lib/video/omniClip';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -162,7 +162,7 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
       prompt: composeClipPrompt({ reading, photos: photoMode, engine: 'omni', subtitles: asksForSubtitles(r.prompt), music: asksForMusic(r.prompt), cuts: asksForCuts(r.prompt) }),
       aspect: r.aspect, resolution, seconds: r.seconds, userId,
       ...(r.photos[0] ? { firstFrame: r.photos[0] } : {}),
-    }).then((o) => (o.ok ? { ok: true as const, operation: o.id, aspect: r.aspect } : o))
+    }).then((o) => (o.ok ? { ok: true as const, operation: o.id, aspect: r.aspect, omni12: o.model === OMNI_MODEL } : o))
     : await submitScene({
       prompt: composeClipPrompt({ reading, photos: photoMode, cuts: asksForCuts(r.prompt) }),
       aspect: r.aspect, quality: 'fast', tier: r.tier, durationSec: r.seconds, userId, sessionId: `clip-${uuid}`,
@@ -180,7 +180,7 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
   }
 
   const jobId = engine === 'omni'
-    ? composeOmniJobId(sub.operation, r.aspect, createdMs, undefined, r.seconds)
+    ? composeOmniJobId(sub.operation, r.aspect, createdMs, undefined, r.seconds, 'omni12' in sub && sub.omni12)
     : composeVeoJobId(sub.operation, sub.aspect, createdMs, false, r.seconds as 4 | 6 | 8);
   const token = signGenjutsuCharge({ u: userId, r: ref, j: jobId });
   if (!token) {

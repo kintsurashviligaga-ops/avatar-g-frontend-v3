@@ -33,15 +33,40 @@ import { ambiguousSubmitFailure, classifySubmitHttpFailure, isSafetyWording, rea
 import type { VeoFailureReason } from '@/lib/veo/types';
 import type { DirectClipAspect, DirectClipPhoto, DirectClipResolution } from './directClip';
 
-export const OMNI_MODEL = 'gemini-omni-1.1-flash-preview';
+export const OMNI_MODEL = 'gemini-omni-1.2-flash';
+/**
+ * v5.1 M-3 (GG D-07): 1.2 Flash is GA and 30% cheaper than the 1.1 preview. 1.1 stays for two things only: the rollback
+ * (VERTEX_OMNI_MODEL=gemini-omni-1.1-flash-preview, while Google serves it) and continuing a clip it made before the move
+ * (a continuation names the model that made the interaction; the job id says which, lib/genjutsu/chargeToken `m2`).
+ */
+export const OMNI_LEGACY_MODEL = 'gemini-omni-1.1-flash-preview';
+export type OmniModel = typeof OMNI_MODEL | typeof OMNI_LEGACY_MODEL;
 
-/** Video output tokens a second × $17.50 per 1M (Vertex pricing page, read 2026-10-25): 5,792 at 720p, 8,688 at 1080p. */
+/** The model a new clip or edit goes to: the default, or the 1.1 rollback when the env names exactly it. */
+export function omniModel(): OmniModel {
+  return process.env.VERTEX_OMNI_MODEL?.trim() === OMNI_LEGACY_MODEL ? OMNI_LEGACY_MODEL : OMNI_MODEL;
+}
+
+/** The model that made an interaction, from its job id's `m2` marker (ids from before M-3 carry none: 1.1). */
+export const omniModelOfJob = (omni12: boolean): OmniModel => (omni12 ? OMNI_MODEL : OMNI_LEGACY_MODEL);
+
+/** Video output $ per 1M tokens (Vertex pricing page, read 2026-11-12): 1.2 Flash $12.00, 1.1 Flash $17.50. */
+const OMNI_VIDEO_OUT_USD_PER_MTOK: Readonly<Record<OmniModel, number>> = { [OMNI_MODEL]: 12, [OMNI_LEGACY_MODEL]: 17.5 };
+/** Video output tokens a second (same page, both versions): 5,792 at 720p, 8,688 at 1080p. */
+const OMNI_OUT_TOKENS_PER_SEC: Readonly<Record<DirectClipResolution, number>> = { '720p': 5_792, '1080p': 8_688 };
+
+/** One rendered second's list price for a model and resolution. */
+export function omniUsdPerSec(resolution: DirectClipResolution, model: OmniModel = OMNI_MODEL): number {
+  return (OMNI_OUT_TOKENS_PER_SEC[resolution] * OMNI_VIDEO_OUT_USD_PER_MTOK[model]) / 1e6;
+}
+
+/** The default model's rates (1.2 Flash). */
 export const OMNI_USD_PER_SEC: Readonly<Record<DirectClipResolution, number>> = {
-  '720p': (5_792 * 17.5) / 1e6,
-  '1080p': (8_688 * 17.5) / 1e6,
+  '720p': omniUsdPerSec('720p'),
+  '1080p': omniUsdPerSec('1080p'),
 };
 
-/** An input video's tokens a second at 720p (measured on the 2026-10-25 edit probe: 17,478 for 3 s) × $1.50 per 1M. */
+/** An input video's tokens a second at 720p (measured on the 2026-10-25 edit probe: 17,478 for 3 s) × $1.50 per 1M (1.1 and 1.2). */
 export const OMNI_INPUT_VIDEO_USD_PER_SEC = (5_826 * 1.5) / 1e6;
 
 const SUBMIT_TIMEOUT_MS = 30_000;
@@ -70,10 +95,10 @@ export interface OmniSubmitInput {
 }
 
 /** The request body Vertex takes (pure, so the shape is tested without a network). */
-export function omniRequestBody(input: Omit<OmniSubmitInput, 'userId'>): Record<string, unknown> {
+export function omniRequestBody(input: Omit<OmniSubmitInput, 'userId'>, model: OmniModel = OMNI_MODEL): Record<string, unknown> {
   const seconds = Math.min(10, Math.max(3, Math.round(input.seconds)));
   return {
-    model: OMNI_MODEL,
+    model,
     input: [
       ...(input.firstFrame ? [{ type: 'image', data: input.firstFrame.base64, mime_type: input.firstFrame.mimeType }] : []),
       { type: 'text', text: input.firstFrame ? `<FIRST_FRAME> ${input.prompt}` : input.prompt },
@@ -86,7 +111,7 @@ export function omniRequestBody(input: Omit<OmniSubmitInput, 'userId'>): Record<
 }
 
 export type OmniSubmit =
-  | { ok: true; id: string }
+  | { ok: true; id: string; model: OmniModel }
   | { ok: false; reason: VeoFailureReason | 'budget'; retryable: boolean };
 
 /** A definitive refusal created nothing and bills nothing → $0; an ambiguous one may have → the estimate stays. */
@@ -95,7 +120,7 @@ function submitActualCost(result: unknown): number | undefined {
   return r && !r.ok && r.reason !== 'ambiguous' ? 0 : undefined;
 }
 
-async function postInteraction(body: Record<string, unknown>): Promise<OmniSubmit> {
+async function postInteraction(body: Record<string, unknown>, model: OmniModel): Promise<OmniSubmit> {
   const config = vertexAiConfig();
   if (!config) return { ok: false, reason: 'not_configured', retryable: false };
   let res: Response;
@@ -122,23 +147,24 @@ async function postInteraction(body: Record<string, unknown>): Promise<OmniSubmi
   const created = (await res.json().catch(() => null)) as { id?: unknown } | null;
   const id = typeof created?.id === 'string' ? created.id : '';
   // A 2xx without an id we can poll may still be a clip being made: never re-sent, refunded by the caller.
-  return isOmniInteractionId(id) ? { ok: true, id } : { ok: false, reason: 'ambiguous', retryable: false };
+  return isOmniInteractionId(id) ? { ok: true, id, model } : { ok: false, reason: 'ambiguous', retryable: false };
 }
 
 /** Submit one clip inside the platform's Google budget. Never throws. */
 export async function submitOmniClip(input: OmniSubmitInput): Promise<OmniSubmit> {
+  const model = omniModel();
   try {
     return await guardedCall(
       {
         service: 'video',
-        model: OMNI_MODEL,
+        model,
         units: input.seconds,
-        unitCostUsd: OMNI_USD_PER_SEC[input.resolution],
+        unitCostUsd: omniUsdPerSec(input.resolution, model),
         userId: input.userId,
         promptSummary: input.prompt.slice(0, 200),
         actualCost: submitActualCost,
       },
-      () => postInteraction(omniRequestBody(input)),
+      () => postInteraction(omniRequestBody(input, model), model),
     );
   } catch (err) {
     if (err instanceof BudgetExceededError) return { ok: false, reason: 'budget', retryable: false };
@@ -154,8 +180,9 @@ export interface OmniEditSubmitInput {
   prompt: string;
   /** The uploaded video, transcoded to an H.264 / AAC mp4 at 720p or less… */
   video?: { base64: string; mimeType: 'video/mp4' };
-  /** …or a clip Omni made, continued by its own interaction (lib/video/omniEdit omniSourceOfJob): its id and its frame. */
-  previous?: { id: string; aspect: DirectClipAspect };
+  /** …or a clip Omni made, continued by its own interaction (lib/video/omniEdit omniSourceOfJob): its id, its frame and the
+   * model that made it (a continuation stays on that model). */
+  previous?: { id: string; aspect: DirectClipAspect; model: OmniModel };
   /** Its measured length, for the list-price estimate (its tokens are billed too). */
   inputSec: number;
   /** The `duration` asked for (lib/video/omniEdit omniEditRequestSeconds): an edit's own length, an extend's new seconds. */
@@ -169,11 +196,11 @@ export interface OmniEditSubmitInput {
  * frame. A clip Omni made is continued as Google's own Omni script does it: `previous_interaction_id`, the words, the frame
  * and length asked for, and no `task` (the script sends none with a previous interaction; the words say edit or extend).
  */
-export function omniEditRequestBody(input: Omit<OmniEditSubmitInput, 'userId' | 'inputSec'>): Record<string, unknown> {
+export function omniEditRequestBody(input: Omit<OmniEditSubmitInput, 'userId' | 'inputSec'>, model: OmniModel = OMNI_MODEL): Record<string, unknown> {
   const seconds = Math.min(10, Math.max(3, Math.round(input.seconds)));
   if (input.previous) {
     return {
-      model: OMNI_MODEL,
+      model: input.previous.model,
       previous_interaction_id: input.previous.id,
       input: [{ type: 'text', text: input.prompt }],
       response_format: { type: 'video', aspect_ratio: input.previous.aspect, resolution: input.resolution, duration: `${seconds}s` },
@@ -183,7 +210,7 @@ export function omniEditRequestBody(input: Omit<OmniEditSubmitInput, 'userId' | 
   }
   if (!input.video) throw new Error('omni edit: no video and no previous interaction');
   return {
-    model: OMNI_MODEL,
+    model,
     input: [
       { type: 'video', data: input.video.base64, mime_type: input.video.mimeType },
       { type: 'text', text: input.prompt },
@@ -196,26 +223,28 @@ export function omniEditRequestBody(input: Omit<OmniEditSubmitInput, 'userId' | 
 }
 
 /** The list price of one edit / extend: the seconds Omni renders, and the input video's own tokens. */
-export function omniEditListUsd(input: { seconds: number; inputSec: number; resolution: DirectClipResolution }): number {
+export function omniEditListUsd(input: { seconds: number; inputSec: number; resolution: DirectClipResolution }, model: OmniModel = OMNI_MODEL): number {
   const seconds = Math.min(10, Math.max(3, Math.round(input.seconds)));
-  return seconds * OMNI_USD_PER_SEC[input.resolution] + Math.min(10.25, Math.max(0, input.inputSec)) * OMNI_INPUT_VIDEO_USD_PER_SEC;
+  return seconds * omniUsdPerSec(input.resolution, model) + Math.min(10.25, Math.max(0, input.inputSec)) * OMNI_INPUT_VIDEO_USD_PER_SEC;
 }
 
 /** Submit one edit or extend inside the platform's Google budget. Never throws. */
 export async function submitOmniEdit(input: OmniEditSubmitInput): Promise<OmniSubmit> {
+  // A continuation stays on the model that made the clip; an upload goes to the current model.
+  const model = input.previous?.model ?? omniModel();
   try {
     return await guardedCall(
       {
         service: 'video',
-        model: OMNI_MODEL,
+        model,
         // Video seconds, as every video line books them; the rate carries the input video's tokens too.
         units: Math.min(10, Math.max(3, Math.round(input.seconds))),
-        unitCostUsd: omniEditListUsd(input) / Math.min(10, Math.max(3, Math.round(input.seconds))),
+        unitCostUsd: omniEditListUsd(input, model) / Math.min(10, Math.max(3, Math.round(input.seconds))),
         userId: input.userId,
         promptSummary: `${input.op}: ${input.prompt}`.slice(0, 200),
         actualCost: submitActualCost,
       },
-      () => postInteraction(omniEditRequestBody(input)),
+      () => postInteraction(omniEditRequestBody(input, model), model),
     );
   } catch (err) {
     if (err instanceof BudgetExceededError) return { ok: false, reason: 'budget', retryable: false };

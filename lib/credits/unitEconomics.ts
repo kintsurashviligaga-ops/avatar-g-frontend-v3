@@ -196,16 +196,16 @@ export const UNIT_OPS: readonly UnitOp[] = [
   })),
   // One Gemini Omni Flash clip: the video service's 10 s length (owner's card 2026-10-25 16:51Z), and a 4 · 6 · 8 s clip in
   // which a character says a Georgian line (card 2026-10-26 10:55Z). Vertex bills its video output by the token: 5,792
-  // tokens a second at 720p, 8,688 at 1080p, $17.50 per 1M (Vertex pricing page, read 2026-10-25). The photo, the prompt
+  // tokens a second at 720p, 8,688 at 1080p, $12.00 per 1M on 1.2 Flash (Vertex pricing page, read 2026-11-12; 1.1 was $17.50). The photo, the prompt
   // and the model's thinking were measured on the 2026-10-25 probe (1,204 in, 488 thought); they do not shrink with the clip.
   ...([['720p', 5_792], ['1080p', 8_688]] as const).flatMap(([res, tokPerSec]) => ([4, 6, 8, 10] as const).map((sec): UnitOp => ({
     id: `video.omni.${res}.${sec}`,
     service: 'video.generate',
     unit: `one ${sec} s Omni Flash clip at ${res}`,
     provider: 'Google (Vertex Interactions API)',
-    model: 'gemini-omni-1.1-flash-preview',
+    model: 'gemini-omni-1.2-flash',
     lines: [
-      { what: `Omni Flash video out, ${sec} s ${res} (${tokPerSec} tok/s, $17.50 / 1M)`, usd: (sec * tokPerSec * 17.5) / 1e6, source: 'official' },
+      { what: `Omni 1.2 Flash video out, ${sec} s ${res} (${tokPerSec} tok/s, $12.00 / 1M)`, usd: (sec * tokPerSec * 12) / 1e6, source: 'official' },
       { what: 'Omni input + thinking (photo, prompt, ~490 thought tokens)', usd: 0.0062, source: 'measured' },
       flash(700, 300, 'prompt reader to English'),
       compute(15, 'host'),
@@ -223,9 +223,9 @@ export const UNIT_OPS: readonly UnitOp[] = [
     service: 'video.generate',
     unit: `one uploaded video edited or extended by ${sec} s at ${res}`,
     provider: 'Google (Vertex Interactions API)',
-    model: 'gemini-omni-1.1-flash-preview',
+    model: 'gemini-omni-1.2-flash',
     lines: [
-      { what: `Omni Flash video out, ${sec} s ${res} (${res === '1080p' ? 8_688 : 5_792} tok/s, $17.50 / 1M)`, usd: (sec * (res === '1080p' ? 8_688 : 5_792) * 17.5) / 1e6, source: 'official' },
+      { what: `Omni 1.2 Flash video out, ${sec} s ${res} (${res === '1080p' ? 8_688 : 5_792} tok/s, $12.00 / 1M)`, usd: (sec * (res === '1080p' ? 8_688 : 5_792) * 12) / 1e6, source: 'official' },
       { what: 'Omni video in, up to 10 s at 720p (~5,826 tok/s, $1.50 / 1M)', usd: (10 * 5_826 * 1.5) / 1e6, source: 'measured' },
       { what: 'Omni thinking (~400 tokens)', usd: 0.0036, source: 'measured' },
       compute(30, 'download + transcode + host'),

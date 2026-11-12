@@ -38,17 +38,17 @@ test('a chip hands back the same order with that one thing changed and priced ag
   fireEvent.click(screen.getByTestId('clip-len-10'));
   expect(onChange).toHaveBeenCalledTimes(1);
   const next = onChange.mock.calls[0][0] as ClipAskState;
-  expect(next).toMatchObject({ seconds: 10, aspect: '9:16', credits: 69, phase: 'ask' });
+  expect(next).toMatchObject({ seconds: 10, aspect: '9:16', credits: 47, phase: 'ask' });
   fireEvent.click(screen.getByTestId('clip-aspect-16x9'));
   expect((onChange.mock.calls[1][0] as ClipAskState).aspect).toBe('16:9');
 });
 
 test('the 10 s clip shows its two resolutions with their prices', () => {
   const { onChange } = mount(ask({ seconds: 10 }));
-  expect(screen.getByTestId('clip-res-720p').textContent).toContain('✦ 69');
-  expect(screen.getByTestId('clip-res-1080p').textContent).toContain('✦ 102');
+  expect(screen.getByTestId('clip-res-720p').textContent).toContain('✦ 47');
+  expect(screen.getByTestId('clip-res-1080p').textContent).toContain('✦ 71');
   fireEvent.click(screen.getByTestId('clip-res-1080p'));
-  expect((onChange.mock.calls[0][0] as ClipAskState).credits).toBe(102);
+  expect((onChange.mock.calls[0][0] as ClipAskState).credits).toBe(71);
 });
 
 test('two photos are references: only 8 s can be picked, and the card says what they are', () => {
@@ -147,12 +147,12 @@ test('a speaking clip (GG 2026-10-26): Omni at 8 s with its two resolutions, who
   expect(screen.getByTestId('clip-card').getAttribute('data-speech')).toBe('ka');
   expect(screen.getByTestId('clip-spec').textContent).toBe('8 წმ · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
   expect(screen.getByTestId('clip-speech').textContent).toBe('პერსონაჟები ქართულად თვითონ ილაპარაკებენ, თითოეული თავისი ხმით (Gemini Omni Flash).');
-  expect(screen.getByTestId('clip-res-720p').textContent).toContain('✦ 55');
-  expect(screen.getByTestId('clip-res-1080p').textContent).toContain('✦ 82');
-  expect(screen.getByTestId('clip-confirm').textContent).toContain('✦ 82');
+  expect(screen.getByTestId('clip-res-720p').textContent).toContain('✦ 38');
+  expect(screen.getByTestId('clip-res-1080p').textContent).toContain('✦ 57');
+  expect(screen.getByTestId('clip-confirm').textContent).toContain('✦ 57');
   expect(screen.queryByTestId('clip-hold')).toBeNull();
   fireEvent.click(screen.getByTestId('clip-res-720p'));
-  expect(onChange.mock.calls[0][0]).toMatchObject({ resolution: '720p', credits: 55, speech: 'ka' });
+  expect(onChange.mock.calls[0][0]).toMatchObject({ resolution: '720p', credits: 38, speech: 'ka' });
 });
 
 test('words longer than the clip, or two photos for a speaking clip: the reason is said and Create waits', () => {
