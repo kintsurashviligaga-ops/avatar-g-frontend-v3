@@ -32,6 +32,7 @@ export default defineConfig({
         NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co',
         NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key-for-e2e',
         SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-key-for-e2e',
+        SUPABASE_UNAVAILABLE_PAGE: 'off',
         NEXT_TELEMETRY_DISABLED: '1',
       },
     },
