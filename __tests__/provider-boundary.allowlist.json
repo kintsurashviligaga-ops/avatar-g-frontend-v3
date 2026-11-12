@@ -39,7 +39,6 @@
     ],
     "liveavatar": [],
     "ltx": [
-      "lib/chat/ServiceManager.ts",
       "lib/security/csp.js",
       "lib/system/provider-health.ts",
       "lib/video/videoProviderCascade.ts"
