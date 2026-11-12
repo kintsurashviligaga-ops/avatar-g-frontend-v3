@@ -258,7 +258,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       transport: 'gemini_api',
       enabled: true,
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Live default, verified in Georgian with Aoede / Charon. ${NEW_KEY} API key only: no server relay for Vertex Live (A3).`,
+      notes: `Former Live default (verified in Georgian with Aoede / Charon), kept ONLY as the GEMINI_LIVE_MODEL rollback: its Vertex target gemini-live-2.5-flash-native-audio retires 2026-12-13 (v5.1 M-2). The default is gemini-3.8-live.`,
     },
     ...(
       [

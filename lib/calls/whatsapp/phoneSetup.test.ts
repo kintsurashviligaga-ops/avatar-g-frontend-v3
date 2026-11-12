@@ -34,7 +34,7 @@ describe('WhatsApp call Live setup (server-built, locked into the token)', () =>
   });
 
   it('an unlisted model falls back to the default (allowlist stays in charge)', () => {
-    expect(buildPhoneLiveSetup({ ...base, model: 'gemini-1.5-pro' }).setup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+    expect(buildPhoneLiveSetup({ ...base, model: 'gemini-1.5-pro' }).setup.model).toBe('models/gemini-3.8-live');
   });
 });
 

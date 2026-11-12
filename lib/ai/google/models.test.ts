@@ -3,6 +3,7 @@ import { DEFAULT_LIVE_MODEL as GEMINI_LIVE_WIRE_DEFAULT } from '@/lib/voice/gemi
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_LIVE_MODEL,
+  LEGACY_LIVE_MODEL,
   DEFAULT_STT_MODEL,
   DEFAULT_TTS_MODEL,
   LIVE_MODELS,
@@ -75,7 +76,7 @@ describe('catalogue self-check', () => {
   });
 
   it('DEFAULT_LIVE_MODEL is the same model lib/voice/geminiLive.ts puts on the wire today', () => {
-    expect(DEFAULT_LIVE_MODEL).toBe('gemini-2.5-flash-native-audio-latest');
+    expect(DEFAULT_LIVE_MODEL).toBe('gemini-3.8-live');
     expect(GEMINI_LIVE_WIRE_DEFAULT.replace(/^models\//, '')).toBe(DEFAULT_LIVE_MODEL);
   });
 
@@ -369,7 +370,8 @@ describe('resolveLiveModel / defaultLiveModel', () => {
   it('accepts a models/ prefix and any case, returning the bare canonical id', () => {
     expect(resolveLiveModel('models/gemini-3.8-live')).toBe('gemini-3.8-live');
     expect(resolveLiveModel(' GEMINI-3.8-LIVE ')).toBe('gemini-3.8-live');
-    expect(resolveLiveModel('models/gemini-2.5-flash-native-audio-latest')).toBe(DEFAULT_LIVE_MODEL);
+    expect(resolveLiveModel('models/gemini-2.5-flash-native-audio-latest')).toBe('gemini-2.5-flash-native-audio-latest');
+    expect(resolveLiveModel('models/gemini-2.5-flash-native-audio-latest')).toBe(LEGACY_LIVE_MODEL);
   });
 
   it.each([
@@ -395,7 +397,13 @@ describe('resolveLiveModel / defaultLiveModel', () => {
     // an explicit allowlisted request still wins over the env default
     expect(resolveLiveModel('gemini-3.8-live')).toBe('gemini-3.8-live');
     // the exported constant is the code default and does not move with env
-    expect(DEFAULT_LIVE_MODEL).toBe('gemini-2.5-flash-native-audio-latest');
+    expect(DEFAULT_LIVE_MODEL).toBe('gemini-3.8-live');
+  });
+
+  it('GEMINI_LIVE_MODEL=legacy 2.5 rolls the default back (works until Vertex retires it 2026-12-13)', () => {
+    process.env.GEMINI_LIVE_MODEL = LEGACY_LIVE_MODEL;
+    expect(defaultLiveModel()).toBe('gemini-2.5-flash-native-audio-latest');
+    expect(resolveLiveModel('gemini-2.5-pro')).toBe('gemini-2.5-flash-native-audio-latest');
   });
 
   it.each(['gemini-2.5-pro', 'gemini-2.0-flash-live-001', 'bad model', ''])(
