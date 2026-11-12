@@ -111,7 +111,7 @@ test('a provider that never answers gets a "no answer" verdict at the deadline i
   const by = Object.fromEntries(report.providers.map((p) => [p.provider, p]));
   expect(by.openai).toMatchObject({ status: 'unhealthy', detail: 'No answer within 40 ms' });
   expect(by.gemini).toMatchObject({ status: 'healthy' }); // the hung vendor did not take the others down with it
-  expect(report.providers.map((p) => p.provider)).toEqual(['openai', 'udio', 'worldlabs', 'heygen', 'ltx', 'anthropic', 'gemini']);
+  expect(report.providers.map((p) => p.provider)).toEqual(['openai', 'udio', 'ltx', 'anthropic', 'gemini']);
 });
 
 test('without ?live nothing is fetched at all', async () => {

@@ -6,7 +6,7 @@
 import { PRICE_TABLES, PRICING_VERSION, pricingVersionOf } from './pricingVersion';
 
 test('today\'s price book version (update this line, deliberately, when a price changes)', () => {
-  expect(PRICING_VERSION).toBe('p1-dae165a0ef4a'); // v5.1 M-3: Omni 1.2 prices (GG card 2026-11-12 14:22Z)
+  expect(PRICING_VERSION).toBe('p1-03aabe1a356f'); // v5.1 M-3 Omni 1.2 + deck images (#297)
 });
 
 test('any changed number changes the version; key order does not', () => {

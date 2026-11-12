@@ -70,11 +70,6 @@ const SPECS: IntegrationSpec[] = [
     groups: [['RUNPOD_API_TOKEN']],
   },
   {
-    id: 'heygen', label: 'HeyGen', failOpen: false,
-    effect: 'AI Avatar (talking-photo) produce pipeline',
-    groups: [['HEYGEN_API_KEY']],
-  },
-  {
     id: 'replicate', label: 'Replicate', failOpen: false,
     effect: 'Image produce worker',
     groups: [['REPLICATE_API_TOKEN']],

@@ -68,7 +68,7 @@ export const PRICE_BOOK = {
   /** Dubbing, per started minute of source. Runs only once the owner approves this number (OWNER_APPROVED_PRICING). */
   dubbingPerMinute: 6,
   /** A deck of up to 12 illustrated slides. Runs only once the owner approves this number (OWNER_APPROVED_PRICING). */
-  presentationDeck: 34,
+  presentationDeck: 54,
 } as const;
 
 /** Scenes in a film of `seconds` when the caller does not know its grid: one per started 8 s (Veo's longest clip). */

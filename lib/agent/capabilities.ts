@@ -88,9 +88,9 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'video.motion': c({
     id: 'video.motion', serviceId: 'video.motion', does: 'A photo moves the way the user describes',
-    routes: ['/api/motion-control', '/api/motion-control/status'], engine: 'Kling image-to-video on Replicate: refused (no Google engine)',
-    pricing: { key: 'motion', charge: 'charged' }, approval: 'panel-button', timeoutSec: 300, retry: 'refund-on-miss',
-    idempotency: 'one prediction per press', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
+    routes: [], engine: 'none: Kling on Replicate was removed (v5.1 M-14, GG 2026-11-12)',
+    pricing: { key: 'motion', charge: 'free' }, approval: 'none', timeoutSec: 0, retry: 'none',
+    idempotency: 'none', cancel: 'none', qc: null, artifact: 'none', library: 'none', label: 'MISSING',
   }),
   'video.vfx': c({
     id: 'video.vfx', serviceId: 'video.vfx', does: 'One-tap VFX effects for a photo',
@@ -145,9 +145,9 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'avatar.talking': c({
     id: 'avatar.talking', serviceId: 'avatar.talking', does: 'A photo speaks the user\'s script or voice',
-    routes: ['/api/heygen/presenter', '/api/video/lipsync'],
-    engine: 'HeyGen / SadTalker: refused (no Google engine)',
-    pricing: { key: 'avatar', charge: 'charged' }, approval: 'agent-card', timeoutSec: 300, retry: 'refund-on-miss',
+    routes: ['/api/avatar/veo'],
+    engine: 'Veo avatar (one 8 s clip); HeyGen / SadTalker were removed (v5.1 M-14, GG 2026-11-12)',
+    pricing: { key: 'avatar', charge: 'charged' }, approval: 'agent-card', timeoutSec: 60, retry: 'refund-on-miss',
     idempotency: 'one job per confirm', cancel: 'client-abort', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'music.generate': c({
