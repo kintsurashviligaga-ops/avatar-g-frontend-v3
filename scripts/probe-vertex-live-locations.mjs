@@ -69,7 +69,9 @@ async function openSocket(url, token) {
     return new WS(url, { headers: { Authorization: `Bearer ${token}` }, handshakeTimeout: 10_000 });
   } catch {
     // Node's built-in WebSocket (undici) takes a non-standard `headers` option.
-    return new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
+    const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
+    ws.binaryType = 'arraybuffer'; // Vertex sends JSON as binary frames; the default here is a Blob
+    return ws;
   }
 }
 
@@ -94,9 +96,14 @@ function probe(url, frame, token, project) {
     }
     const on = (ev, fn) => (ws.on ? ws.on(ev, fn) : ws.addEventListener(ev, fn));
     on('open', () => ws.send(JSON.stringify(frame)));
-    on('message', (m) => {
+    on('message', async (m) => {
       const raw = m?.data ?? m;
-      const text = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+      const text =
+        typeof raw === 'string'
+          ? raw
+          : typeof raw?.arrayBuffer === 'function'
+            ? Buffer.from(await raw.arrayBuffer()).toString('utf8')
+            : Buffer.from(raw).toString('utf8');
       if (text.includes('setupComplete')) finish({ ok: true, why: 'setupComplete' });
       else finish({ ok: false, why: `unexpected first frame: ${scrub(text)}` });
     });
