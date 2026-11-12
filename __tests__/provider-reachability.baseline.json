@@ -39,7 +39,6 @@
       "nanobananaapi"
     ],
     "app/api/chat/orchestrate/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -48,7 +47,6 @@
       "udio"
     ],
     "app/api/chat/stream/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -79,7 +77,6 @@
       "higgsfield"
     ],
     "app/api/film/scene/redo/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -87,7 +84,6 @@
       "runway"
     ],
     "app/api/film/scene/redo/stitch/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -95,7 +91,6 @@
       "runway"
     ],
     "app/api/film/sweep/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -152,7 +147,6 @@
       "nanobananaapi"
     ],
     "app/api/pipeline/remix/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -187,7 +181,6 @@
       "replicate"
     ],
     "app/api/video/assemble/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",
@@ -195,7 +188,6 @@
       "runway"
     ],
     "app/api/video/remix/route.ts": [
-      "heygen",
       "kling",
       "ltx",
       "luma",

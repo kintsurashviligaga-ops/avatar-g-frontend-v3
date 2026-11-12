@@ -63,11 +63,11 @@ describe('checkPipelineHealth — with no env at all', () => {
     expect(h.overall).toBe('critical');
     expect(Number.isNaN(Date.parse(h.checkedAt))).toBe(false);
     expect(h.services.map((s) => s.service)).toEqual([
-      'სურათი (Anchor)', 'ვიდეო (Clips)', 'ლიპ-სინქი', 'ხმა (TTS)', 'მუსიკა', 'მუსიკა (ფილმი)', 'სურათი (Base)', 'სუბტიტრები',
+      'სურათი (Anchor)', 'ვიდეო (Clips)', 'ხმა (TTS)', 'მუსიკა', 'მუსიკა (ფილმი)', 'სურათი (Base)', 'სუბტიტრები',
     ]);
     // Only the bundled ffmpeg binary works without a single key.
     expect(h.services.filter((s) => s.available).map((s) => s.service)).toEqual(['სუბტიტრები']);
-    expect(h.warnings.some((w) => /7 service\(s\) unavailable/.test(w))).toBe(true);
+    expect(h.warnings.some((w) => /6 service\(s\) unavailable/.test(w))).toBe(true);
     // The card names what is missing (env NAMES), it does not go blank.
     expect(row(h, 'ვიდეო (Clips)').note).toMatch(/GCP_PROJECT_ID/);
     expect(row(h, 'ვიდეო (Clips)').note).toMatch(/^no Veo route — Vertex AI is not configured for Veo: GCP_PROJECT_ID/);
@@ -77,12 +77,9 @@ describe('checkPipelineHealth — with no env at all', () => {
   });
 
   it('stays fail-open when something inside throws', async () => {
-    // An env read that throws (the first thing the snapshot does) must come back as the minimal snapshot, not a 500.
+    // An env that throws on every read (the snapshot reads env first) must come back as the minimal snapshot, not a 500.
     process.env = new Proxy({} as NodeJS.ProcessEnv, {
-      get: (_t, key) => {
-        if (key === 'REPLICATE_API_TOKEN') throw new Error('env unreadable');
-        return undefined;
-      },
+      get: () => { throw new Error('env unreadable'); },
     });
     const h = await checkPipelineHealth();
     expect(h).toEqual(expect.objectContaining({ overall: 'critical', services: [] }));
@@ -189,7 +186,7 @@ describe('no row repeats the stale provider claims', () => {
     expect(row(h, 'მუსიკა (ფილმი)').provider).toBe('Lyria 3 (Vertex)');
     expect(row(h, 'ხმა (TTS)').provider).toBe('Google Cloud TTS (Vertex)');
     expect(row(h, 'ხმა (TTS)').note).not.toMatch(/ElevenLabs/);
-    expect(row(h, 'ლიპ-სინქი').provider).toBe('sync/lipsync-2 (Replicate)');
+    expect(h.services.some((s) => s.service === 'ლიპ-სინქი')).toBe(false); // lip-sync removed (M-14)
     expect(h.services.some((s) => s.service === 'Auto-Anchor')).toBe(false);
     expect(h.warnings.join(' ')).not.toMatch(/AUTO_ANCHOR_FRAME|LTX instead of Kling/);
     expect(h.overall).toBe('healthy');
@@ -259,7 +256,6 @@ describe('overall follows the CRITICAL rows (Base, Clips, TTS, Music)', () => {
     const h = await checkPipelineHealth();
     expect(h.overall).toBe('healthy');
     expect(row(h, 'ხმა (TTS)').available).toBe(true); // Cloud TTS on the Vertex identity
-    expect(row(h, 'ლიპ-სინქი').available).toBe(false); // not critical
   });
 
   it('degraded with one critical row down, critical with two', async () => {
@@ -284,7 +280,6 @@ describe('never a secret value', () => {
     for (const value of Object.values(SECRETS)) expect(out).not.toContain(value);
     // Presence is still reported — as booleans/marks, not values. (The TTS row no longer lists the ElevenLabs voice-id
     // overrides: Cloud TTS picks its own voice and never reads them, PR 6b.)
-    expect(row(h, 'ლიპ-სინქი').note).toMatch(/sync\/lipsync-2✅/);
     expect(row(h, 'ხმა (TTS)').note).not.toMatch(/female=|male=/);
   });
 });

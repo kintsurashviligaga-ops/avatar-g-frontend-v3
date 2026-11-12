@@ -22,13 +22,11 @@ const REQUIRED = [
 
 const MEDIA_AGENTS = [
   { key: 'ELEVENLABS_API_KEY',  url: 'https://elevenlabs.io/app/settings/api-keys',     label: 'ElevenLabs (voice / TTS)' },
-  { key: 'HEYGEN_API_KEY',      url: 'https://beta.heygen.com/settings?nav=API',        label: 'HeyGen (avatar)' },
   { key: 'REPLICATE_API_TOKEN', url: 'https://replicate.com/account/api-tokens',        label: 'Replicate (image / video / music providers)' },
   { key: 'UDIO_API_KEY',        url: 'https://www.udio.com/api-tokens',                 label: 'Udio (music)' },
   { key: 'LUMA_API_KEY',        url: 'https://lumalabs.ai/dream-machine/api',           label: 'Luma Dream Machine (video)' },
   { key: 'RUNWAY_API_KEY',      url: 'https://dashboard.runwayml.com/developer',        label: 'Runway Gen-3 (video)' },
   { key: 'PIKA_API_KEY',        url: 'https://pika.art/api-management',                 label: 'Pika Labs (animation)' },
-  { key: 'NANOBANANA_API_KEY',  url: 'https://nanobanana.com/developer',                label: 'Nanobanana (face enhance)' },
   { key: 'OPENAI_API_KEY',      url: 'https://platform.openai.com/api-keys',            label: 'OpenAI (fallback / embeddings)' },
 ];
 
