@@ -34,11 +34,10 @@ export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 // PHASE 24 — 'runway' is an async provider tier (Runway Gen-3 Alpha primary i2v). It surfaces on the
 // wire as provider:'replicate' (DeterministicProvider has no 'runway'); the real engine lives in
 // metadata.videoProvider — same pattern as 'video-cascade'.
-type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade' | 'runway' | 'gemini-veo';
+type AsyncProvider = 'replicate' | 'ltx' | 'video-cascade' | 'runway' | 'gemini-veo';
 type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
 
 const LTX_BASE_URL = 'https://api.ltx.video';
-const HEYGEN_BASE_URL = 'https://api.heygen.com';
 const TASK_REF_VERSION = 1;
 
 // Veo refusals already written to the log, per warm instance. Bounded: past the cap it starts over, which at worst
@@ -253,10 +252,6 @@ export class ServiceManager {
 
     if (decoded.provider === 'video-cascade') {
       return this.pollVideoCascadeTask(decoded, taskRefOrPredictionId);
-    }
-
-    if (decoded.provider === 'heygen') {
-      return this.pollHeygenTask(decoded, taskRefOrPredictionId);
     }
 
     if (decoded.provider === 'runway') {
@@ -947,93 +942,6 @@ export class ServiceManager {
     };
   }
 
-  private async pollHeygenTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    const apiKey = process.env.HEYGEN_API_KEY?.trim();
-    if (!apiKey) {
-      throw new Error('HEYGEN_API_KEY is not configured');
-    }
-
-    const res = await fetch(`${HEYGEN_BASE_URL}/v1/video_status.get?video_id=${encodeURIComponent(decoded.providerTaskId)}`, {
-      headers: { 'X-Api-Key': apiKey },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`HeyGen status check failed (${res.status}): ${err || 'unknown error'}`);
-    }
-
-    const payload = await res.json().catch(() => ({}));
-    const data = payload && typeof payload === 'object' && 'data' in payload
-      ? (payload.data as Record<string, unknown>)
-      : (payload as Record<string, unknown>);
-
-    const status = String(data.status || '').toLowerCase();
-    const outputUrl = typeof data.video_url === 'string' ? data.video_url : this.extractUrl(payload);
-
-    if (status === 'completed' && outputUrl) {
-      return {
-        success: true,
-        provider: 'heygen',
-        operation: decoded.operation,
-        responseType: 'video',
-        message: 'Avatar generation completed successfully.',
-        assetUrl: outputUrl,
-        assetType: 'video',
-        predictionId: taskRef,
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'heygen',
-          operation: decoded.operation,
-          outputType: 'video',
-          sessionId: decoded.sessionId,
-          taskRef,
-          providerTaskId: decoded.providerTaskId,
-          promptHash: decoded.promptHash,
-        },
-      };
-    }
-
-    if (status === 'failed') {
-      const errorMessage = typeof data.error === 'string' ? data.error : 'HeyGen generation failed.';
-      return {
-        success: false,
-        provider: 'heygen',
-        operation: decoded.operation,
-        responseType: 'video',
-        message: errorMessage,
-        predictionId: taskRef,
-        predictionStatus: 'failed',
-        metadata: {
-          provider: 'heygen',
-          operation: decoded.operation,
-          sessionId: decoded.sessionId,
-          taskRef,
-          providerTaskId: decoded.providerTaskId,
-          promptHash: decoded.promptHash,
-        },
-      };
-    }
-
-    return {
-      success: true,
-      provider: 'heygen',
-      operation: decoded.operation,
-      responseType: 'video',
-      message: 'Still processing…',
-      predictionId: taskRef,
-      predictionStatus: 'processing',
-      metadata: {
-        provider: 'heygen',
-        operation: decoded.operation,
-        sessionId: decoded.sessionId,
-        taskRef,
-        providerTaskId: decoded.providerTaskId,
-        promptHash: decoded.promptHash,
-      },
-    };
-  }
-
   private async pollLtxTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
     // PHASE 45 §1 — accept the key under any provisioned alias.
     const apiKey = resolveLtxApiKey();
@@ -1388,7 +1296,7 @@ export class ServiceManager {
 
       if (
         parsed.v !== TASK_REF_VERSION
-        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway' && parsed.provider !== 'gemini-veo')
+        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway' && parsed.provider !== 'gemini-veo')
         || typeof parsed.providerTaskId !== 'string'
         || typeof parsed.sessionId !== 'string'
         || typeof parsed.serviceContext !== 'string'

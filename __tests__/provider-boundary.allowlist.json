@@ -26,7 +26,6 @@
       "lib/system/provider-health.ts"
     ],
     "heygen": [
-      "lib/chat/ServiceManager.ts",
       "lib/security/csp.js"
     ],
     "runway": [
