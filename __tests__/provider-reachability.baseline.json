@@ -27,7 +27,6 @@
     ],
     "app/api/app/health/route.ts": [
       "anthropic",
-      "ltx",
       "openai",
       "udio"
     ],
@@ -39,17 +38,11 @@
       "nanobananaapi"
     ],
     "app/api/chat/orchestrate/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway",
       "udio"
     ],
     "app/api/chat/stream/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway",
       "udio"
@@ -77,23 +70,14 @@
       "higgsfield"
     ],
     "app/api/film/scene/redo/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
     "app/api/film/scene/redo/stitch/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
     "app/api/film/sweep/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway",
       "udio"
@@ -147,9 +131,6 @@
       "nanobananaapi"
     ],
     "app/api/pipeline/remix/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
@@ -181,16 +162,10 @@
       "replicate"
     ],
     "app/api/video/assemble/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
     "app/api/video/remix/route.ts": [
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],

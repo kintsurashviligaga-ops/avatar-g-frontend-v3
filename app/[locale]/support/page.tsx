@@ -70,7 +70,7 @@ const copy: Record<Lang, {
     },
     status: {
       title: 'სისტემის სტატუსი',
-      body: 'რეალურ დროში სტატუსი 12 პროვაიდერისთვის (HeyGen, Replicate, LTX, Udio, ElevenLabs, Anthropic, Gemini, Stripe, Supabase, Sentry, Vercel, Upstash) ხელმისაწვდომია მთავარ ჩათში ზედა მარჯვენა ღილაკზე დაჭერით.',
+      body: 'რეალურ დროში სტატუსი ყველა სერვისისთვის (ჩატი, სურათი, ვიდეო, მუსიკა, ხმა, ავატარი) ხელმისაწვდომია მთავარ ჩათში ზედა მარჯვენა ღილაკზე დაჭერით.',
       link: 'სტატუსის ნახვა →',
     },
     issues: {
@@ -130,7 +130,7 @@ const copy: Record<Lang, {
     },
     status: {
       title: 'System Status',
-      body: 'Live status for all 12 providers (HeyGen, Replicate, LTX, Udio, ElevenLabs, Anthropic, Gemini, Stripe, Supabase, Sentry, Vercel, Upstash) is available from the chat top-right button.',
+      body: 'Live status for every service (chat, image, video, music, voice, avatar) is available from the chat top-right button.',
       link: 'View status →',
     },
     issues: {
@@ -190,7 +190,7 @@ const copy: Record<Lang, {
     },
     status: {
       title: 'Состояние системы',
-      body: 'Статус в реальном времени для 12 провайдеров (HeyGen, Replicate, LTX, Udio, ElevenLabs, Anthropic, Gemini, Stripe, Supabase, Sentry, Vercel, Upstash) доступен по кнопке в правом верхнем углу чата.',
+      body: 'Статус в реальном времени для всех сервисов (чат, изображения, видео, музыка, голос, аватар) доступен по кнопке в правом верхнем углу чата.',
       link: 'Посмотреть статус →',
     },
     issues: {

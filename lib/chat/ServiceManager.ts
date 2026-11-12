@@ -9,7 +9,6 @@ import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
-import { pollVideoProvider } from '@/lib/video/videoProviderCascade';
 import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -236,10 +235,6 @@ export class ServiceManager {
       return this.pollReplicateTask(decoded, taskRefOrPredictionId);
     }
 
-    if (decoded.provider === 'video-cascade') {
-      return this.pollVideoCascadeTask(decoded, taskRefOrPredictionId);
-    }
-
     if (decoded.provider === 'runway') {
       return this.pollRunwayTaskRef(decoded, taskRefOrPredictionId);
     }
@@ -248,18 +243,19 @@ export class ServiceManager {
       return this.pollVeoTaskRef(decoded, taskRefOrPredictionId);
     }
 
-    // An LTX task ref (decoded.provider === 'ltx'). LTX is retired (v5.1 M-14): /api/ltx-video refuses every call, so
-    // no new one exists and an old one is answered honestly instead of calling LTX.
+    // An LTX or 'video-cascade' (Kling / Luma / LTX / Replicate-Kling) task ref. Both are retired (v5.1 M-14): no
+    // route creates one any more, so an old one is answered honestly instead of calling the vendor.
+    const retiredProvider: DeterministicProvider = decoded.provider === 'ltx' ? 'ltx' : 'replicate';
     return {
       success: false,
-      provider: 'ltx',
+      provider: retiredProvider,
       operation: decoded.operation,
       responseType: decoded.responseType,
       message: 'This render used an engine that is no longer available.',
       predictionId: taskRefOrPredictionId,
       predictionStatus: 'failed',
       metadata: {
-        provider: 'ltx',
+        provider: retiredProvider,
         operation: decoded.operation,
         sessionId: decoded.sessionId,
         taskRef: taskRefOrPredictionId,
@@ -419,35 +415,6 @@ export class ServiceManager {
       if (w > 0 && h > 0) return w > h ? '16:9' : w < h ? '9:16' : '1:1';
     }
     return /vert|portrait|9:16|story|tall/i.test(a) ? '9:16' : '16:9';
-  }
-
-  /** Resolve a 'video-cascade' task-ref by dispatching to the winning provider's poll (encoded as "name::id"). */
-  private async pollVideoCascadeTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    const sep = decoded.providerTaskId.indexOf('::');
-    const providerName = sep > 0 ? decoded.providerTaskId.slice(0, sep) : 'replicate-kling';
-    const taskId = sep > 0 ? decoded.providerTaskId.slice(sep + 2) : decoded.providerTaskId;
-    const r = await pollVideoProvider(providerName, taskId);
-    const baseMeta = {
-      provider: 'replicate' as const, videoProvider: providerName, operation: decoded.operation,
-      sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
-    };
-    if (r.status === 'succeeded' && r.url) {
-      return {
-        success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: 'Generation completed successfully.', assetUrl: r.url, assetType: decoded.responseType,
-        predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
-      };
-    }
-    if (r.status === 'failed') {
-      return {
-        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: r.error || 'Video generation failed.', predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
-      };
-    }
-    return {
-      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-      message: 'Rendering…', predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
-    };
   }
 
   /** Resolve a 'runway' task-ref via Runway's GET /v1/tasks/{id}. Fail-open: unknown status → keep polling.

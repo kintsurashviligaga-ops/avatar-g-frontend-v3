@@ -56,11 +56,6 @@ jest.mock('../ai/runway', () => ({
   createRunwayI2V: jest.fn(),
   pollRunwayTask: jest.fn(),
 }));
-jest.mock('../video/videoProviderCascade', () => ({
-  submitVideoWithFallback: jest.fn(),
-  pollVideoProvider: jest.fn(),
-  shouldUseNativeCascade: jest.fn(() => true),
-}));
 
 import { ServiceManager, type ServiceManagerRequest, type ServiceManagerResponse } from './ServiceManager';
 import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport } from '../veo/engine';
@@ -69,7 +64,6 @@ import { createSignedAssetUrl, uploadBufferAndSign } from '../orchestrator/stora
 import { guardedCall } from '../services/billing/guardedCall';
 import { createPrediction } from '../replicate/client';
 import { createRunwayI2V } from '../ai/runway';
-import { submitVideoWithFallback } from '../video/videoProviderCascade';
 import { costPerSecondUsd, resolutionFor, resolveModel } from '../veo/capabilities';
 import type { VeoTransport, VeoVideo } from '../veo/types';
 
@@ -180,7 +174,6 @@ afterEach(() => {
 function expectNoOtherEngine(): void {
   expect(createPrediction).not.toHaveBeenCalled();
   expect(createRunwayI2V).not.toHaveBeenCalled();
-  expect(submitVideoWithFallback).not.toHaveBeenCalled();
   expect(fetchSpy).not.toHaveBeenCalled();
 }
 

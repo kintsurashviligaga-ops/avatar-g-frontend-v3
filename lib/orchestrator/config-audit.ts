@@ -75,11 +75,6 @@ const SPECS: IntegrationSpec[] = [
     groups: [['REPLICATE_API_TOKEN']],
   },
   {
-    id: 'ltx', label: 'LTX Video', failOpen: false,
-    effect: 'Cinematic video clip generation (Film pipeline)',
-    groups: [['LTX_API_KEY', 'LTX2_API_KEY', 'LTX_VIDEO_API_KEY']],
-  },
-  {
     id: 'udio', label: 'Udio', failOpen: false,
     effect: 'Music produce worker',
     groups: [['UDIO_API_KEY']],
