@@ -72,7 +72,7 @@ test('a grounded answer comes back in the Tavily shape, and the call is booked w
   // No AI Studio key travels to the model call (v3.1).
   expect(input.apiKey).toBeUndefined();
   expect(JSON.stringify(input)).not.toContain('test-key');
-  expect(input.models).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
+  expect(input.models).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash']);
   expect(input.messages).toEqual([{ role: 'user', content: 'capital of Georgia' }]);
   expect(input.config).toMatchObject({
     system: GROUNDED_SEARCH_SYSTEM,
