@@ -68,7 +68,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['text', 'code', 'reasoning', 'transcribe'],
       focusModes: ['code', 'search', 'files', 'stt'],
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Chat Fast chain, second. ${NEW_KEY}`,
+      notes: 'Vertex retires it on 2026-11-19 (model-versions page). Removed from the chat chain, the mic fallback and Live quick steps on 2026-11-12.',
     }),
     text('gemini-3.5-flash', 'Gemini 3.5 Flash', {
       enabled: true,
