@@ -13,14 +13,16 @@ function getPreferredLocale(request: NextRequest) {
     : DEFAULT_LOCALE;
 }
 
-const UNAVAILABLE_COPY: Record<string, { title: string; body: string; retry: string }> = {
-  ka: { title: 'სერვისი დროებით მიუწვდომელია', body: 'ტექნიკური სამუშაოები მიმდინარეობს. სცადეთ რამდენიმე წუთში.', retry: 'თავიდან ცდა' },
+type UnavailableCopy = { title: string; body: string; retry: string };
+const UNAVAILABLE_KA: UnavailableCopy = { title: 'სერვისი დროებით მიუწვდომელია', body: 'ტექნიკური სამუშაოები მიმდინარეობს. სცადეთ რამდენიმე წუთში.', retry: 'თავიდან ცდა' };
+const UNAVAILABLE_COPY: Record<string, UnavailableCopy> = {
+  ka: UNAVAILABLE_KA,
   en: { title: 'Temporarily unavailable', body: 'We are fixing a technical problem. Please try again in a few minutes.', retry: 'Try again' },
   ru: { title: 'Сервис временно недоступен', body: 'Идут технические работы. Попробуйте через несколько минут.', retry: 'Повторить' },
 };
 
 function serviceUnavailablePage(locale: string): NextResponse {
-  const c = UNAVAILABLE_COPY[locale] ?? UNAVAILABLE_COPY.ka;
+  const c = UNAVAILABLE_COPY[locale] ?? UNAVAILABLE_KA;
   const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyAvatar.ge</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#f5f5f5;font-family:system-ui,-apple-system,sans-serif;padding:16px;box-sizing:border-box}main{max-width:420px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{color:#a3a3a3;line-height:1.5;margin:0 0 24px}a{display:inline-block;padding:10px 20px;border-radius:10px;background:#f5f5f5;color:#0a0a0a;text-decoration:none;font-weight:600}</style></head><body><main><h1>${c.title}</h1><p>${c.body}</p><a href="">${c.retry}</a></main></body></html>`;
   return new NextResponse(html, {
     status: 503,
