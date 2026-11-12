@@ -12,27 +12,27 @@ import {
 const VIDEO = { url: 'blob:https://myavatar.ge/1', mimeType: 'video/mp4', name: 'clip.mp4' };
 const base = { op: 'edit' as const, prompt: '  გააღამე  ', video: VIDEO, inputSec: 5.04 };
 
-test('an edit: the words as typed, priced at its own length rounded up to the grid (5 s → 6 s, ✦48 at 720p)', () => {
+test('an edit: the words as typed, priced at its own length rounded up to the grid (5 s → 6 s, ✦35 at 720p)', () => {
   const o = editOrder(base);
-  expect(o).toMatchObject({ op: 'edit', prompt: '  გააღამე  ', inputSec: 5.04, seconds: 8, resolution: '720p', phase: 'ask', credits: 48 });
-  expect(changeEdit(o, { resolution: '1080p' }).credits).toBe(68);
+  expect(o).toMatchObject({ op: 'edit', prompt: '  გააღამე  ', inputSec: 5.04, seconds: 8, resolution: '720p', phase: 'ask', credits: 35 });
+  expect(changeEdit(o, { resolution: '1080p' }).credits).toBe(48);
   // An edit's length is the video's: the extend pick does not move its price.
-  expect(changeEdit(o, { seconds: 4 }).credits).toBe(48);
+  expect(changeEdit(o, { seconds: 4 }).credits).toBe(35);
 });
 
 test('an extend: the new seconds only, 8 by default; GG\'s card at both resolutions', () => {
   const o = editOrder({ ...base, op: 'extend' });
-  expect(o).toMatchObject({ op: 'extend', seconds: 8, credits: 61 });
-  expect([4, 6, 8, 10].map((s) => changeEdit(o, { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([34, 48, 61, 74]);
-  expect([4, 6, 8, 10].map((s) => changeEdit(changeEdit(o, { resolution: '1080p' }), { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([48, 68, 88, 108]);
-  expect(changeEdit(o, { op: 'edit' })).toMatchObject({ op: 'edit', credits: 48, phase: 'ask' });
+  expect(o).toMatchObject({ op: 'extend', seconds: 8, credits: 44 });
+  expect([4, 6, 8, 10].map((s) => changeEdit(o, { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([25, 35, 44, 53]);
+  expect([4, 6, 8, 10].map((s) => changeEdit(changeEdit(o, { resolution: '1080p' }), { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([35, 48, 62, 76]);
+  expect(changeEdit(o, { op: 'edit' })).toMatchObject({ op: 'edit', credits: 35, phase: 'ask' });
 });
 
 test('a length the browser could not read: the edit is priced at 4 s and the server\'s measured length corrects it', () => {
   const o = editOrder({ ...base, inputSec: null });
-  expect(o).toMatchObject({ inputSec: null, credits: 34 });
+  expect(o).toMatchObject({ inputSec: null, credits: 25 });
   expect(editOpAllowed('edit', null)).toBe(true);
-  expect(changeEdit(o, { inputSec: 9.2 })).toMatchObject({ inputSec: 9.2, credits: 74 });
+  expect(changeEdit(o, { inputSec: 9.2 })).toMatchObject({ inputSec: 9.2, credits: 53 });
   expect(editPriceNote(o, 'en')).toMatch(/server measures/);
 });
 
@@ -46,7 +46,7 @@ test('which ops a video allows: over 10 s neither; under 3 s only extend', () =>
 test('the request: the stored path, the op, the new seconds, the resolution and the price shown', () => {
   const o = changeEdit(editOrder({ ...base, op: 'extend' }), { seconds: 10 });
   expect(editRequestBody(o, 'omni-uploads/u-1/a.mp4')).toEqual({
-    op: 'extend', prompt: '  გააღამე  ', video: 'omni-uploads/u-1/a.mp4', seconds: 10, resolution: '720p', expectedCredits: 74,
+    op: 'extend', prompt: '  გააღამე  ', video: 'omni-uploads/u-1/a.mp4', seconds: 10, resolution: '720p', expectedCredits: 53,
   });
 });
 
@@ -64,7 +64,7 @@ test('the spec line and the price note, in the UI language', () => {
 test('a clip made in this chat: the request names it, never a stored path', () => {
   const o = editOrder({ ...base, op: 'extend', inputSec: 4, resolution: '1080p', video: { ...VIDEO, from: 'v1_X::9:16::1::o4~gj1.a.b' } });
   expect(editRequestBody(o, null)).toEqual({
-    op: 'extend', prompt: '  გააღამე  ', from: 'v1_X::9:16::1::o4~gj1.a.b', seconds: 8, resolution: '1080p', expectedCredits: 88,
+    op: 'extend', prompt: '  გააღამე  ', from: 'v1_X::9:16::1::o4~gj1.a.b', seconds: 8, resolution: '1080p', expectedCredits: 62,
   });
 });
 

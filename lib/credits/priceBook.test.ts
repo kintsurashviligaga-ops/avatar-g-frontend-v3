@@ -73,33 +73,29 @@ describe('every literal is the rule price of its cost', () => {
     expect(musicCredits(FULL_SONG_SEC)).toBe(PRICE_BOOK.music.fullSong);
   });
 
-  it('an Omni Flash clip at 720p and at 1080p, 4 · 6 · 8 · 10 s, is the rule (cards 2026-10-25 16:51Z and 2026-10-26 10:55Z)', () => {
+  it('an Omni Flash clip at 720p and at 1080p, 4 · 6 · 8 · 10 s, is the rule (Omni 1.2: GG card 2026-11-12 14:22Z)', () => {
     for (const res of ['720p', '1080p'] as const) {
       for (const sec of [4, 6, 8, 10] as const) {
         expect(PRICE_BOOK.omniClip[res][sec]).toBe(rule(`video.omni.${res}.${sec}`));
         expect(omniClipCredits(res, sec)).toBe(PRICE_BOOK.omniClip[res][sec]);
       }
     }
-    expect(PRICE_BOOK.omniClip).toEqual({ '720p': { 4: 28, 6: 42, 8: 55, 10: 69 }, '1080p': { 4: 42, 6: 62, 8: 82, 10: 102 } });
-    // The 10 s row the owner set first is unchanged, and a length off the grid is the 10 s clip's.
-    expect(omniClipCredits()).toBe(69);
-    expect(omniClipCredits('1080p')).toBe(102);
-    expect(omniClipCredits('720p', 9)).toBe(69);
+    expect(PRICE_BOOK.omniClip).toEqual({ '720p': { 4: 20, 6: 29, 8: 38, 10: 47 }, '1080p': { 4: 29, 6: 43, 8: 57, 10: 71 } });
+    // A length off the grid is the 10 s clip's.
+    expect(omniClipCredits()).toBe(47);
+    expect(omniClipCredits('1080p')).toBe(71);
+    expect(omniClipCredits('720p', 9)).toBe(47);
   });
 
-  it('an uploaded video edited or extended by Omni Flash: GG\'s card (17:04Z) is the rule or one credit above it, never below', () => {
+  it('an uploaded video edited or extended by Omni Flash is the rule (Omni 1.2: GG card 2026-11-12 14:22Z)', () => {
     for (const res of ['720p', '1080p'] as const) {
       for (const sec of [4, 6, 8, 10] as const) {
         const card = PRICE_BOOK.omniEdit[res][sec];
         expect(card).toBe(omniEditCredits(sec, res));
-        expect(card - rule(`video.omni-edit.${res}.${sec}`)).toBeGreaterThanOrEqual(0);
-        expect(card - rule(`video.omni-edit.${res}.${sec}`)).toBeLessThanOrEqual(1);
+        expect(card).toBe(rule(`video.omni-edit.${res}.${sec}`));
       }
     }
-    // Where GG's number is above the rule, it is exactly where the card put it.
-    const above = (['720p', '1080p'] as const).flatMap((res) => ([4, 6, 8, 10] as const)
-      .filter((sec) => PRICE_BOOK.omniEdit[res][sec] > rule(`video.omni-edit.${res}.${sec}`)).map((sec) => `${res} ${sec}`));
-    expect(above).toEqual(['720p 6', '1080p 4', '1080p 6']);
+    expect(PRICE_BOOK.omniEdit).toEqual({ '720p': { 4: 25, 6: 35, 8: 44, 10: 53 }, '1080p': { 4: 35, 6: 48, 8: 62, 10: 76 } });
   });
 
   it('a deck of up to 12 illustrated slides', () => {

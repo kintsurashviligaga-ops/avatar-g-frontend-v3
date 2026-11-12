@@ -52,11 +52,11 @@ test('the price is the composer\'s own quote for the same length and tier — no
 });
 
 test('10 s is the price book\'s Omni row for its resolution (GG card 16:51Z), whatever the tier', () => {
-  expect(PRICE_BOOK.omniClip['720p'][10]).toBe(69);
-  expect(PRICE_BOOK.omniClip['1080p'][10]).toBe(102);
+  expect(PRICE_BOOK.omniClip['720p'][10]).toBe(47);
+  expect(PRICE_BOOK.omniClip['1080p'][10]).toBe(71);
   for (const tier of ['lite', 'fast', 'standard'] as const) {
-    expect(directClipCredits({ seconds: 10, tier, photos: 0 })).toBe(69);
-    expect(directClipCredits({ seconds: 10, tier, photos: 1, resolution: '1080p' })).toBe(102);
+    expect(directClipCredits({ seconds: 10, tier, photos: 0 })).toBe(47);
+    expect(directClipCredits({ seconds: 10, tier, photos: 1, resolution: '1080p' })).toBe(71);
   }
   // Two photos make it an 8 s Veo reference clip, billed as that.
   expect(directClipCredits({ seconds: 10, tier: 'fast', photos: 2, resolution: '1080p' })).toBe(quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' }));
@@ -67,8 +67,8 @@ test('a Georgian line makes it Omni\'s at every length (GG card 2026-10-26 10:55
   expect([4, 6, 8, 10].map((s) => directClipEngine(s, 'ka'))).toEqual(['omni', 'omni', 'omni', 'omni']);
   expect([4, 6, 8].map((s) => directClipEngine(s, null))).toEqual(['veo', 'veo', 'veo']);
   for (const tier of ['lite', 'fast', 'standard'] as const) {
-    expect([4, 6, 8, 10].map((seconds) => directClipCredits({ seconds, tier, photos: 1, speech: 'ka' }))).toEqual([42, 62, 82, 102]);
-    expect([4, 6, 8, 10].map((seconds) => directClipCredits({ seconds, tier, photos: 0, speech: 'ka', resolution: '720p' }))).toEqual([28, 42, 55, 69]);
+    expect([4, 6, 8, 10].map((seconds) => directClipCredits({ seconds, tier, photos: 1, speech: 'ka' }))).toEqual([29, 43, 57, 71]);
+    expect([4, 6, 8, 10].map((seconds) => directClipCredits({ seconds, tier, photos: 0, speech: 'ka', resolution: '720p' }))).toEqual([20, 29, 38, 47]);
   }
   // Unpicked: a speaking clip is 1080p at every length; a 10 s clip without words keeps the 720p it had.
   expect([4, 6, 8, 10].map((s) => directClipResolution(s, null, 'ka'))).toEqual(['1080p', '1080p', '1080p', '1080p']);

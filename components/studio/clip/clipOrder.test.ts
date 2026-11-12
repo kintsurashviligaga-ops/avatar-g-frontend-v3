@@ -45,12 +45,12 @@ describe('clipOrder', () => {
     expect(clipLengthsFor(1)).toEqual([4, 6, 8, 10]);
   });
 
-  test('10 s is Gemini Omni Flash, priced by resolution as GG approved (720p ✦69 · 1080p ✦102)', () => {
+  test('10 s is Gemini Omni Flash, priced by resolution as GG approved (720p ✦47 · 1080p ✦71)', () => {
     const o = clipOrder({ ...base, seconds: 10 });
-    expect(o.credits).toBe(69);
+    expect(o.credits).toBe(47);
     expect(clipEngineLabel(o)).toBe('Gemini Omni Flash');
     const hd = changeClip(o, { resolution: '1080p' });
-    expect(hd.credits).toBe(102);
+    expect(hd.credits).toBe(71);
     expect(clipSpecLine(hd, 'en')).toBe('10 s · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
   });
 });
@@ -67,7 +67,7 @@ describe('changeClip', () => {
     // The 10 s resolution is kept while another length is picked, so going back restores it.
     const back = changeClip(changeClip(changeClip(o, { seconds: 10 }), { resolution: '1080p' }), { seconds: 8 });
     expect(back.resolution).toBe('1080p');
-    expect(changeClip(back, { seconds: 10 }).credits).toBe(102);
+    expect(changeClip(back, { seconds: 10 }).credits).toBe(71);
   });
 });
 
@@ -85,16 +85,16 @@ describe('clipRequestBody', () => {
 describe('a clip whose characters speak Georgian (GG 2026-10-26 10:44Z; card 10:55Z)', () => {
   test('is Gemini Omni Flash at every length, 1080p unless 720p is picked, at the price book\'s Omni row', () => {
     const o = clipOrder({ ...base, prompt: SHORT, seconds: 8 });
-    expect(o).toMatchObject({ speech: 'ka', seconds: 8, resolution: '1080p', credits: 82 });
+    expect(o).toMatchObject({ speech: 'ka', seconds: 8, resolution: '1080p', credits: 57 });
     expect(clipIsOmni(o)).toBe(true);
     expect(clipSpecLine(o, 'ka')).toBe('8 წმ · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
     expect(clipSpeechNote(o, 'ka')).toContain('თითოეული თავისი ხმით');
-    expect([4, 6, 8, 10].map((s) => changeClip(o, { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([42, 62, 82, 102]);
-    expect([4, 6, 8, 10].map((s) => changeClip(changeClip(o, { resolution: '720p' }), { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([28, 42, 55, 69]);
+    expect([4, 6, 8, 10].map((s) => changeClip(o, { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([29, 43, 57, 71]);
+    expect([4, 6, 8, 10].map((s) => changeClip(changeClip(o, { resolution: '720p' }), { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([20, 29, 38, 47]);
     // A pick made on the panel is kept.
     expect(clipOrder({ ...base, prompt: SHORT, resolution: '720p' }).resolution).toBe('720p');
     // Lite is no Veo tier here: it is not moved to Fast, and does not count.
-    expect(clipOrder({ ...base, prompt: SHORT, tier: 'lite', photos: [PHOTO] }).credits).toBe(82);
+    expect(clipOrder({ ...base, prompt: SHORT, tier: 'lite', photos: [PHOTO] }).credits).toBe(57);
     // A clip nobody speaks in is Veo, as before.
     expect(clipIsOmni(clipOrder(base))).toBe(false);
     expect(clipSpeechNote(clipOrder(base), 'ka')).toBeNull();
@@ -128,8 +128,8 @@ describe('a clip whose characters speak Georgian (GG 2026-10-26 10:44Z; card 10:
   test('the route\'s reader found a Georgian line the card missed: the same order, as Omni, at the route\'s price', () => {
     const o = clipOrder({ ...base, prompt: 'ბიჭი მიესალმება მეგობრებს' });
     expect(o.speech).toBeNull();
-    const next = clipRepriced({ ...o, phase: 'starting' }, { credits: 82, speech: 'ka' });
-    expect(next).toMatchObject({ speech: 'ka', credits: 82, phase: 'ask', prompt: o.prompt });
+    const next = clipRepriced({ ...o, phase: 'starting' }, { credits: 57, speech: 'ka' });
+    expect(next).toMatchObject({ speech: 'ka', credits: 57, phase: 'ask', prompt: o.prompt });
     expect(clipEngineLabel(next)).toBe('Gemini Omni Flash');
     // A plain price change keeps the order.
     expect(clipRepriced({ ...o, phase: 'starting' }, { credits: 80 })).toMatchObject({ speech: null, credits: 80, phase: 'ask' });
