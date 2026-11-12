@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { AgentScreenPanel } from './AgentScreenPanel';
+import { AgentScreenPanel, DONE_LINGER_MS } from './AgentScreenPanel';
 import { AutoTaskCard } from './AutoTaskCard';
 import { agentScreen } from '@/lib/agent/screen/store';
 import type { AutoTaskIO } from '@/lib/agent/task/autoTask';
@@ -50,6 +50,30 @@ describe('AgentScreenPanel (GG 2026-11-07 09:36Z: the work on the right, like Ma
     fireEvent.click(screen.getByTestId('agent-screen-pill'));
     expect(screen.getByTestId('agent-screen')).toBeTruthy();
     expect(document.documentElement.classList.contains('agent-screen-open')).toBe(false);
+  });
+
+  test('on a phone a finished task\'s pill goes away by itself (GG 2026-11-07 10:31Z: it stayed stuck)', () => {
+    jest.useFakeTimers();
+    try {
+      setWide(false);
+      render(<AgentScreenPanel locale="en" />);
+      act(() => agentScreen.publish({ key: 'a', goal: 'find', steps: [] }));
+      act(() => agentScreen.publish({ key: 'a', phase: 'done', endedAt: Date.now(), steps: [{ label: 'x', state: 'ok' }] }));
+      expect(screen.getByTestId('agent-screen-pill')).toBeTruthy();
+      act(() => { jest.advanceTimersByTime(DONE_LINGER_MS + 10); });
+      expect(screen.queryByTestId('agent-screen-pill')).toBeNull();
+      expect(agentScreen.get()).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
+  test('closing a finished task clears it; a running one only hides', () => {
+    setWide(true);
+    render(<AgentScreenPanel locale="en" />);
+    act(() => agentScreen.publish({ key: 'a', goal: 'find', steps: [] }));
+    act(() => agentScreen.publish({ key: 'a', phase: 'done', endedAt: Date.now(), steps: [] }));
+    fireEvent.click(screen.getByTestId('agent-screen-close'));
+    expect(screen.queryByTestId('agent-screen-reopen')).toBeNull();
+    expect(agentScreen.get()).toBeNull();
   });
 
   test('a newer task takes the screen; late updates from the older one are dropped', () => {

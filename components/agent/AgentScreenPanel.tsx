@@ -21,6 +21,10 @@ const clock = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); re
 /** Wide enough to put the panel beside the page instead of over it. */
 export const SIDE_MEDIA = '(min-width: 1024px)';
 const HTML_CLASS = 'agent-screen-open';
+/** How long a finished task's pill stays before it goes. */
+export const DONE_LINGER_MS = 8000;
+/** Above the chat composer on a phone, not on it. */
+const FLOAT_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 200px)';
 
 function useScreen(): { s: AgentScreen | null; hidden: boolean } {
   const s = useSyncExternalStore(agentScreen.subscribe, agentScreen.get, () => null);
@@ -60,12 +64,19 @@ export function AgentScreenPanel({ locale }: { locale: string }) {
     return () => el.classList.remove(HTML_CLASS);
   }, [side]);
   useEffect(() => { if (s?.phase === 'running' && !wide) setSheet(false); }, [s?.key, s?.phase, wide]);
+  // A finished task's pill or reopen button goes away by itself (GG 2026-11-07 10:31Z: it stayed stuck over the composer).
+  const lingering = !!s && s.phase !== 'running' && (hidden || (!wide && !sheet));
+  useEffect(() => {
+    if (!lingering) return;
+    const h = setTimeout(() => agentScreen.reset(), DONE_LINGER_MS);
+    return () => clearTimeout(h);
+  }, [lingering, s?.key]);
 
   if (!s) return null;
   if (hidden) {
     return (
       <button type="button" data-agent-ignore="" data-testid="agent-screen-reopen" onClick={() => { agentScreen.show(); setSheet(true); }}
-        style={{ position: 'fixed', right: 16, bottom: 96, zIndex: 85, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(56,189,248,0.4)', background: 'rgba(11,15,23,0.95)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+        style={{ position: 'fixed', right: 16, bottom: FLOAT_BOTTOM, zIndex: 85, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(56,189,248,0.4)', background: 'rgba(11,15,23,0.95)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
         <Monitor size={14} aria-hidden />{t.open}{s.phase === 'running' && <Loader2 size={13} className="animate-spin" aria-hidden />}
       </button>
     );
@@ -73,7 +84,7 @@ export function AgentScreenPanel({ locale }: { locale: string }) {
   if (!wide && !sheet) {
     return (
       <button type="button" data-agent-ignore="" data-testid="agent-screen-pill" onClick={() => setSheet(true)}
-        style={{ position: 'fixed', right: 12, bottom: 96, zIndex: 85, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(56,189,248,0.4)', background: 'rgba(11,15,23,0.95)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+        style={{ position: 'fixed', right: 12, bottom: FLOAT_BOTTOM, zIndex: 85, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(56,189,248,0.4)', background: 'rgba(11,15,23,0.95)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
         {s.phase === 'running' ? <span style={{ width: 7, height: 7, borderRadius: 999, background: '#ef4444' }} aria-hidden /> : <Check size={13} color="#38bdf8" aria-hidden />}
         {s.phase === 'running' ? `LIVE · ${clock(now - s.startedAt)}` : t.title}
       </button>
@@ -94,7 +105,7 @@ export function AgentScreenPanel({ locale }: { locale: string }) {
             {s.phase === 'running' ? <Loader2 size={12} className="animate-spin" aria-hidden /> : s.phase === 'done' ? <Check size={12} aria-hidden /> : null}{status}
           </div>
         </div>
-        <button type="button" aria-label={t.close} data-testid="agent-screen-close" onClick={() => { if (wide) agentScreen.hide(); else setSheet(false); }}
+        <button type="button" aria-label={t.close} data-testid="agent-screen-close" onClick={() => { if (s.phase !== 'running') agentScreen.reset(); else if (wide) agentScreen.hide(); else setSheet(false); }}
           style={{ border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 6 }}><X size={18} /></button>
       </header>
       <div style={{ padding: '10px 14px 0', fontSize: 12.5, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{s.goal}</div>
