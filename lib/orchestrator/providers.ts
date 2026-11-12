@@ -15,8 +15,8 @@
 export type ProviderId =
   | 'gemini' | 'anthropic' | 'openai'
   | 'elevenlabs' | 'udio'
-  | 'replicate' | 'heygen'
-  | 'luma' | 'runway' | 'pika' | 'nanobanana'
+  | 'replicate'
+  | 'luma' | 'runway' | 'pika'
   | 'azure_speech' | 'figma'
   | 'runpod';
 
@@ -28,11 +28,9 @@ export const PROVIDER_ENV: Record<ProviderId, string[]> = {
   elevenlabs:  ['ELEVENLABS_API_KEY'],
   udio:        ['UDIO_API_KEY'],
   replicate:   ['REPLICATE_API_TOKEN'],
-  heygen:      ['HEYGEN_API_KEY'],
   luma:        ['LUMA_API_KEY'],
   runway:      ['RUNWAY_API_KEY'],
   pika:        ['PIKA_API_KEY'],
-  nanobanana:  ['NANOBANANA_API_KEY'],
   azure_speech:['AZURE_COGNITIVE_SECRET', 'AZURE_SPEECH_REGION'],
   figma:       ['FIGMA_ACCESS_TOKEN'],
   runpod:      ['RUNPOD_RENDER_WEBHOOK_URL', 'RUNPOD_RENDER_WEBHOOK_TOKEN', 'RUNPOD_API_TOKEN'],

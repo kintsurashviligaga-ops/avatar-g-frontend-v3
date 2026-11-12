@@ -10,7 +10,6 @@
     ],
     "replicate": [
       "app/api/v2/model3d/status/route.ts",
-      "lib/audio/rvc.ts",
       "lib/orchestrator/unpolledSettleRuntime.ts",
       "lib/replicate/client.ts",
       "lib/security/csp.js",
@@ -28,8 +27,7 @@
     ],
     "heygen": [
       "lib/chat/ServiceManager.ts",
-      "lib/security/csp.js",
-      "lib/system/provider-health.ts"
+      "lib/security/csp.js"
     ],
     "runway": [
       "lib/ai/runway.ts"
@@ -51,9 +49,7 @@
       "lib/video/videoProviderCascade.ts"
     ],
     "stability": [],
-    "worldlabs": [
-      "lib/system/provider-health.ts"
-    ],
+    "worldlabs": [],
     "xai": [],
     "deepseek": [],
     "atlascloud": [],

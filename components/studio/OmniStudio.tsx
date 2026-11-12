@@ -50,7 +50,7 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
 import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { FilmQaBadge } from './FilmQaBadge';
@@ -2387,7 +2387,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [voiceRecSec, setVoiceRecSec] = useState(0);
   // Trained RVC voice (faithful) — set by the in-chat VoiceTrainer once a model is ready,
   // and a toggle to sing with it instead of a one-shot upload.
-  const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
+  // RVC voice training was removed (v5.1 M-14, GG 2026-11-12): no user has a trained voice, so its toggles never show.
+  const hasTrainedVoice: boolean = false;
   const [useMyVoice, setUseMyVoice] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
   // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
@@ -3989,7 +3990,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // GRAPHICS INPUT — defaults to the base master so the Graphics agent ALWAYS runs, even
       // when Lip-Sync is skipped (FIX 1: never break the graphics chain). Each lip-sync leg
       // below upgrades it to the lip-synced video.
-      let graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
+      const graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
       if (res.ok && res.masterUrl && mine()) {
         // The lip-sync pass (HeyGen talking photo / sync on Replicate) was removed in v5.1 M-14 (GG 2026-11-12): the
         // film keeps its master, and the card says the pass did not run.
@@ -7984,23 +7985,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // some Windows drivers refuse a second capture of a busy device, and Live reported that as „the microphone could
   // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
   useMicRelease(() => { if (voiceStreamRef.current) stopVoiceRecording(); }, 'music');
-
-  // Detect an existing TRAINED voice model (RVC) so the Music panel can surface a
-  // "sing in my trained voice" toggle. GET /api/voice/train reports the user's model
-  // status; 'completed' means a faithful RVC model is ready (the same probe VoiceTrainer
-  // uses). Fail-open — on any error the toggle simply never appears, and the one-shot
-  // upload/record voice-CLONE path (music-01) still works without it.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch('/api/voice/train', { credentials: 'include' });
-        const j = (await r.json().catch(() => ({}))) as { status?: string };
-        if (alive && j.status === 'completed') setHasTrainedVoice(true);
-      } catch { /* fail-open — no trained-voice toggle */ }
-    })();
-    return () => { alive = false; };
-  }, []);
 
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).

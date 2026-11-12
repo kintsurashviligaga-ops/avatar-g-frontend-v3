@@ -12,7 +12,8 @@ import { googleAiConfigured } from '@/lib/ai/google/transport';
  */
 export const PROBE_DEADLINE_MS = 8_000;
 
-type ProviderName = 'openai' | 'udio' | 'worldlabs' | 'heygen' | 'ltx' | 'anthropic' | 'gemini';
+// HeyGen and World Labs were removed (v5.1 M-14, GG 2026-11-12): no route calls them, so they are not probed.
+type ProviderName = 'openai' | 'udio' | 'ltx' | 'anthropic' | 'gemini';
 
 export type ProviderAuditEntry = {
   provider: ProviderName;
@@ -33,8 +34,6 @@ export type ServiceRoutingAudit = {
 const PROVIDER_ENV: Record<ProviderName, string> = {
   openai: 'OPENAI_API_KEY',
   udio: 'UDIO_API_KEY',
-  worldlabs: 'WORLDLABS_API_KEY',
-  heygen: 'HEYGEN_API_KEY',
   ltx: 'LTX_VIDEO_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   // Not a key: Gemini runs on Vertex AI under Workload Identity (MASTER TASK v3.1), so the row names the project variable.
@@ -44,7 +43,6 @@ const PROVIDER_ENV: Record<ProviderName, string> = {
 const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provider: ProviderName }> = [
   { category: 'audio', provider: 'openai' },
   { category: 'music', provider: 'udio' },
-  { category: '3d', provider: 'worldlabs' },
   { category: 'video', provider: 'ltx' },
   { category: 'text', provider: 'gemini' },
   { category: 'code', provider: 'anthropic' },
@@ -132,18 +130,6 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       return { ok: response.ok, detail: response.ok ? 'Model endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
     }
 
-    if (provider === 'heygen') {
-      const response = await fetch('https://api.heygen.com/v2/avatars', {
-        headers: { 'X-Api-Key': key },
-        cache: 'no-store',
-      });
-      if (response.status === 401 || response.status === 403) {
-        return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
-      }
-      const payload = await response.json().catch(() => null);
-      return { ok: response.ok, detail: response.ok ? 'Avatar endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: extractCredits(payload) };
-    }
-
     if (provider === 'udio') {
       // Probe credits endpoint — lightweight GET that confirms auth without spending credits.
       const base = String(process.env.UDIO_API_URL || 'https://udioapi.pro').replace(/\/+$/, '');
@@ -196,50 +182,7 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       return { ok: false, detail: `No LTX probe URL reachable (last status ${lastStatus})`, creditsRemaining: null };
     }
 
-    // WorldLabs probe — first try authenticated paths, then fall back to a host
-    // liveness check. Any HTTP response (incl. 404) from api.worldlabs.ai means
-    // the host is alive, even if we don't know the exact API surface.
-    const wlEndpoints = [
-      String(process.env.WORLDLABS_API_URL || ''),
-      'https://api.worldlabs.ai/v1/account',
-      'https://api.worldlabs.ai/v1/me',
-      'https://api.worldlabs.ai/v1/worlds',
-    ].filter(Boolean);
-
-    for (const endpoint of wlEndpoints) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${key}` },
-          cache: 'no-store',
-        });
-        if (response.ok) {
-          const payload = await response.json().catch(() => null);
-          return { ok: true, detail: `${endpoint} HTTP 200`, creditsRemaining: extractCredits(payload) };
-        }
-        if (response.status === 401 || response.status === 403) {
-          return { ok: true, detail: `${endpoint} reachable (auth ${response.status})`, creditsRemaining: null };
-        }
-      } catch {
-        // Network/DNS — try next
-      }
-    }
-
-    // Liveness check: any HTTP response from the host counts as "host is alive".
-    try {
-      const liveness = await fetch('https://api.worldlabs.ai/', { method: 'GET', cache: 'no-store' });
-      return {
-        ok: true,
-        detail: `Host alive (api.worldlabs.ai HTTP ${liveness.status}); API surface needs verification`,
-        creditsRemaining: null,
-      };
-    } catch (err) {
-      return {
-        ok: false,
-        detail: err instanceof Error ? `Network: ${err.message.slice(0, 100)}` : 'Network unreachable',
-        creditsRemaining: null,
-      };
-    }
+    return { ok: false, detail: 'No probe for this provider', creditsRemaining: null };
   } catch (error) {
     return {
       ok: false,

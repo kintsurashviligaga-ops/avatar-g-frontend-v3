@@ -27,11 +27,9 @@
     ],
     "app/api/app/health/route.ts": [
       "anthropic",
-      "heygen",
       "ltx",
       "openai",
-      "udio",
-      "worldlabs"
+      "udio"
     ],
     "app/api/app/worker/tick/route.ts": [
       "openai"
@@ -209,9 +207,6 @@
     ],
     "app/api/voice/live/route.ts": [
       "gemini_developer_api"
-    ],
-    "app/api/voice/train/route.ts": [
-      "replicate"
     ],
     "app/api/webhooks/higgsfield/route.ts": [
       "higgsfield"
