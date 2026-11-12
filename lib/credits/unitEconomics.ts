@@ -420,7 +420,7 @@ export const UNIT_OPS: readonly UnitOp[] = [
     unit: 'one deck, up to 12 slides with an image each',
     provider: 'Google',
     model: 'gemini-3.8-flash · gemini-3.1-flash-image',
-    // Slide pictures are drawn by gemini-3.1-flash-image (as image.one: $0.067 a 1K image); Imagen 4 ($0.04) only when switched on.
+    // Slide pictures are drawn by gemini-3.1-flash-image (as image.one: $0.067 a 1K image). The Imagen 4 option is gone (v5.1 M-14).
     lines: [flash(3000, 3000, 'outline'), { what: '12 slide images (gemini-3.1-flash-image, 1K)', usd: 12 * 0.067, source: 'official' }, flash(3600, 600, 'image prompts to English'), compute(40, 'render'), storage(20)],
     retryShare: 0.05,
     status: 'ESTIMATED',

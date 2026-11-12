@@ -397,7 +397,7 @@ export function artClientFor(provider: ArtProviderId, o: { dry: boolean }, loadH
   }
   if (provider === 'imagen') {
     if (o.dry) return createImagenArtClient({ apiKey: '', fetchImpl: offlineFetch });
-    const apiKey = resolveGeminiKey(); // the key the app's own Imagen leg uses (lib/ai/geminiImagen.ts)
+    const apiKey = resolveGeminiKey(); // the key the app's own Imagen leg uses (the Imagen leg was removed in v5.1 M-14)
     if (!apiKey) throw new Error('no Gemini API key is configured (GEMINI_API_KEY)');
     return createImagenArtClient({ apiKey });
   }

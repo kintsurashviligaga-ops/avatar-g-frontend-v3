@@ -134,8 +134,8 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['image'],
       focusModes: ['media'],
       transport: 'gemini_api',
-      enabled: true,
-      notes: 'lib/ai/geminiImagen (opt-in GEMINI_IMAGEN_ENABLED). 404 on Vertex AI for this project (Part 0, 2026-10-08), so API key only. No runtime record here.',
+      enabled: false,
+      notes: 'Retired by Google (2026-06-30) and 404 on Vertex AI for this project (Part 0, 2026-10-08). The opt-in lib/ai/geminiImagen leg was removed (v5.1 M-14); kept here so a saved choice gets an explicit "disabled".',
     },
 
     // ── Video (Veo on Vertex AI, lib/veo/capabilities DEFAULT_MODEL_IDS; the Gemini API ids are history, v3.1) ─────
