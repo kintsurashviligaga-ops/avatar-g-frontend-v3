@@ -55,7 +55,7 @@ The used-ticket memory is per instance. Keep `--max-instances` small until the r
 | `VERTEX_LIVE_LOCATION` | Region, default `us-central1`. |
 | `LIVE_RELAY_MODELS` | Vertex model ids the relay opens, comma-separated. Required. |
 | `LIVE_RELAY_MODEL_MAP` | `appId=vertexId` pairs, comma-separated, for app ids that are named differently on Vertex. |
-| `LIVE_RELAY_MODEL_LOCATIONS` | `vertexId=region` pairs for models served outside `VERTEX_LIVE_LOCATION`. The talking avatar needs `gemini-3.8-live=us-central1` (europe-west4 closes with 1008 "publisher model not found"). From v5.1 M-2 the voice call uses gemini-3.8-live too. Google's 3.8 Live page (2026-11-12) also lists the `eu` multi-region: `gemini-3.8-live=eu` makes the relay dial `aiplatform.eu.rep.googleapis.com` (UNVERIFIED for the Live websocket until a probe connects). |
+| `LIVE_RELAY_MODEL_LOCATIONS` | `vertexId=region` pairs for models served outside `VERTEX_LIVE_LOCATION`. The talking avatar needs `gemini-3.8-live=us-central1` (europe-west4 closes with 1008 "publisher model not found"). From v5.1 M-2 the voice call uses gemini-3.8-live too. Google's 3.8 Live page (2026-11-12) also lists the `eu` multi-region: `gemini-3.8-live=eu` makes the relay dial `aiplatform.eu.rep.googleapis.com`. Probe 2026-11-12 14:18Z (`scripts/probe-vertex-live-locations.mjs`, setup only, $0): eu PASS 469 ms, us PASS 940 ms, us-central1 PASS 1258 ms, europe-west4 FAIL 1008. Recommended from M-2: `gemini-3.8-live=eu`. |
 | `LIVE_RELAY_ALLOWED_ORIGINS` | e.g. `https://myavatar.ge,https://<preview>.vercel.app`. Empty means any origin. |
 | `LIVE_RELAY_MAX_SESSION_MS`, `LIVE_RELAY_IDLE_MS`, `LIVE_RELAY_MAX_FRAME_BYTES`, `LIVE_RELAY_MAX_CLIENT_BYTES` | Limits. Defaults: 15 min, 60 s, 512 KB, 64 MB. |
 
