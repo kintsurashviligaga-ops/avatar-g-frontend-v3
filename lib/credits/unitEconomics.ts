@@ -419,9 +419,9 @@ export const UNIT_OPS: readonly UnitOp[] = [
     service: 'design.presentation',
     unit: 'one deck, up to 12 slides with an image each',
     provider: 'Google',
-    model: 'gemini-3.8-flash · imagen-4.0-generate-001',
-    // Imagen 4 is not on the Gemini API price page the app calls it through; Vertex lists it at $0.04 an image.
-    lines: [flash(3000, 3000, 'outline'), { what: '12 Imagen 4 images (Vertex rate)', usd: 12 * 0.04, source: 'estimated' }, flash(3600, 600, 'image prompts to English'), compute(40, 'render'), storage(20)],
+    model: 'gemini-3.8-flash · gemini-3.1-flash-image',
+    // Slide pictures are drawn by gemini-3.1-flash-image (as image.one: $0.067 a 1K image); Imagen 4 ($0.04) only when switched on.
+    lines: [flash(3000, 3000, 'outline'), { what: '12 slide images (gemini-3.1-flash-image, 1K)', usd: 12 * 0.067, source: 'official' }, flash(3600, 600, 'image prompts to English'), compute(40, 'render'), storage(20)],
     retryShare: 0.05,
     status: 'ESTIMATED',
     currentCredits: 0,
@@ -561,7 +561,7 @@ export type VideoTier = 'lite' | 'fast' | 'standard';
 /** Full cost (₾) of a deck: the 12-slide op scaled — the outline and render share, plus each slide's picture. */
 export function deckCostGel(slides: number, illustrated = true, econ: Econ = ECON): number {
   const op = unitOp('design.presentation.deck');
-  const pictures = op.lines.filter((l) => l.what.includes('Imagen') || l.what.includes('to English'));
+  const pictures = op.lines.filter((l) => l.what.includes('slide images') || l.what.includes('to English'));
   const fixed = op.lines.filter((l) => !pictures.includes(l));
   const sum = (ls: readonly CostLine[]) => ls.reduce((s, l) => s + l.usd, 0);
   const usd = (sum(fixed) + (illustrated ? (sum(pictures) / 12) * Math.max(1, slides) : 0)) * (1 + op.retryShare);
