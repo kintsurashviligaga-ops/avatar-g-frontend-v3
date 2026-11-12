@@ -9,7 +9,19 @@ const MIDDLEWARE_AUTH_TIMEOUT_MS = 2500;
 type UpdateSessionResult = {
   response: NextResponse;
   user: User | null;
+  /**
+   * True when the visitor has a session cookie but the Auth server could not be reached (network error or
+   * timeout). Pages behind it would hang on their own Supabase calls, so the root middleware answers page
+   * navigations with a fast "temporarily unavailable" page instead.
+   */
+  authUnavailable: boolean;
 };
+
+function isNetworkAuthError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { name?: string; status?: number };
+  return e.name === 'AuthRetryableFetchError' || e.status === 0;
+}
 
 export async function updateSession(request: NextRequest): Promise<UpdateSessionResult> {
   let response = NextResponse.next({
@@ -22,12 +34,12 @@ export async function updateSession(request: NextRequest): Promise<UpdateSession
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    return { response, user: null };
+    return { response, user: null, authUnavailable: false };
   }
 
   // No Supabase auth cookie → nobody to refresh; skip the network round-trip entirely.
   if (!hasSessionCookie(request.cookies.getAll())) {
-    return { response, user: null };
+    return { response, user: null, authUnavailable: false };
   }
 
   const controller = new AbortController();
@@ -66,6 +78,7 @@ export async function updateSession(request: NextRequest): Promise<UpdateSession
   // MIDDLEWARE_INVOCATION_TIMEOUT, 2026-11-12). Cap it hard: after MIDDLEWARE_AUTH_TIMEOUT_MS we stop
   // waiting and fail open exactly as for an error.
   let user: User | null = null;
+  let authUnavailable = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeout = new Promise<null>((resolve) => {
@@ -75,12 +88,18 @@ export async function updateSession(request: NextRequest): Promise<UpdateSession
       }, MIDDLEWARE_AUTH_TIMEOUT_MS);
     });
     const result = await Promise.race([supabase.auth.getUser(), timeout]);
-    user = result?.data.user ?? null;
-  } catch {
-    // transient auth-server error → keep navigation working with whatever cookies already exist
+    if (result === null) {
+      authUnavailable = true;
+    } else {
+      user = result.data.user ?? null;
+      authUnavailable = isNetworkAuthError((result as { error?: unknown }).error);
+    }
+  } catch (error) {
+    // auth-server error → keep navigation working with whatever cookies already exist
+    authUnavailable = isNetworkAuthError(error) || error instanceof TypeError;
   } finally {
     if (timer) clearTimeout(timer);
   }
 
-  return { response, user };
+  return { response, user, authUnavailable };
 }

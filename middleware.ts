@@ -13,6 +13,21 @@ function getPreferredLocale(request: NextRequest) {
     : DEFAULT_LOCALE;
 }
 
+const UNAVAILABLE_COPY: Record<string, { title: string; body: string; retry: string }> = {
+  ka: { title: 'სერვისი დროებით მიუწვდომელია', body: 'ტექნიკური სამუშაოები მიმდინარეობს. სცადეთ რამდენიმე წუთში.', retry: 'თავიდან ცდა' },
+  en: { title: 'Temporarily unavailable', body: 'We are fixing a technical problem. Please try again in a few minutes.', retry: 'Try again' },
+  ru: { title: 'Сервис временно недоступен', body: 'Идут технические работы. Попробуйте через несколько минут.', retry: 'Повторить' },
+};
+
+function serviceUnavailablePage(locale: string): NextResponse {
+  const c = UNAVAILABLE_COPY[locale] ?? UNAVAILABLE_COPY.ka;
+  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyAvatar.ge</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#f5f5f5;font-family:system-ui,-apple-system,sans-serif;padding:16px;box-sizing:border-box}main{max-width:420px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{color:#a3a3a3;line-height:1.5;margin:0 0 24px}a{display:inline-block;padding:10px 20px;border-radius:10px;background:#f5f5f5;color:#0a0a0a;text-decoration:none;font-weight:600}</style></head><body><main><h1>${c.title}</h1><p>${c.body}</p><a href="">${c.retry}</a></main></body></html>`;
+  return new NextResponse(html, {
+    status: 503,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'retry-after': '60' },
+  });
+}
+
 /**
  * Root middleware:
  * / and locale roots → the marketing landing for guests, /{locale}/dashboard for signed-in visitors
@@ -78,7 +93,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const { response } = await updateSession(request);
+  const { response, authUnavailable } = await updateSession(request);
+
+  // Supabase unreachable for a signed-in visitor: every page behind this would hang on its own database
+  // calls until the function timeout. Answer page navigations at once with a light "temporarily
+  // unavailable" page (503, retried by reload). API routes keep failing open and answer for themselves.
+  if (authUnavailable && !pathname.startsWith('/api/') && request.method === 'GET'
+    && (request.headers.get('accept') ?? '').includes('text/html')) {
+    return serviceUnavailablePage(preferredLocale);
+  }
 
   const segments = pathname.split('/').filter(Boolean);
   const activeLocale = segments[0] && SUPPORTED_LOCALES.includes(segments[0])
