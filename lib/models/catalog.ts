@@ -200,7 +200,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       transport: 'either',
       enabled: true,
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Read-aloud default, verified in Georgian (/api/tts/gemini). ${NEW_KEY} Not yet tried on Vertex AI.`,
+      notes: `Read-aloud default until 2026-11-12; now only the GEMINI_TTS_MODEL rollback. On Vertex AI it answered HTTP 500 twice (certification #269) and its Developer-API id shuts down 2026-11-17.`,
     },
     ...(
       [
@@ -218,7 +218,9 @@ export const MODEL_CATALOG: ModelCatalog = {
       transport: 'either',
       enabled: true,
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Allowlisted by GEMINI_TTS_MODEL. ${NEW_KEY} Georgian not checked.`,
+      notes: id === 'gemini-3.8-flash-tts'
+        ? 'Read-aloud default since 2026-11-12 (GA on Vertex AI 2026-10-26). Georgian paid probe: scripts/certify/vertex-contract-plan-3.json.'
+        : `Allowlisted by GEMINI_TTS_MODEL. ${NEW_KEY} Georgian not checked.`,
     })),
     {
       id: 'gemini-3.5-transcribe-preview',

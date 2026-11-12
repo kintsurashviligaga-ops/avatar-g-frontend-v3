@@ -98,13 +98,23 @@ export const LIVE_MODELS: readonly string[] = [
   'gemini-2.5-flash-native-audio-preview-12-2025',
 ];
 
-/** The TTS default (verified Georgian; /api/tts/gemini's "Read aloud verbatim:" directive is tuned on it). */
-export const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+/**
+ * The TTS default: Gemini 3.8 Flash TTS, GA on Vertex AI since 2026-10-26 (global / us / eu).
+ *
+ * Until 2026-11-12 the default was `gemini-2.5-flash-preview-tts`. It answered HTTP 500 twice in the paid Vertex
+ * certification (#269, 2026-11-06), it is not on the Vertex endpoint table, and its Developer-API id shuts down on
+ * 2026-11-17 (v5.1 audit B-01, owner decision D-02). It stays on the allowlist only so GEMINI_TTS_MODEL can roll
+ * back to it. 3.8 reads its text strictly as a transcript (ttsReadsVerbatim), so no directive is sent to it.
+ */
+export const DEFAULT_TTS_MODEL = 'gemini-3.8-flash-tts';
+
+/** The model that was the default before 2026-11-12 (rollback: GEMINI_TTS_MODEL=gemini-2.5-flash-preview-tts). */
+export const LEGACY_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 
 export const TTS_MODELS: readonly string[] = [
   DEFAULT_TTS_MODEL,
-  'gemini-3.8-flash-tts',
   'gemini-3.8-flash-lite-tts',
+  LEGACY_TTS_MODEL,
   'gemini-3.1-flash-tts-preview',
 ];
 

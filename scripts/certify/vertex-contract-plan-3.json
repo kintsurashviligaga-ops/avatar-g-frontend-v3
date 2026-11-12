@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "approvedBy": "owner GG 2026-11-12 09:24Z (v5.1 D-02: \"run the paid Georgian probe (~$0.05)\" for gemini-3.8-flash-tts; D-03: free models.list / countTokens probes, no generation, for Carbon, Argon, Omni 1.2, Nano Banana 2.1 and 3.8 TTS)",
+  "capUsd": 0.05,
+  "calls": [
+    {
+      "id": "tts-38-ka",
+      "model": "gemini-3.8-flash-tts",
+      "adapter": "app/api/tts/gemini/route.ts (read-aloud default from 2026-11-12): Georgian, default voice Aoede, no languageCode, no directive (3.8 reads the text strictly as a transcript)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent",
+      "estimateUsd": 0.01,
+      "body": {
+        "contents": [{ "role": "user", "parts": [{ "text": "გამარჯობა, ეს არის ხმის მოკლე შემოწმება." }] }],
+        "generationConfig": {
+          "responseModalities": ["AUDIO"],
+          "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Aoede" } } }
+        }
+      }
+    },
+    {
+      "id": "chirp-ka-38",
+      "model": "chirp_3",
+      "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp, Georgian only: hears the 3.8 audio back, so the words can be checked one by one",
+      "kind": "sync",
+      "url": "https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize",
+      "estimateUsd": 0.01,
+      "requires": ["tts-38-ka"],
+      "body": {
+        "config": { "autoDecodingConfig": {}, "model": "chirp_3", "languageCodes": ["ka-GE"] },
+        "content": "{{tts-38-ka.wavBase64}}"
+      }
+    },
+    {
+      "id": "count-carbon",
+      "model": "gemini-4-carbon",
+      "adapter": "entitlement probe (free countTokens, nothing generated)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-4-carbon:countTokens",
+      "estimateUsd": 0,
+      "body": { "contents": [{ "role": "user", "parts": [{ "text": "გამარჯობა" }] }] }
+    },
+    {
+      "id": "count-argon",
+      "model": "gemini-4-argon",
+      "adapter": "entitlement probe (free countTokens, nothing generated)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-4-argon:countTokens",
+      "estimateUsd": 0,
+      "body": { "contents": [{ "role": "user", "parts": [{ "text": "გამარჯობა" }] }] }
+    },
+    {
+      "id": "count-nano-banana-2.1",
+      "model": "gemini-nano-banana-2.1",
+      "adapter": "entitlement probe (free countTokens, nothing generated); the Vertex id is the Developer-API name, UNVERIFIED on Vertex",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-nano-banana-2.1:countTokens",
+      "estimateUsd": 0,
+      "body": { "contents": [{ "role": "user", "parts": [{ "text": "გამარჯობა" }] }] }
+    },
+    {
+      "id": "count-omni-1.2",
+      "model": "gemini-omni-1.2-flash",
+      "adapter": "entitlement probe (free countTokens, nothing generated); Omni 1.2 is Interactions-only, so a 400 here can mean 'method not offered', not 'no access'",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-omni-1.2-flash:countTokens",
+      "estimateUsd": 0,
+      "body": { "contents": [{ "role": "user", "parts": [{ "text": "გამარჯობა" }] }] }
+    },
+    {
+      "id": "count-tts-38",
+      "model": "gemini-3.8-flash-tts",
+      "adapter": "entitlement probe (free countTokens, nothing generated)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-tts:countTokens",
+      "estimateUsd": 0,
+      "body": { "contents": [{ "role": "user", "parts": [{ "text": "გამარჯობა" }] }] }
+    },
+    { "id": "get-carbon", "model": "gemini-4-carbon", "adapter": "publisher model card (free GET)", "kind": "get", "estimateUsd": 0,
+      "url": "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-4-carbon" },
+    { "id": "get-argon", "model": "gemini-4-argon", "adapter": "publisher model card (free GET)", "kind": "get", "estimateUsd": 0,
+      "url": "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-4-argon" },
+    { "id": "get-nano-banana-2.1", "model": "gemini-nano-banana-2.1", "adapter": "publisher model card (free GET)", "kind": "get", "estimateUsd": 0,
+      "url": "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-nano-banana-2.1" },
+    { "id": "get-omni-1.2", "model": "gemini-omni-1.2-flash", "adapter": "publisher model card (free GET)", "kind": "get", "estimateUsd": 0,
+      "url": "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-omni-1.2-flash" },
+    { "id": "get-tts-38", "model": "gemini-3.8-flash-tts", "adapter": "publisher model card (free GET)", "kind": "get", "estimateUsd": 0,
+      "url": "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.8-flash-tts" }
+  ]
+}

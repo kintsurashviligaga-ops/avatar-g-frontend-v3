@@ -420,7 +420,14 @@ describe('ttsReadsVerbatim', () => {
 });
 
 describe('ttsModel', () => {
-  it('defaults to the Georgian-verified flash-preview TTS model', () => {
+  it('defaults to Gemini 3.8 Flash TTS (GA on Vertex; the 2.5 preview failed and is being shut down)', () => {
+    expect(ttsModel()).toBe('gemini-3.8-flash-tts');
+    expect(DEFAULT_TTS_MODEL).toBe('gemini-3.8-flash-tts');
+  });
+
+  it('keeps the 2.5 preview on the allowlist only as a rollback', () => {
+    expect(TTS_MODELS).toContain('gemini-2.5-flash-preview-tts');
+    process.env.GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
     expect(ttsModel()).toBe('gemini-2.5-flash-preview-tts');
   });
 
