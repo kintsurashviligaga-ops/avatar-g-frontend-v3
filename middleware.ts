@@ -31,6 +31,15 @@ function serviceUnavailablePage(locale: string): NextResponse {
 }
 
 /**
+ * Kill switch for the "temporarily unavailable" page: SUPABASE_UNAVAILABLE_PAGE=off goes back to failing open.
+ * The browser suites set it: they run `next dev` against a fake Supabase host the page's own requests are mocked
+ * for, so the server-side session check can never reach it — without the switch every signed-in page there is the 503.
+ */
+function unavailablePageEnabled(): boolean {
+  return !/^(0|off|false|no)$/i.test((process.env.SUPABASE_UNAVAILABLE_PAGE || '').trim());
+}
+
+/**
  * Root middleware:
  * / and locale roots → the marketing landing for guests, /{locale}/dashboard for signed-in visitors
  *   (lib/routing/landing.ts — the dashboard itself is unchanged).
@@ -100,7 +109,7 @@ export async function middleware(request: NextRequest) {
   // Supabase unreachable for a signed-in visitor: every page behind this would hang on its own database
   // calls until the function timeout. Answer page navigations at once with a light "temporarily
   // unavailable" page (503, retried by reload). API routes keep failing open and answer for themselves.
-  if (authUnavailable && !pathname.startsWith('/api/') && request.method === 'GET'
+  if (authUnavailable && unavailablePageEnabled() && !pathname.startsWith('/api/') && request.method === 'GET'
     && (request.headers.get('accept') ?? '').includes('text/html')) {
     return serviceUnavailablePage(preferredLocale);
   }
