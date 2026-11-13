@@ -3,8 +3,8 @@
  * whether an attempt fails), so the scheduler can be run end to end on mocked data (tests, and the admin dry run that
  * shows a plan's schedule before it is approved). Never calls a real tool.
  */
-import { createRun, tick, type EngineOptions } from './scheduler';
-import type { EngineCommand, EngineEffect, EngineRun, Plan, StepResult, TimelineEvent, Checkpoint } from './types';
+import { admitQuote, createRun, tick, type EngineOptions } from './scheduler';
+import type { EngineCommand, EngineEffect, EngineRun, Plan, StepHold, StepResult, TimelineEvent, Checkpoint } from './types';
 
 export interface ScriptedAttempt {
   /** How long the attempt runs, in ms of the fake clock. */
@@ -22,6 +22,12 @@ export interface SimScript {
   commands?: Array<{ at: number; command: EngineCommand }>;
   /** Sandbox steps the user has running in other runs, as a function of the clock. */
   sandboxBusyElsewhere?: (now: number) => number;
+  /**
+   * Per step id: the real quote of each start, in credits (the last one repeats). A quote above the step's approval is
+   * held (admitQuote), exactly as the caller will do; its quote id is `q-<step>-<n>` for the n-th start of that step.
+   * Steps with no entry are quoted at their approval.
+   */
+  quotes?: Record<string, number[]>;
 }
 
 export interface SimResult {
@@ -37,11 +43,16 @@ export interface SimResult {
 
 export function simulate(
   plan: Plan, script: SimScript = {},
-  opts: EngineOptions & { deadlineMs?: number; reuse?: Record<string, Checkpoint>; tickMs?: number; maxTicks?: number; onAwaitingApproval?: (run: EngineRun, now: number) => { run: EngineRun; events: TimelineEvent[] } | null } = {},
+  opts: EngineOptions & {
+    deadlineMs?: number; reuse?: Record<string, Checkpoint>; approved?: Record<string, number>; tickMs?: number; maxTicks?: number;
+    onAwaitingApproval?: (run: EngineRun, now: number) => { run: EngineRun; events: TimelineEvent[] } | null;
+  } = {},
 ): SimResult {
   const tickMs = opts.tickMs ?? 250;
   let now = 0;
-  const created = createRun('run_sim', plan, now, { deadlineMs: opts.deadlineMs, reuse: opts.reuse });
+  const created = createRun('run_sim', plan, now, { deadlineMs: opts.deadlineMs, reuse: opts.reuse, approved: opts.approved });
+  let holds: StepHold[] = [];
+  const quotesSeen: Record<string, number> = {};
   let run = created.run;
   const events: TimelineEvent[] = [...created.events];
   const effects: SimResult['effects'] = [];
@@ -67,12 +78,21 @@ export function simulate(
     const commands: EngineCommand[] = [];
     while (pending.length && pending[0]!.at <= now) commands.push(pending.shift()!.command);
 
-    const out = tick(run, { now, results, commands, sandboxBusyElsewhere: script.sandboxBusyElsewhere?.(now) ?? 0 }, opts);
+    const out = tick(run, { now, results, holds, commands, sandboxBusyElsewhere: script.sandboxBusyElsewhere?.(now) ?? 0 }, opts);
+    holds = [];
     run = out.run;
     events.push(...out.events);
     for (const e of out.effects) {
       effects.push({ ...e, at: now });
       if (e.type === 'start') {
+        const q = (quotesSeen[e.stepId] = (quotesSeen[e.stepId] ?? 0) + 1);
+        const qs = script.quotes?.[e.stepId];
+        const price = qs ? qs[Math.min(q, qs.length) - 1]! : e.approvedCredits;
+        if (admitQuote(e, price) === 'hold') {
+          // The caller quoted it, the price is above the approval: nothing is queued; tell the engine next tick.
+          holds.push({ stepId: e.stepId, attemptId: e.attemptId, quoteId: `q-${e.stepId}-${q}`, credits: price });
+          continue;
+        }
         const n = (attemptsSeen[e.stepId] = (attemptsSeen[e.stepId] ?? 0) + 1);
         const list = script.steps?.[e.stepId] ?? [{ ms: 1_000 }];
         const attempt = list[Math.min(n, list.length) - 1]!;
@@ -95,6 +115,11 @@ export function simulate(
     }
     if (['completed', 'failed', 'cancelled', 'partially_completed'].includes(run.status) && inFlight.size === 0) break;
     if (run.status === 'awaiting_approval' && !opts.onAwaitingApproval && !pending.length) break;
+    // Held quotes with nothing running and no press to come: only the approval timeout can move the run now.
+    if (!holds.length && !inFlight.size && !pending.length && run.steps.some((s) => s.status === 'awaiting_approval')
+      && !run.steps.some((s) => s.status === 'running' || (s.status === 'pending'))) {
+      if (!opts.maxTicks) break;
+    }
     now += tickMs;
   }
   return { run, events, effects, peakParallel: peak, spans, ticks };

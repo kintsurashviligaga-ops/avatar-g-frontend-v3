@@ -10,7 +10,7 @@ import type { Plan } from './types';
 export * from './types';
 export { decompose, parsePlan, topoLevels, topoOrder } from './plan';
 export { validatePlan, validateStep } from './validate';
-export { checkpointsOf, createRun, replan, runSummary, tick } from './scheduler';
+export { admitQuote, checkpointsOf, createRun, deadlineFor, replan, runSummary, tick } from './scheduler';
 
 export type PreparedRun =
   | { ok: true; plan: Plan; levels: string[][]; estimateCredits: number; widest: number; source: 'model' | 'repair' | 'fallback' }

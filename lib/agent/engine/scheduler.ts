@@ -25,7 +25,7 @@
  */
 import { TERMINAL_RUN_STATUSES, transitionPath, type RunStatus } from '../contracts';
 import {
-  APPROVAL_TIMEOUT_MS, DEFAULT_RUN_DEADLINE_MS, MAX_REPLANS, RETRY_BACKOFF_MS, MAX_SANDBOX_PER_USER, MAX_STEP_RETRIES, MAX_WORKERS, SANDBOX_TOOLS, TERMINAL_STEP,
+  APPROVAL_TIMEOUT_MS, DEFAULT_RUN_DEADLINE_MS, MAX_REPLANS, MEDIA_RUN_DEADLINE_MS, MEDIA_TOOLS, RETRY_BACKOFF_MS, MAX_SANDBOX_PER_USER, MAX_STEP_RETRIES, MAX_WORKERS, SANDBOX_TOOLS, TERMINAL_STEP,
   type EngineEffect, type EngineRun, type Plan, type PlanStep, type StepState, type TickInput, type TickOutput,
   type Checkpoint, type TimelineEvent, type TimelineType, type Verifier,
 } from './types';
@@ -34,6 +34,22 @@ import { topoOrder } from './plan';
 export interface EngineOptions {
   verify?: Verifier;
   replanOnFailure?: boolean;
+  /** Steps one run keeps going at once: media runs keep today's 2 (lib/agent/run MAX_PARALLEL); at most MAX_WORKERS. */
+  maxWorkers?: number;
+}
+
+/** The run deadline a plan gets unless the caller sets one: 30 min with a media render in it, else 10 (06 §3). */
+export function deadlineFor(plan: Plan): number {
+  return plan.steps.some((s) => MEDIA_TOOLS.has(s.tool)) ? MEDIA_RUN_DEADLINE_MS : DEFAULT_RUN_DEADLINE_MS;
+}
+
+/**
+ * The caller's check on every start, first attempt or retry (GG 2026-11-13, Phase 3.5 decision 3): queue the job only
+ * when its real quote is within what the step was approved for; otherwise hand the engine a StepHold and ask the user.
+ * So a retry never costs more than the user already said yes to.
+ */
+export function admitQuote(start: Extract<EngineEffect, { type: 'start' }>, quoteCredits: number): 'go' | 'hold' {
+  return Number.isFinite(quoteCredits) && quoteCredits >= 0 && quoteCredits <= start.approvedCredits ? 'go' : 'hold';
 }
 
 
@@ -96,13 +112,17 @@ class Tick {
 /** A new run on an approved plan (APPROVE and RESERVE happen before this, outside the engine). */
 export function createRun(
   id: string, plan: Plan, now: number,
-  opts: { deadlineMs?: number; reuse?: Record<string, Checkpoint> } = {},
+  opts: {
+    deadlineMs?: number; reuse?: Record<string, Checkpoint>;
+    /** Each step's approved price (the price book's, as the user saw it); a step missing here gets its estimate. */
+    approved?: Record<string, number>;
+  } = {},
 ): TickOutput {
   if (!topoOrder(plan.steps)) throw new Error('createRun: the plan has a cycle (parsePlan first)');
   const run: EngineRun = {
     v: 1, id, status: 'planned', plan,
-    steps: plan.steps.map((s) => ({ id: s.id, status: 'pending', attempts: 0 })),
-    paused: false, cancelRequested: false, replans: 0, createdAt: now, deadlineAt: now + (opts.deadlineMs ?? DEFAULT_RUN_DEADLINE_MS), seq: 0,
+    steps: plan.steps.map((s) => ({ id: s.id, status: 'pending', attempts: 0, approvedCredits: opts.approved?.[s.id] ?? s.estimateCredits })),
+    paused: false, cancelRequested: false, replans: 0, createdAt: now, deadlineAt: now + (opts.deadlineMs ?? deadlineFor(plan)), seq: 0,
     ...(opts.reuse && Object.keys(opts.reuse).length ? { reuse: opts.reuse } : {}),
   };
   const t = new Tick(run, now);
@@ -132,6 +152,16 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
     if (c === 'pause' && !t.run.paused) { t.run.paused = true; t.emit('run.paused'); }
     if (c === 'resume' && t.run.paused) { t.run.paused = false; t.emit('run.resumed'); }
     if (c === 'cancel' && !t.run.cancelRequested) t.run.cancelRequested = true;
+    if (typeof c === 'object' && c.type === 'approve') {
+      // The yes counts only for the quote the step is holding: an old or guessed quote id is ignored.
+      const s = t.run.steps.find((x) => x.id === c.stepId);
+      if (s && s.status === 'awaiting_approval' && s.heldQuote && s.heldQuote.quoteId === c.quoteId && !t.run.cancelRequested) {
+        s.approvedCredits = s.heldQuote.credits;
+        s.heldQuote = undefined;
+        s.status = 'pending';
+        t.emit('step.queued', s.id, { approvedCredits: s.approvedCredits });
+      }
+    }
   }
 
   // 2. Executor answers: only the attempt in flight counts, and only once VERIFY passes.
@@ -168,10 +198,31 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
     }
   }
 
-  // 3. The deadline is a cancel the run gives itself. While the run waits for the user's yes it is held; the wait
-  //    has its own, longer limit.
+  // 2b. Holds: a started attempt whose real quote is above its approval. Nothing was queued; the step gives its worker
+  //     back and waits for the user's yes to that quote.
+  for (const h of input.holds ?? []) {
+    const s = t.run.steps.find((x) => x.id === h.stepId);
+    if (!s || s.status !== 'running' || s.attemptId !== h.attemptId) continue;
+    s.status = 'awaiting_approval';
+    s.attemptId = undefined;
+    // The attempt never ran: it does not use up the step's retry.
+    s.attempts = Math.max(0, s.attempts - 1);
+    s.heldQuote = { quoteId: h.quoteId, credits: h.credits };
+    t.emit('step.needs_approval', s.id, { needs: 'quote', quoteId: h.quoteId, credits: h.credits, approvedCredits: s.approvedCredits });
+  }
+
+  // 3. The deadline is a cancel the run gives itself. While the run waits on the user (a replan, or a held quote with
+  //    nothing else running) the deadline is held, and the wait gets its own, longer limit; the time spent waiting is
+  //    given back when it ends.
+  const waitingOnUser = t.run.status === 'awaiting_approval'
+    || (t.run.steps.some((s) => s.status === 'awaiting_approval') && !t.run.steps.some((s) => s.status === 'running'));
+  if (waitingOnUser && t.run.awaitingSince === undefined) t.run.awaitingSince = t.now;
+  if (!waitingOnUser && t.run.awaitingSince !== undefined) {
+    t.run.deadlineAt += Math.max(0, t.now - t.run.awaitingSince);
+    t.run.awaitingSince = undefined;
+  }
   if (!t.run.cancelRequested) {
-    if (t.run.status === 'awaiting_approval') {
+    if (waitingOnUser) {
       if (t.now - (t.run.awaitingSince ?? t.now) >= APPROVAL_TIMEOUT_MS) {
         t.run.cancelRequested = true;
         t.run.error = 'approval_timeout';
@@ -189,7 +240,8 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
         t.effects.push({ type: 'stop', stepId: s.id, attemptId: s.attemptId! });
         s.attemptId = undefined;
       }
-      if (s.status === 'running' || s.status === 'pending') {
+      if (s.status === 'running' || s.status === 'pending' || s.status === 'awaiting_approval') {
+        s.heldQuote = undefined;
         s.status = 'cancelled';
         s.endedAt = t.now;
         s.error = t.run.error === 'deadline' ? 'deadline' : 'cancelled';
@@ -200,6 +252,7 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
 
   // 5. In dependency order: skip what can never run, take reusable checkpoints, start what is ready.
   const order = topoOrder(t.run.plan.steps)!;
+  const maxWorkers = Math.max(1, Math.min(MAX_WORKERS, opts.maxWorkers ?? MAX_WORKERS));
   let running = t.run.steps.filter((s) => s.status === 'running').length;
   let sandboxRunning = t.run.steps.filter((s) => s.status === 'running' && SANDBOX_TOOLS.has(t.planStep(s.id).tool)).length + (input.sandboxBusyElsewhere ?? 0);
   if (t.run.status !== 'awaiting_approval') {
@@ -224,7 +277,7 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
         t.emit('step.done', id, { reused: true });
         continue;
       }
-      if (t.run.paused || t.run.cancelRequested || running >= MAX_WORKERS) continue;
+      if (t.run.paused || t.run.cancelRequested || running >= maxWorkers) continue;
       if (s.notBefore !== undefined && t.now < s.notBefore) continue;
       const sandbox = SANDBOX_TOOLS.has(ps.tool);
       if (sandbox && sandboxRunning >= MAX_SANDBOX_PER_USER) continue;
@@ -236,7 +289,7 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
       s.inputsHash = hash;
       running += 1;
       if (sandbox) sandboxRunning += 1;
-      t.effects.push({ type: 'start', stepId: id, attemptId: s.attemptId, tool: ps.tool, inputs });
+      t.effects.push({ type: 'start', stepId: id, attemptId: s.attemptId, tool: ps.tool, inputs, approvedCredits: s.approvedCredits });
       t.emit('step.started', id, { attempt: s.attempts });
     }
   }
@@ -266,7 +319,8 @@ function finish(t: Tick, opts: EngineOptions) {
     t.emit('step.needs_approval', undefined, { needs: 'replan', replansLeft: MAX_REPLANS - t.run.replans });
     return;
   }
-  const byOwner = t.run.cancelRequested && t.run.error !== 'deadline';
+  // A stop the run gave itself (the deadline, or a yes that never came) is not the owner's: what was delivered counts.
+  const byOwner = t.run.cancelRequested && t.run.error !== 'deadline' && t.run.error !== 'approval_timeout';
   const to: RunStatus = byOwner ? 'cancelled' : done === t.run.steps.length ? 'completed' : done > 0 ? 'partially_completed' : 'failed';
   // transitionPath walks the legal hops (queued → running → completed).
   t.moveTo(to);
@@ -284,7 +338,9 @@ function creditsOf(run: EngineRun): number {
  * be in the new plan with the same tool and inputs; everything else is replaced. At most MAX_REPLANS per run. The new
  * plan has already passed parsePlan and VALIDATE, and its price the user's yes (the run waits in awaiting_approval).
  */
-export function replan(run: EngineRun, plan: Plan, now: number): ({ ok: true } & TickOutput) | { ok: false; error: string } {
+export function replan(
+  run: EngineRun, plan: Plan, now: number, approved: Record<string, number> = {},
+): ({ ok: true } & TickOutput) | { ok: false; error: string } {
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { ok: false, error: `run is ${run.status}` };
   if (run.replans >= MAX_REPLANS) return { ok: false, error: `at most ${MAX_REPLANS} replans` };
   const ids = new Set(plan.steps.map((s) => s.id));
@@ -301,10 +357,12 @@ export function replan(run: EngineRun, plan: Plan, now: number): ({ ok: true } &
       return { ok: false, error: `step "${k.id}" is ${k.status} and must stay as it is` };
     }
   }
-  for (const s of t.run.steps) if (s.status === 'pending') t.emit('step.cancelled', s.id, { reason: 'replanned' });
+  for (const s of t.run.steps) if (s.status === 'pending' || s.status === 'awaiting_approval') t.emit('step.cancelled', s.id, { reason: 'replanned' });
   const keptIds = new Set(kept.map((k) => k.id));
   t.run.plan = plan;
-  t.run.steps = plan.steps.map((ps) => (keptIds.has(ps.id) ? kept.find((k) => k.id === ps.id)! : { id: ps.id, status: 'pending', attempts: 0 }));
+  t.run.steps = plan.steps.map((ps) => (keptIds.has(ps.id)
+    ? kept.find((k) => k.id === ps.id)!
+    : { id: ps.id, status: 'pending', attempts: 0, approvedCredits: approved[ps.id] ?? ps.estimateCredits }));
   t.run.replans += 1;
   if (t.run.awaitingSince !== undefined) {
     // The time spent waiting for the user's yes is given back to the run.
@@ -318,7 +376,7 @@ export function replan(run: EngineRun, plan: Plan, now: number): ({ ok: true } &
 
 /** What the card shows: one line per step, like lib/agent/taskGraph graphSummary. */
 export function runSummary(run: EngineRun): string {
-  const mark: Record<StepState['status'], string> = { pending: '○', running: '✱', done: '✓', failed: '✗', skipped: '–', cancelled: '■' };
+  const mark: Record<StepState['status'], string> = { pending: '○', running: '✱', awaiting_approval: '?', done: '✓', failed: '✗', skipped: '–', cancelled: '■' };
   return [`${run.plan.title} [${run.status}${run.paused ? ', paused' : ''}]`, ...run.plan.steps.map((ps) => {
     const s = run.steps.find((x) => x.id === ps.id)!;
     return `${mark[s.status]} ${ps.id} [${ps.tool}] ${ps.title}${ps.dependsOn.length ? ` ← ${ps.dependsOn.join(', ')}` : ''}${s.reused ? ' (reused)' : ''}${s.error && s.status !== 'done' ? ` (${s.error})` : ''}`;

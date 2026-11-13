@@ -39,6 +39,13 @@ export const MAX_SANDBOX_PER_USER = 1;
 export const MAX_STEP_RETRIES = 1;
 export const MAX_REPLANS = 2;
 export const DEFAULT_RUN_DEADLINE_MS = 10 * 60_000;
+/**
+ * A run with a media render in it (a clip, a song) gets 30 minutes: one Omni clip or a long montage can take several
+ * minutes per step, so 10 would end good runs early. GG chose this 2026-11-13 (Phase 3.5 decision 1).
+ */
+export const MEDIA_RUN_DEADLINE_MS = 30 * 60_000;
+/** Tools whose steps make the run a media run (3.5a adds montage, edit and audio_extract when media runs move over). */
+export const MEDIA_TOOLS: ReadonlySet<EngineTool> = new Set(['video', 'music']);
 /** A retried attempt waits this long first: an instant retry of a rate limit or a busy model usually fails again. */
 export const RETRY_BACKOFF_MS = 5_000;
 /**
@@ -67,6 +74,7 @@ export interface Plan {
 export type StepStatus =
   | 'pending'    // waiting for its inputs
   | 'running'    // an executor has it (a result is VERIFIED in the tick it arrives, before it counts as done)
+  | 'awaiting_approval' // its quote is above what it was approved for: waits for the user's yes, holding no worker
   | 'done'
   | 'failed'
   | 'skipped'    // an input failed or was stopped: it can never run
@@ -91,6 +99,13 @@ export interface StepState {
   reused?: boolean;
   /** A retry does not start before this time (RETRY_BACKOFF_MS after the failure). */
   notBefore?: number;
+  /**
+   * The most this step may charge without asking again: its price when the plan was approved, or the price the user
+   * later said yes to. Every start (the first and a retry) is checked against it by the caller (admitQuote).
+   */
+  approvedCredits: number;
+  /** The quote it is waiting on while awaiting_approval: the user's yes must name this id. */
+  heldQuote?: { quoteId: string; credits: number };
 }
 
 /** What a done step was made from and where its outputs are: enough to reuse it in a later run. */
@@ -135,7 +150,7 @@ export interface TimelineEvent {
 
 /** What the caller must do after a tick. The engine never does it itself. */
 export type EngineEffect =
-  | { type: 'start'; stepId: string; attemptId: string; tool: EngineTool; inputs: string[] }
+  | { type: 'start'; stepId: string; attemptId: string; tool: EngineTool; inputs: string[]; approvedCredits: number }
   | { type: 'stop'; stepId: string; attemptId: string };
 
 /** An executor's answer about one attempt. */
@@ -143,11 +158,24 @@ export type StepResult =
   | { stepId: string; attemptId: string; ok: true; outputs: string[]; credits: number; inputsHash?: string }
   | { stepId: string; attemptId: string; ok: false; error: string; retryable: boolean; credits?: number };
 
-export type EngineCommand = 'pause' | 'resume' | 'cancel';
+/** The owner's presses. `approve` is their yes to a held quote, and must name that quote. */
+export type EngineCommand = 'pause' | 'resume' | 'cancel' | { type: 'approve'; stepId: string; quoteId: string };
+
+/**
+ * The caller quoted a started attempt and the price is above the step's approvedCredits (admitQuote said 'hold'):
+ * nothing was queued, the attempt is given back, and the step waits for the user's yes to this quote.
+ */
+export interface StepHold {
+  stepId: string;
+  attemptId: string;
+  quoteId: string;
+  credits: number;
+}
 
 export interface TickInput {
   now: number;
   results?: StepResult[];
+  holds?: StepHold[];
   commands?: EngineCommand[];
   /** Sandbox steps this user has running in OTHER runs right now (the 1-per-user limit spans runs). */
   sandboxBusyElsewhere?: number;

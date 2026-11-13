@@ -2,9 +2,9 @@
 /** EXECUTE (M-8): the parallel DAG scheduler, driven end to end on mocked executors by ./simulate. */
 import { RUN_TRANSITIONS, type RunStatus } from '../contracts';
 import { parsePlan } from './plan';
-import { checkpointsOf, createRun, fnv1a, inputsHashOf, replan, runSummary, stableJson, tick } from './scheduler';
+import { admitQuote, checkpointsOf, createRun, deadlineFor, fnv1a, inputsHashOf, replan, runSummary, stableJson, tick } from './scheduler';
 import { simulate } from './simulate';
-import { APPROVAL_TIMEOUT_MS, MAX_WORKERS, RETRY_BACKOFF_MS, type Plan, type TimelineEvent } from './types';
+import { APPROVAL_TIMEOUT_MS, MAX_WORKERS, MEDIA_RUN_DEADLINE_MS, RETRY_BACKOFF_MS, type Plan, type TimelineEvent } from './types';
 
 function plan(steps: Array<[id: string, tool: string, deps?: string[]]>, title = 'test'): Plan {
   const r = parsePlan({ title, steps: steps.map(([id, tool, deps]) => ({ id, tool, title: id, dependsOn: deps ?? [] })) });
@@ -231,4 +231,87 @@ test('replan refuses a plan that repeats an id or needs a step it does not have'
   expect(replan(half.run, dup, 9_000)).toMatchObject({ ok: false, error: 'the new plan repeats a step id' });
   const dangling: Plan = { title: 't', steps: [half.run.plan.steps[0]!, { id: 'c', tool: 'write', title: 'c', dependsOn: ['zzz'], params: {}, estimateCredits: 0 }] };
   expect(replan(half.run, dangling, 9_000)).toMatchObject({ ok: false, error: expect.stringContaining('"c" needs a step') });
+});
+
+describe('Phase 3.5 additions (GG decisions 2026-11-13)', () => {
+  const priced = (steps: Array<[string, string, string[]?]>, credits: number) => {
+    const p = plan(steps);
+    return { p, approved: Object.fromEntries(p.steps.map((s) => [s.id, credits])) };
+  };
+
+  test('maxWorkers caps parallel steps (media runs keep 2), and never above MAX_WORKERS', () => {
+    const p = plan([['a', 'research'], ['b', 'research'], ['c', 'research'], ['d', 'research']]);
+    expect(simulate(p, {}, { maxWorkers: 2 }).peakParallel).toBe(2);
+    expect(simulate(p, {}, { maxWorkers: 9 }).peakParallel).toBe(MAX_WORKERS);
+  });
+
+  test('a plan with a clip or a song gets 30 minutes; others keep 10', () => {
+    expect(deadlineFor(plan([['v', 'video'], ['w', 'write', ['v']]]))).toBe(MEDIA_RUN_DEADLINE_MS);
+    expect(deadlineFor(plan([['r', 'research'], ['w', 'write', ['r']]]))).toBe(10 * 60_000);
+    const r = simulate(plan([['v', 'video']]), { steps: { v: [{ ms: 15 * 60_000 }] } }, { tickMs: 30_000 });
+    expect(r.run.status).toBe('completed'); // a 15-minute render is not cut off
+  });
+
+  test('admitQuote: go within the approval, hold above it or on a bad number', () => {
+    const start = { type: 'start' as const, stepId: 'a', attemptId: 'x', tool: 'video' as const, inputs: [], approvedCredits: 20 };
+    expect(admitQuote(start, 20)).toBe('go');
+    expect(admitQuote(start, 21)).toBe('hold');
+    expect(admitQuote(start, Number.NaN)).toBe('hold');
+    expect(admitQuote(start, -1)).toBe('hold');
+  });
+
+  test('a quote above the approval waits for the yes to THAT quote, holding no worker; the yes resumes it at the new price', () => {
+    const { p, approved } = priced([['a', 'video'], ['b', 'write']], 20);
+    const r = simulate(p, {
+      quotes: { a: [28, 28] },
+      steps: { b: [{ ms: 3_000 }] },
+      commands: [
+        { at: 2_000, command: { type: 'approve', stepId: 'a', quoteId: 'q-a-9' } }, // a stale or guessed id: ignored
+        { at: 4_000, command: { type: 'approve', stepId: 'a', quoteId: 'q-a-1' } },
+      ],
+    }, { approved });
+    expect(r.run.status).toBe('completed');
+    const held = r.events.find((e) => e.type === 'step.needs_approval' && e.stepId === 'a')!;
+    expect(held.data).toMatchObject({ needs: 'quote', quoteId: 'q-a-1', credits: 28, approvedCredits: 20 });
+    expect(r.spans.a![0]!.start).toBeGreaterThanOrEqual(4_000); // only after the right yes
+    expect(r.spans.b![0]!.start).toBe(0); // the held step never blocked b
+    expect(r.run.steps.find((s) => s.id === 'a')).toMatchObject({ approvedCredits: 28, attempts: 1 });
+    expectLegalStatuses(r.events);
+  });
+
+  test('a retry whose price went up waits for a yes instead of spending more (decision 3)', () => {
+    const { p, approved } = priced([['a', 'video']], 20);
+    const r = simulate(p, {
+      quotes: { a: [20, 26] },
+      steps: { a: [{ ms: 1_000, fail: { error: 'rate_limited', retryable: true } }, { ms: 1_000 }] },
+    }, { approved });
+    expect(r.run.steps[0]).toMatchObject({ status: 'awaiting_approval', heldQuote: { quoteId: 'q-a-2', credits: 26 } });
+    expect(r.effects.filter((e) => e.type === 'start')).toHaveLength(2); // the second start was quoted, never queued
+    expect(r.spans.a).toHaveLength(1); // so only the first attempt ever ran
+  });
+
+  test('a held quote holds the deadline; a yes that never comes ends the run, delivering what is done', () => {
+    const { p, approved } = priced([['a', 'write'], ['b', 'video', ['a']]], 20);
+    const r = simulate(p, { quotes: { b: [40] } }, { approved, tickMs: 60_000, maxTicks: 2_000 });
+    expect(r.run.status).toBe('partially_completed');
+    expect(r.run.error).toBe('approval_timeout');
+    expect(r.run.steps.map((s) => `${s.id}:${s.status}`)).toEqual(['a:done', 'b:cancelled']);
+    expect(r.events.find((e) => e.type === 'run.delivered')!.data).toMatchObject({ steps: 1 });
+    expectLegalStatuses(r.events);
+  });
+
+  test('cancel ends a held step too, and replan drops one', () => {
+    const { p, approved } = priced([['a', 'video']], 20);
+    const r = simulate(p, { quotes: { a: [50] }, commands: [{ at: 1_000, command: 'cancel' }] }, { approved });
+    expect(r.run.status).toBe('cancelled');
+    expect(r.run.steps[0]).toMatchObject({ status: 'cancelled', heldQuote: undefined });
+  });
+
+  test('an approval with nothing to approve, or after a cancel, changes nothing', () => {
+    const p = plan([['a', 'write']]);
+    const created = createRun('r1', p, 0, { approved: { a: 5 } });
+    const out = tick(created.run, { now: 1, commands: [{ type: 'approve', stepId: 'a', quoteId: 'q' }] });
+    expect(out.run.steps[0]!.approvedCredits).toBe(5);
+    expect(out.events.some((e) => e.type === 'step.queued')).toBe(false);
+  });
 });
