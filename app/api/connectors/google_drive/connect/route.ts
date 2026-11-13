@@ -25,10 +25,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!deps.store || !deps.tableReady) return backTo(req.nextUrl.origin, locale, 'error', 'unavailable');
 
   const { verifier, challenge } = pkcePair();
-  const state = signState(user.id, deps.cfg.keys);
-  const url = authorizationUrl(deps.cfg, { redirectUri: driveRedirectUri(req.nextUrl.origin), state, challenge, loginHint: user.email ?? undefined });
+  const onePick = req.nextUrl.searchParams.get('picker') === '1';
+  const state = signState(onePick ? `${user.id}:picker` : user.id, deps.cfg.keys);
+  const url = authorizationUrl(deps.cfg, { redirectUri: driveRedirectUri(req.nextUrl.origin), state, challenge, loginHint: user.email ?? undefined, onePick });
   const res = NextResponse.redirect(url, 302);
-  res.cookies.set(COOKIE, `${verifier}~${state}~${locale}`, {
+  res.cookies.set(COOKIE, `${verifier}~${state}~${locale}~${onePick ? 'picker' : 'connect'}`, {
     httpOnly: true,
     secure: true,
     sameSite: 'lax',
