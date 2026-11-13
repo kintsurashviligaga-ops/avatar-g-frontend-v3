@@ -98,13 +98,14 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
   },
   {
     // Live: backed by Replicate (TRELLIS), not Meshy — Meshy had no API key on any environment, so it
-    // could never run. Text mode goes Imagen 4 → reference image → reconstruction.
+    // could never run. Text mode goes text-to-image → reference image → reconstruction. The create route
+    // refuses every request in production (503 google_only, no Google engine).
     id: 'model3d', icon: '🧊', live: true, target: { kind: 'path', path: '/3d' },
     name: { ka: '3D', en: '3D', ru: '3D' },
     tagline: { ka: 'ტექსტიდან GLB-მდე', en: 'Text to GLB', ru: 'Из текста в GLB' },
   },
   {
-    // Live: outline (Gemini) → optional Imagen visuals → resvg-rasterised PNG slides, with browser print
+    // Live: outline (Gemini) → optional gemini-3.1-flash-image visuals → resvg-rasterised PNG slides, with browser print
     // for PDF and a jszip bundle. Degrades to a text-only deck without an image key, and to a
     // deterministic skeleton without an LLM — neither is an error state.
     id: 'presentation', icon: '📊', live: true, target: { kind: 'path', path: '/slides' },
