@@ -6,7 +6,7 @@
  * one retry within the approved price, pause, the deadline, and resume.
  */
 import type { AgentApproval } from '../contracts';
-import { MEDIA_RUN_DEADLINE_MS, RETRY_BACKOFF_MS } from '../engine/types';
+import { APPROVAL_TIMEOUT_MS, MEDIA_RUN_DEADLINE_MS, RETRY_BACKOFF_MS } from '../engine/types';
 import { isRetryable, newRunV2, planTickV2, resumedRunV2 } from './engineBridge';
 import { moveStep, newRun, planTick, runOf, stepOf, type ChildView, type RunAction, type RunState } from './runEngine';
 import type { RunSpec } from './runSpec';
@@ -300,6 +300,48 @@ describe('stop and the deadline', () => {
     expect(stepOf(t.next, 'one')!.status).toBe('completed');
     expect(t.next.status).toBe('partially_completed');
     expect(t.next.error).toBe('deadline');
+  });
+});
+
+describe('edge cases around a held quote', () => {
+  const held = () => {
+    let t = planTickV2(fresh(), {}, T0);
+    t = planTickV2(quote(t.next, 'sound', 0), { sound: AUDIO }, T0 + 1);
+    return planTickV2(quote(t.next, 'clip', 14, T0 + 2), { sound: AUDIO }, T0 + 3).next;
+  };
+
+  test('a stop while a step waits for a yes: no job was queued, so nothing to cancel or pay back', () => {
+    const run = held();
+    run.cancelRequested = true;
+    const t = planTickV2(run, { sound: AUDIO }, T0 + 4);
+    expect(t.actions).toEqual([]);
+    expect(stepOf(t.next, 'clip')).toMatchObject({ status: 'cancelled' });
+    expect(stepOf(t.next, 'clip')!.quote).toBeUndefined();
+    expect(t.next.status).toBe('cancelled');
+  });
+
+  test('a yes that never comes: after the approval timeout the run ends with what it delivered', () => {
+    const t = planTickV2(held(), { sound: AUDIO }, T0 + 3 + APPROVAL_TIMEOUT_MS + 1);
+    expect(t.actions).toEqual([]);
+    expect(stepOf(t.next, 'sound')!.status).toBe('completed');
+    expect(stepOf(t.next, 'clip')!.status).toBe('cancelled');
+    expect(t.next.status).toBe('partially_completed');
+    expect(t.next.error).toBe('approval_timeout');
+  });
+
+  test('waiting for a yes does not use up the 30-minute deadline', () => {
+    const t = planTickV2(held(), { sound: AUDIO }, T0 + MEDIA_RUN_DEADLINE_MS + 60_000);
+    expect(t.next.status).toBe('awaiting_approval');
+    expect(t.next.error).toBeUndefined();
+    expect(stepOf(t.next, 'clip')!.status).toBe('awaiting_approval');
+  });
+
+  test('a yes naming another quote is ignored', () => {
+    const run = held();
+    stepOf(run, 'clip')!.approvedQuoteId = 'q-someone-else';
+    const t = planTickV2(run, { sound: AUDIO }, T0 + 4);
+    expect(t.actions).toEqual([]);
+    expect(engStatus(t.next, 'clip')).toBe('awaiting_approval');
   });
 });
 
