@@ -46,6 +46,8 @@ const notFound = () => NextResponse.json({ ok: false, error: 'not_found', messag
 const RUN_STATUS: Record<RunError['error'], number> = {
   bad_spec: 400, not_configured: 503, quote_invalid: 409, quote_changed: 409, quote_expired: 409, jobs_unavailable: 503,
   not_found: 404, not_running: 409, not_waiting: 409, not_final: 409, nothing_to_resume: 409,
+  // VALIDATE (Phase 3.5a, only while AGENT_VALIDATE is on): a retired model or a switched-off tool; a step not open to this account.
+  capability_unavailable: 503, policy_denied: 403,
 };
 const runError = (e: RunError) => NextResponse.json(e, { status: RUN_STATUS[e.error], headers: NO_STORE });
 

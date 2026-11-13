@@ -24,6 +24,7 @@ import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
 import type { AuditEvent } from '@/lib/agent/media/montageExec';
 import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote } from '@/lib/agent/media/quoteToken';
 import type { AgentApproval } from '../contracts';
+import type { RunValidateError, RunValidateOutcome } from './runValidate';
 import {
   RUN_KIND, TICK_LEASE_MS, emit, isFinalStep, isTerminalRun, moveStep, newRun, planTick, resolvedRefs, resumedRun, runOf, settle,
   stepOf, type ChildView, type RunState, type StepQuote,
@@ -60,11 +61,16 @@ export interface RunExecDeps {
   newId(): string;
   /** The run just ended (completed, partly, failed or stopped): tell its owner (lib/notifications/outbox). Never throws. */
   finished?(runId: string): void;
+  /**
+   * VALIDATE (Phase 3.5a, M-4; ./runValidate): the registry and policy check, run before a plan is signed and again before
+   * a run (or its resume) is created. Absent while AGENT_VALIDATE is off, so today's behaviour is unchanged.
+   */
+  validate?(userId: string, spec: RunSpec): Promise<RunValidateOutcome>;
 }
 
 export type RunErrorCode =
   | 'bad_spec' | 'not_configured' | 'quote_invalid' | 'quote_changed' | 'quote_expired' | 'jobs_unavailable' | 'not_found'
-  | 'not_running' | 'not_waiting' | 'not_final' | 'nothing_to_resume';
+  | 'not_running' | 'not_waiting' | 'not_final' | 'nothing_to_resume' | RunValidateError;
 
 export interface RunError { ok: false; error: RunErrorCode; message: string; step?: string }
 
@@ -84,6 +90,21 @@ export const runQuoteBinding = (spec: RunSpec) =>
 /** Codes a queued quote can never recover from: the step ends with it. Anything else is tried again on the next tick. */
 const FATAL_ENQUEUE = new Set(['invalid_request', 'quote_invalid', 'quote_changed']);
 
+/** VALIDATE when it is on; a refusal is audited and returned as the run's error, before anything is signed or queued. */
+async function refusedByValidate(deps: RunExecDeps, userId: string, spec: RunSpec, phase: 'quote' | 'run' | 'resume'): Promise<RunError | null> {
+  if (!deps.validate) return null;
+  let v: RunValidateOutcome;
+  try {
+    v = await deps.validate(userId, spec);
+  } catch {
+    // The check itself failed (a read of the switches or the profile): fail closed, nothing is quoted or started.
+    v = { ok: false, error: 'capability_unavailable', message: 'The run could not be checked right now. Try again shortly.' };
+  }
+  if (v.ok) return null;
+  await deps.audit({ userId, op: 'agent_run', phase, outcome: 'refused', detail: `validate_${v.error}${v.step ? `:${v.step}` : ''}` });
+  return err(v.error, v.message, v.step);
+}
+
 // ── plan and start (the user's tap) ──────────────────────────────────────────────────────────────────────────────────
 
 export interface RunPlan {
@@ -99,6 +120,8 @@ export async function planRun(deps: RunExecDeps, input: { userId: string; spec: 
   if (!valid.ok) return err('bad_spec', valid.message, valid.step);
   if (!deps.key()) return err('not_configured', 'Plans cannot be signed on this server.');
   const spec = valid.spec;
+  const refused = await refusedByValidate(deps, input.userId, spec, 'quote');
+  if (refused) return refused;
   const runId = deps.newId();
   const credits = listTotal(deps, spec);
   const expiresAt = deps.now() + QUOTE_TTL_MS;
@@ -133,6 +156,9 @@ export async function startRun(
     }
     return err('quote_invalid', 'This plan is not valid.');
   }
+  // Checked again at the start: a model retired or a switch turned off since the plan was shown stops it here.
+  const refused = await refusedByValidate(deps, userId, spec, 'run');
+  if (refused) return refused;
   const runId = check.claims.j;
   const now = deps.now();
   const approval: AgentApproval = {
@@ -487,6 +513,8 @@ export async function resumeRun(deps: RunExecDeps, input: { userId: string; id: 
   if (!r || r.row.userId !== input.userId) return err('not_found', 'No such run.');
   if (!isTerminalRun(r.run)) return err('not_final', 'This run is still going.');
   if (r.run.status === 'completed') return err('nothing_to_resume', 'Every step of this run was delivered.');
+  const refused = await refusedByValidate(deps, input.userId, r.run.spec, 'resume');
+  if (refused) return refused;
   const now = deps.now();
   const runId = resumeIdOf(input.id);
   const approval: AgentApproval = {

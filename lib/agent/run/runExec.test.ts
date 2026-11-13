@@ -23,6 +23,7 @@ import {
   approveStep, cancelRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
 } from './runExec';
 import type { RunSpec } from './runSpec';
+import { checkRunSpec } from './runValidate';
 import { sweepDeliveries, type OutboxDeps, type Outlet } from '@/lib/notifications/outbox';
 import { outboxOverLease } from '@/lib/notifications/testing/memoryOutboxStore';
 import { DEFAULT_PREFS, normalizePrefs } from '@/lib/notifications/preferences';
@@ -161,6 +162,60 @@ describe('plan and start: only a tapped, signed plan creates a run, once', () =>
     if (!p.ok) throw new Error(p.error);
     const dearer = { ...w.deps, adapters: { ...w.deps.adapters, montage: { ...w.deps.adapters.montage, listPrice: 5 } } };
     expect(await startRun(dearer, { userId: USER, spec: CHAIN, token: p.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+  });
+});
+
+describe('VALIDATE (Phase 3.5a): with the check on, a refused plan is never signed, started or resumed', () => {
+  const NOW = new Date('2026-11-13T08:00:00Z');
+  /** The live check over chosen facts: the real registry, the montage switch on or off. */
+  const validateWith = (switchedOff: string[]) => async (_u: string, spec: RunSpec) =>
+    checkRunSpec(spec, { now: NOW, isAdmin: false, switchedOff: new Set(switchedOff), priceBook: { montage: 0, audio_extract: 0, edit: 0 }, runCeilingCredits: 100 }, () => 0);
+
+  test('the check off (no validate dep) changes nothing: the existing path is the one tested above', async () => {
+    const w = world();
+    expect(w.deps.validate).toBeUndefined();
+    expect((await planRun(w.deps, { userId: USER, spec: CHAIN })).ok).toBe(true);
+  });
+
+  test('every media step passes on the real registry: the ffmpeg tools call no model', async () => {
+    const w = world();
+    w.deps.validate = validateWith([]);
+    const id = await started(w);
+    expect(runAt(w, id).status).toBe('queued');
+  });
+
+  test('a switched-off montage refuses the plan by its step: nothing signed, nothing written, the refusal audited', async () => {
+    const w = world();
+    w.deps.validate = validateWith(['montage']);
+    expect(await planRun(w.deps, { userId: USER, spec: CHAIN })).toEqual({ ok: false, error: 'capability_unavailable', message: 'montage is switched off', step: 'clip' });
+    expect(w.store.rows.size).toBe(0);
+    expect(w.audits.map((a) => `${a.phase}:${a.outcome}:${a.detail}`)).toEqual(['quote:refused:validate_capability_unavailable:clip']);
+  });
+
+  test('a switch turned off between the plan and the tap stops the start; no run row is created', async () => {
+    const w = world();
+    w.deps.validate = validateWith([]);
+    const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
+    if (!p.ok) throw new Error(p.error);
+    w.deps.validate = validateWith(['montage']);
+    expect(await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token })).toMatchObject({ ok: false, error: 'capability_unavailable', step: 'clip' });
+    expect(jobsOf(w, RUN_KIND)).toHaveLength(0);
+  });
+
+  test('a check that throws fails closed: nothing is quoted', async () => {
+    const w = world();
+    w.deps.validate = async () => { throw new Error('profile read failed'); };
+    expect(await planRun(w.deps, { userId: USER, spec: CHAIN })).toMatchObject({ ok: false, error: 'capability_unavailable' });
+  });
+
+  test('a resume is checked too: a stopped run is not carried on while its montage is switched off', async () => {
+    const w = world();
+    const id = await started(w);
+    expect((await cancelRun(w.deps, { userId: USER, id })).ok).toBe(true);
+    await tick(w, id);
+    w.deps.validate = validateWith(['montage']);
+    expect(await resumeRun(w.deps, { userId: USER, id })).toMatchObject({ ok: false, error: 'capability_unavailable', step: 'clip' });
+    expect(w.store.rows.has(resumeIdOf(id))).toBe(false);
   });
 });
 
