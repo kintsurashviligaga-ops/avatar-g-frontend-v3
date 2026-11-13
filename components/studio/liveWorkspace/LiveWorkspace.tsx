@@ -5,7 +5,7 @@
  * center on the right; on a phone, two tabs with the pending count on "Approvals". Today it replays lib/agent/liveWorkspace
  * /mock on a timer (nothing runs, nothing is spent); later the same components draw GET /api/runs/:id/stream.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { mockScript } from '@/lib/agent/liveWorkspace/mock';
 import { answer, cancel, pause, resume, start, tick, type Player } from '@/lib/agent/liveWorkspace/player';
@@ -17,8 +17,6 @@ export function useMockWorkspace(locale: string, autoplay = true) {
   const lang = langOf(locale) === 'ka' ? 'ka' : 'en';
   const make = useCallback(() => start(mockScript(lang, Date.now()), Date.now()), [lang]);
   const [p, setP] = useState<Player>(make);
-  const ref = useRef(p);
-  ref.current = p;
   useEffect(() => {
     if (!autoplay) return;
     const t = setInterval(() => setP((cur) => tick(cur, Date.now())), 200);
@@ -38,7 +36,9 @@ export function LiveWorkspace({ locale }: { locale: string }) {
   const w = WORDS[langOf(locale)];
   const ws = useMockWorkspace(locale);
   const [tab, setTab] = useState<'runs' | 'approvals'>('runs');
-  const pending = Object.values(ws.state.approvals).filter((a) => a.state === 'pending').length;
+  // Same rule as the approval center: a pending approval past its time no longer counts.
+  const now = Date.now();
+  const pending = Object.values(ws.state.approvals).filter((a) => a.state === 'pending' && a.expiresAt > now).length;
   const runs = ws.state.order.map((id) => ws.state.runs[id]!).filter(Boolean);
 
   return (
