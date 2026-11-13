@@ -67,7 +67,7 @@ export interface ValidateFacts {
   runCeilingCredits: number;
   /** Tools still rolling out, and whether each is open to this user. A tool not listed is open. */
   audience?: Readonly<Partial<Record<EngineTool, boolean>>>;
-  /** Per-tool model overrides (env), on top of TOOL_MODEL. */
+  /** Per-tool model overrides (env), on top of TOOL_MODEL. Empty or null keeps the default: an override never removes a model. */
   models?: Readonly<Partial<Record<EngineTool, string | null>>>;
   /** Defaults to the real registry; tests pass their own. */
   registry?: LifecycleRegistry;
@@ -76,7 +76,13 @@ export interface ValidateFacts {
 export function buildValidateContext(f: ValidateFacts): ValidateContext {
   const reg = f.registry ?? LIFECYCLE;
   return {
-    modelOf: (tool) => (f.models && tool in f.models ? f.models[tool] ?? null : TOOL_MODEL[tool]),
+    // An override names another model; it can never remove one. An empty or missing override falls back to the default,
+    // so a tool that calls a model is always checked against the registry (fail closed, never "no model, nothing to check").
+    modelOf: (tool) => {
+      const o = f.models?.[tool];
+      const name = typeof o === 'string' ? o.trim() : '';
+      return name || TOOL_MODEL[tool];
+    },
     lifecycleOf: (model) => {
       const entry = lifecycleEntry(model, reg);
       return { known: entry !== null, level: lifecycleLevel(entry, f.now, reg) };
