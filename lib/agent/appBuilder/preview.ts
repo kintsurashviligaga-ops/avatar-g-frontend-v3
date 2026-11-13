@@ -12,6 +12,8 @@
  * gets its own subdomain on that preview domain (app_xxx.<preview domain>) so two apps cannot read each other either.
  */
 export const MAIN_SITE_DOMAIN = 'myavatar.ge';
+/** GG 2026-11-13 13:06Z: the preview domain is myavatar-apps.ge. Any other value keeps previews off. */
+export const APPROVED_PREVIEW_DOMAIN = 'myavatar-apps.ge';
 
 /** The last two labels, or three for second-level country zones like co.uk / com.ge. Enough for our own domains. */
 export function registrableDomain(host: string): string {
@@ -22,13 +24,21 @@ export function registrableDomain(host: string): string {
 
 export type PreviewDomainCheck = { ok: true; domain: string } | { ok: false; error: string };
 
-/** Check the configured preview domain (env APP_PREVIEW_DOMAIN). Unset or unsafe → previews stay off. */
-export function checkPreviewDomain(raw: string | undefined, main: string = MAIN_SITE_DOMAIN): PreviewDomainCheck {
+/**
+ * Check the configured preview domain (env APP_PREVIEW_DOMAIN). Unset, unsafe, or anything other than the approved
+ * domain → previews stay off. `approved` is a parameter only so the safety rules below stay testable on their own.
+ */
+export function checkPreviewDomain(
+  raw: string | undefined,
+  main: string = MAIN_SITE_DOMAIN,
+  approved: string | null = APPROVED_PREVIEW_DOMAIN,
+): PreviewDomainCheck {
   const d = (raw ?? '').trim().toLowerCase();
   if (!d) return { ok: false, error: 'no preview domain set; previews stay off' };
   if (!/^(?=.{4,200}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d)) return { ok: false, error: 'not a domain name' };
   if (registrableDomain(d) === registrableDomain(main)) return { ok: false, error: `must not be ${main} or a subdomain of it (a subdomain shares cookies with the main site)` };
   if (/vercel\.app$|github\.io$|netlify\.app$/.test(d)) return { ok: false, error: 'a shared hosting domain; use a domain only we control' };
+  if (approved !== null && d !== approved) return { ok: false, error: `only the approved preview domain ${approved} is allowed` };
   return { ok: true, domain: d };
 }
 
@@ -38,9 +48,13 @@ export function previewOrigin(appId: string, domain: string): string | null {
   return `https://${appId.replace('_', '-')}.${domain}`;
 }
 
+/** Origins allowed to show a preview in an iframe: only the main site, so the builder pane can display it. */
+export const PREVIEW_FRAME_ANCESTORS = ['https://myavatar.ge', 'https://www.myavatar.ge'] as const;
+
 /**
- * Headers every preview response carries. The app may run its own scripts, but it cannot be framed by others, cannot
- * reach the network beyond its own origin, and never gets a cookie (the preview server sets none).
+ * Headers every preview response carries. The app may run its own scripts, but only myavatar.ge may frame it (the
+ * builder pane, which also sets iframe sandbox="allow-scripts" without allow-same-origin), it cannot reach the network
+ * beyond its own origin, and it never gets a cookie (the preview server sets none).
  */
 export function previewHeaders(): Record<string, string> {
   return {
@@ -52,12 +66,13 @@ export function previewHeaders(): Record<string, string> {
       "font-src 'self' data:",
       "connect-src 'self'",
       "form-action 'none'",
-      "frame-ancestors 'none'",
+      `frame-ancestors ${PREVIEW_FRAME_ANCESTORS.join(' ')}`,
       "base-uri 'none'",
       "object-src 'none'",
     ].join('; '),
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
+    'X-Frame-Options': 'DENY', // old browsers without frame-ancestors: refuse framing entirely (fail closed)
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
