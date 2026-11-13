@@ -1,18 +1,19 @@
 import 'server-only';
 
-import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
 import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 /**
  * One slow vendor must not stall the audit: every live probe gets this long, and they run side by side. Before, the
- * probes ran one after another with no limit at all, so seven providers (HeyGen's /v2/avatars alone can take seconds)
+ * probes ran one after another with no limit at all, so seven providers (one vendor's avatar list alone could take seconds)
  * overran the route's 15 s and /api/app/health answered a runtime timeout — monitoring went blind exactly when needed.
  */
 export const PROBE_DEADLINE_MS = 8_000;
 
-// HeyGen, World Labs and LTX were removed (v5.1 M-14, GG 2026-11-12): no route calls them, so they are not probed.
-type ProviderName = 'openai' | 'udio' | 'anthropic' | 'gemini';
+// HeyGen, World Labs and LTX were removed (v5.1 M-14, GG 2026-11-12), and Udio and Anthropic are refused in production
+// (Google only, MASTER TASK v3.1): no route reaches them, so they are not probed. OpenAI stays only for the chat-memory
+// embeddings until those move to gemini-embedding-001.
+type ProviderName = 'openai' | 'gemini';
 
 export type ProviderAuditEntry = {
   provider: ProviderName;
@@ -24,7 +25,7 @@ export type ProviderAuditEntry = {
 };
 
 export type ServiceRoutingAudit = {
-  category: 'audio' | 'music' | '3d' | 'video' | 'text' | 'code';
+  category: 'text' | 'memory';
   provider: ProviderName;
   envKey: string;
   configured: boolean;
@@ -32,59 +33,24 @@ export type ServiceRoutingAudit = {
 
 const PROVIDER_ENV: Record<ProviderName, string> = {
   openai: 'OPENAI_API_KEY',
-  udio: 'UDIO_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
   // Not a key: Gemini runs on Vertex AI under Workload Identity (MASTER TASK v3.1), so the row names the project variable.
   gemini: 'GCP_PROJECT_ID',
 };
 
 const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provider: ProviderName }> = [
-  { category: 'audio', provider: 'openai' },
-  { category: 'music', provider: 'udio' },
   { category: 'text', provider: 'gemini' },
-  { category: 'code', provider: 'anthropic' },
+  { category: 'memory', provider: 'openai' },
 ];
 
 function hasKey(provider: ProviderName): boolean {
   // An AI Studio key is not a Gemini credential under v3.1: Gemini is "configured" when Vertex AI can serve it.
   if (provider === 'gemini') return googleAiConfigured();
-  // PHASE 45/46 §1 — Udio ships under several historical aliases; honour all.
-  if (provider === 'udio') return resolveUdioApiKey() !== null;
   const env = PROVIDER_ENV[provider];
   return typeof process.env[env] === 'string' && String(process.env[env]).trim().length > 0;
 }
 
 function getKey(provider: ProviderName): string {
-  if (provider === 'udio') return resolveUdioApiKey() || '';
   return String(process.env[PROVIDER_ENV[provider]] || '').trim();
-}
-
-function extractCredits(payload: unknown): number | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-
-  const stack: unknown[] = [payload];
-  const keys = new Set(['credits_remaining', 'remaining_credits', 'credits', 'balance']);
-  while (stack.length > 0) {
-    const current = stack.shift();
-    if (!current || typeof current !== 'object') continue;
-
-    if (Array.isArray(current)) {
-      for (const item of current) stack.push(item);
-      continue;
-    }
-
-    for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
-      if (keys.has(key.toLowerCase())) {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) return parsed;
-      }
-      if (value && typeof value === 'object') stack.push(value);
-    }
-  }
-
-  return null;
 }
 
 async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: string; creditsRemaining: number | null }> {
@@ -109,41 +75,6 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
         return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
       }
       return { ok: response.ok, detail: response.ok ? 'Model endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
-    }
-
-    if (provider === 'anthropic') {
-      const response = await fetch('https://api.anthropic.com/v1/models', {
-        headers: {
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-        },
-        cache: 'no-store',
-      });
-      if (response.status === 401 || response.status === 403) {
-        return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
-      }
-      return { ok: response.ok, detail: response.ok ? 'Model endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
-    }
-
-    if (provider === 'udio') {
-      // Probe credits endpoint — lightweight GET that confirms auth without spending credits.
-      const base = String(process.env.UDIO_API_URL || 'https://udioapi.pro').replace(/\/+$/, '');
-      const url = `${base}/api/v2/credits`;
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${key}`,
-          'x-api-key': key,
-          'X-Api-Key': key,
-        },
-        cache: 'no-store',
-      });
-      if (response.status === 401 || response.status === 403) {
-        return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
-      }
-      const payload = await response.json().catch(() => null);
-      const credits = extractCredits(payload);
-      return { ok: response.ok || response.status === 400 || response.status === 404, detail: `HTTP ${response.status}`, creditsRemaining: credits };
     }
 
     return { ok: false, detail: 'No probe for this provider', creditsRemaining: null };

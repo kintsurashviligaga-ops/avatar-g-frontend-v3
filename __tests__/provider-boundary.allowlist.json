@@ -21,9 +21,7 @@
       "services/voice-v2v-node/server.mjs"
     ],
     "openrouter": [],
-    "anthropic": [
-      "lib/system/provider-health.ts"
-    ],
+    "anthropic": [],
     "heygen": [
       "lib/security/csp.js"
     ],
@@ -48,7 +46,6 @@
       "lib/models/catalog.ts"
     ],
     "udio": [
-      "lib/system/provider-health.ts",
       "lib/udio/client.ts"
     ],
     "pollinations": [],

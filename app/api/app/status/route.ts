@@ -8,16 +8,14 @@ export const runtime = 'nodejs';
 
 type KeyStatus = 'ready' | 'partial' | 'missing';
 
+// Only what a live route can still use (v5.1 M-14): Anthropic, Udio, Deepgram, ElevenLabs and Cartesia are refused in
+// production (Google only, MASTER TASK v3.1), so a missing key there is not a gap. OpenAI stays for chat-memory
+// embeddings, Replicate for 3D-from-photo.
 const APP_KEYS = [
   { id: 'openai', env: 'OPENAI_API_KEY' },
   // Gemini runs on Vertex AI (MASTER TASK v3.1): configured means Vertex can serve, not that an AI Studio key is set.
   { id: 'gemini', env: 'GCP_PROJECT_ID' },
-  { id: 'anthropic', env: 'ANTHROPIC_API_KEY' },
   { id: 'replicate', env: 'REPLICATE_API_TOKEN' },
-  { id: 'udio', env: 'UDIO_API_KEY' },
-  { id: 'deepgram', env: 'DEEPGRAM_API_KEY' },
-  { id: 'elevenlabs', env: 'ELEVENLABS_API_KEY' },
-  { id: 'cartesia', env: 'CARTESIA_API_KEY' },
   { id: 'stripe', env: 'STRIPE_SECRET_KEY' },
   { id: 'supabase_service', env: 'SUPABASE_SERVICE_ROLE_KEY' },
 ] as const;
@@ -33,27 +31,12 @@ type ServiceKeyStatus = {
   providers: Array<{ id: ProviderId; configured: boolean }>;
 };
 
-const DEFAULT_SERVICE_PROVIDERS: readonly ProviderId[] = ['openai'];
+const DEFAULT_SERVICE_PROVIDERS: readonly ProviderId[] = ['gemini'];
 
 const SERVICE_PROVIDER_REQUIREMENTS: Partial<Record<string, readonly ProviderId[]>> = {
-  avatar: ['openai', 'replicate'],
-  video: ['gemini'],
-  image: ['gemini', 'replicate'],
-  music: ['gemini', 'udio'],
-  text: ['gemini', 'anthropic'],
-  workflow: ['gemini', 'replicate', 'elevenlabs', 'stripe'],
+  workflow: ['gemini', 'stripe'],
   shop: ['gemini', 'stripe'],
-  editing: ['gemini', 'replicate'],
-  'agent-g': ['gemini', 'anthropic', 'deepgram', 'elevenlabs', 'cartesia'],
-  photo: ['gemini', 'replicate'],
-  media: ['gemini', 'replicate', 'elevenlabs'],
-  prompt: ['gemini', 'anthropic'],
-  'visual-intel': ['gemini', 'anthropic'],
-  software: ['gemini', 'anthropic'],
-  business: ['gemini', 'anthropic'],
-  tourism: ['gemini', 'anthropic'],
-  game: ['gemini', 'anthropic', 'replicate'],
-  interior: ['gemini'],
+  'agent-g': ['gemini'],
 };
 
 function hasValue(value: string | undefined): boolean {

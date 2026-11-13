@@ -7,7 +7,6 @@
  * under a deadline, so one hung vendor can no longer time the whole audit out.
  */
 jest.mock('server-only', () => ({}));
-jest.mock('../chat/mediaKeys', () => ({ resolveUdioApiKey: () => null }));
 const mockToken = jest.fn(async (_requireVeo?: boolean) => 'ya29.test-token');
 jest.mock('../veo/vertexAuth', () => ({
   ...jest.requireActual('../veo/vertexAuth'),
@@ -110,7 +109,7 @@ test('a provider that never answers gets a "no answer" verdict at the deadline i
   const by = Object.fromEntries(report.providers.map((p) => [p.provider, p]));
   expect(by.openai).toMatchObject({ status: 'unhealthy', detail: 'No answer within 40 ms' });
   expect(by.gemini).toMatchObject({ status: 'healthy' }); // the hung vendor did not take the others down with it
-  expect(report.providers.map((p) => p.provider)).toEqual(['openai', 'udio', 'anthropic', 'gemini']);
+  expect(report.providers.map((p) => p.provider)).toEqual(['openai', 'gemini']);
 });
 
 test('without ?live nothing is fetched at all', async () => {
