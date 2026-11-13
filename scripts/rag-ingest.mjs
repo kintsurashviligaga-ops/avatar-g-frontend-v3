@@ -117,6 +117,7 @@ function gcloudToken() {
   if (!/^[A-Za-z0-9._-]{20,}$/.test(token)) fail('gcloud gave no access token (run `gcloud auth login` first).');
   return token;
 }
+let lastEmbedStatus = 0;
 let token = null;
 let tokenAt = 0;
 function bearer() {
@@ -136,7 +137,12 @@ async function embed(input) {
     body: JSON.stringify({ instances: [{ content: input, task_type: 'SEMANTIC_SIMILARITY' }], parameters: { outputDimensionality: EMBED_DIM } }),
     signal: AbortSignal.timeout(30_000),
   }).catch(() => null);
-  if (!r || !r.ok) return null;
+  if (!r) return null;
+  if (r.status === 401 || r.status === 403) {
+    // Not one bad chunk: the identity can't call Vertex. Stop before anything else is touched.
+    fail(`Vertex refused the embed (${r.status}). Check \`gcloud auth login\`, GCP_PROJECT_ID and the Vertex AI User role.`);
+  }
+  if (!r.ok) { lastEmbedStatus = r.status; return null; }
   const json = await r.json().catch(() => null);
   const vec = json?.predictions?.[0]?.embeddings?.values;
   return Array.isArray(vec) && vec.length === EMBED_DIM ? vec : null;
@@ -165,17 +171,24 @@ for (const file of files) {
   const chunks = chunkText(text);
   if (chunks.length === 0) { console.log(`${C.yellow}· skip (empty): ${source}${C.reset}`); continue; }
 
-  if (reset) {
-    await supabase.from('rag_documents').delete().eq('source', source);
-  }
-
   const rows = [];
   for (let i = 0; i < chunks.length; i++) {
     const vec = await embed(chunks[i]);
     totalChunks++;
-    if (!vec) { console.log(`${C.yellow}· embed failed (chunk ${i} of ${source}) — skipped${C.reset}`); continue; }
+    if (!vec) { console.log(`${C.yellow}· embed failed (chunk ${i} of ${source}${lastEmbedStatus ? `, HTTP ${lastEmbedStatus}` : ''}) — skipped${C.reset}`); continue; }
     rows.push({ source, chunk_index: i, content: chunks[i], lang, embedding: vec, embedding_model: EMBEDDING_MODEL_TAG });
     totalEmbedded++;
+  }
+
+  if (reset) {
+    // Replace a source only when every chunk has its new vector: deleting first and then failing to embed would
+    // leave the source with no rows at all. A partly failed source keeps its old rows; re-run to replace it.
+    if (rows.length < chunks.length) {
+      console.log(`${C.yellow}· kept the old rows of ${source}: ${chunks.length - rows.length} chunk(s) failed to embed${C.reset}`);
+      continue;
+    }
+    const { error: delErr } = await supabase.from('rag_documents').delete().eq('source', source);
+    if (delErr) fail(`could not clear the old rows of ${source}: ${delErr.message}`);
   }
 
   if (rows.length) {
@@ -191,6 +204,6 @@ for (const file of files) {
 
 console.log(`\n${C.green}${C.bold}✓ Done${C.reset} — ${totalEmbedded}/${totalChunks} chunks embedded and stored.`);
 if (totalEmbedded < totalChunks) {
-  console.log(`${C.yellow}Some chunks failed to embed (rate limit / Vertex access). Re-run to fill gaps (use --reset to rebuild a source).${C.reset}`);
+  console.log(`${C.yellow}Some chunks failed to embed (rate limit / Vertex access). Re-run with --reset to replace those sources (without --reset a re-run adds the same chunks again).${C.reset}`);
 }
 process.exit(0);

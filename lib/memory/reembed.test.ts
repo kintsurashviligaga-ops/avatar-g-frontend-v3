@@ -76,3 +76,54 @@ test('the pending filter catches no embedding, no tag and another tag, with the 
   expect(pendingFilter(TAG)).toBe('embedding.is.null,embedding_model.is.null,embedding_model.neq."gemini-embedding-001@1536"');
   expect(pendingFilter('a"b')).not.toContain('a"b');
 });
+
+test('a batch stops starting rows at the time budget and hands back a cursor after the last row it tried', async () => {
+  let t = 0;
+  const all = rows(6);
+  const { deps, saved } = fakeDeps(all, {
+    now: () => t,
+    embed: jest.fn(async () => {
+      t += 10_000; // each embed takes 10 s of the fake clock
+      return vec(0.3);
+    }),
+  });
+  const r = await reembedBatch({ table: 'memories', tag: TAG, dryRun: false, timeBudgetMs: 25_000 }, deps);
+  expect(r).toMatchObject({ updated: 3, failed: 0, stopped: 'time_budget', skipped: 3, nextCursor: 'id-002' });
+  const rest = await reembedBatch({ table: 'memories', tag: TAG, dryRun: false, cursor: r.nextCursor }, { ...deps, now: () => 0 });
+  expect(rest.stopped).toBeUndefined();
+  expect(saved.map((s) => s.id)).toEqual(all.map((x) => x.id));
+});
+
+test('three misses in a row stop the batch (Vertex or the database is down) instead of failing every row', async () => {
+  const embedFn = jest.fn(async () => null);
+  const { deps } = fakeDeps(rows(10), { embed: embedFn });
+  const r = await reembedBatch({ table: 'memories', tag: TAG, dryRun: false, cursor: 'id-' }, deps);
+  expect(r).toMatchObject({ updated: 0, failed: 3, stopped: 'repeated_failures', skipped: 7, nextCursor: 'id-002' });
+  expect(embedFn).toHaveBeenCalledTimes(3);
+});
+
+test('repeated failed saves also stop the batch, so it does not keep paying for embeds it cannot store', async () => {
+  const { deps } = fakeDeps(rows(10), { save: jest.fn(async () => false) });
+  const r = await reembedBatch({ table: 'memories', tag: TAG, dryRun: false }, deps);
+  expect(r).toMatchObject({ failed: 3, stopped: 'repeated_failures' });
+  expect(deps.embed).toHaveBeenCalledTimes(3);
+});
+
+test('a thrown embed or save counts as a miss, never crashes the batch', async () => {
+  const embedFn = jest.fn(async (t: string) => {
+    if (t === 'fact 0') throw new Error('socket hang up');
+    return vec(0.4);
+  });
+  const { deps } = fakeDeps(rows(3), { embed: embedFn });
+  const r = await reembedBatch({ table: 'memories', tag: TAG, dryRun: false }, deps);
+  expect(r).toMatchObject({ updated: 2, failed: 1, failedIds: ['id-000'] });
+  expect(r.stopped).toBeUndefined();
+});
+
+test('a stop on the very first row keeps the incoming cursor, so nothing is skipped over', async () => {
+  const clock = [0, 5]; // started at 0; the first check sees 5 ms, past a 1 ms budget
+  const { deps } = fakeDeps(rows(4), { now: () => clock.shift() ?? 5 });
+  const r = await reembedBatch({ table: 'memories', tag: TAG, dryRun: false, cursor: 'id-', timeBudgetMs: 1 }, deps);
+  expect(r).toMatchObject({ updated: 0, stopped: 'time_budget', skipped: 4, nextCursor: 'id-' });
+  expect(deps.embed).not.toHaveBeenCalled();
+});

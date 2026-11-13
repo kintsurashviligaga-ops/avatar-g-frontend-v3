@@ -22,8 +22,9 @@ export const maxDuration = 60;
  *         (default 50), cursor?: string | null }
  * The RAG corpus (rag_documents) is not in Production; where it exists, rebuild it with
  * `node scripts/rag-ingest.mjs <dir> --reset`, which now embeds on Vertex and tags each row.
- * Answers one batch: { pendingBefore, scanned, updated, failed, failedIds, nextCursor }. Call again with nextCursor
- * until it is null. A dry run embeds and writes nothing. A real run is a paid Vertex embed per row
+ * Answers one batch: { pendingBefore, scanned, updated, failed, failedIds, nextCursor, stopped? }. Call again with nextCursor
+ * until it is null. A batch stops early at ~40 s ('time_budget', just call again) or after 3 misses in a row
+ * ('repeated_failures': Vertex or the DB is down, check /api/health/embed first). A dry run embeds and writes nothing. A real run is a paid Vertex embed per row
  * (gemini-embedding-001, a fraction of a cent per thousand rows); the fact text never leaves Google and Supabase.
  * Requires the migration to be applied first (the route answers 409 if the column is missing).
  */
