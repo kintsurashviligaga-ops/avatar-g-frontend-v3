@@ -8257,11 +8257,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'prepare_generation': {
-        // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
-        if (d.tool === 'presentation' || d.tool === 'model3d') {
+        // A deck: the studio panel opens with the topic filled in (its own Create runs it). 3D is off (GG 2026-11-13).
+        if (d.tool === 'presentation') {
           selectTool(d.tool, 'voice');
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
-          reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          reply({ ok: true, tool: d.tool, applied: { topic: true } });
           return true;
         }
         // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".

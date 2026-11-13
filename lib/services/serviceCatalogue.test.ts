@@ -33,12 +33,11 @@ describe('the ten official services', () => {
     }
   });
 
-  it('has all ten services live, each on a provider that is actually configured', () => {
-    // model3d was the last holdout: it was specified on Meshy, which had no API key on any environment.
-    // Moving it to Replicate — already configured and already driving four other pipelines — is what
-    // made it real. A tile is only allowed to be live when its provider can genuinely run.
-    expect(SERVICE_CATALOGUE.filter((s) => !s.live)).toEqual([]);
-    expect(liveServices()).toHaveLength(10);
+  it('has nine services live; 3D is off because its only engine (Replicate) is refused in production', () => {
+    // A tile is only allowed to be live when its provider can genuinely run. model3d runs on Replicate TRELLIS,
+    // which /api/v2/model3d/create refuses (503 google_only); GG chose to keep it off (2026-11-13).
+    expect(SERVICE_CATALOGUE.filter((s) => !s.live).map((s) => s.id)).toEqual(['model3d']);
+    expect(liveServices()).toHaveLength(9);
   });
 
   it('sends every live service to a surface that exists', () => {

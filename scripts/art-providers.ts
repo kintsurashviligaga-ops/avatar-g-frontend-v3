@@ -1,24 +1,23 @@
 /**
- * The art-pack runner's provider seam (docs/SUPER_APP_PLAN.md 2c): `--provider hf | replicate | imagen`.
+ * The art-pack runner's provider seam (docs/SUPER_APP_PLAN.md 2c): `--provider hf | replicate`.
  *
  *   hf         Higgsfield (lib/providers/higgsfield/client) — the shots are written for it; its /estimate is a free call.
  *   replicate  FLUX schnell (black-forest-labs/flux-schnell) — submitted with `Prefer: wait`, files downloaded at once.
- *   imagen     Google Imagen 4 on the Gemini API (`:predict`) — answers with the images inline, as base64.
+ *   (imagen, Google Imagen 4, was removed in v5.1 M-14: Google retired imagen-4.0-* on 2026-06-30.)
  *
  * The shots stay written for Soul: the committed spec is exactly what runs. `prepare` carries a PLAIN Soul
  * text-to-image shot over to the other provider's own body — prompt, aspect ratio, image count (+ seed on FLUX) —
  * drops the Soul render settings that have no counterpart, and REFUSES anything else (a Soul style, a reference
  * image, an edit or a video endpoint) instead of silently dropping what makes the shot what it is.
  *
- * Money: neither Replicate nor Imagen prices a request before it runs, so a quote is the static PRICES_USD × the
+ * Money: Replicate does not price a request before it runs, so a quote is the static PRICES_USD × the
  * number of images — local arithmetic, no network. The runner adds every quote up against the pack's STOP line
  * BEFORE the one POST, and an ambiguous submit (no answer, a 5xx, an unreadable 2xx) is counted as spent and never
- * re-POSTed: neither API takes an idempotency key.
+ * re-POSTed: the API takes no idempotency key.
  *
  * ⚠️ Imports here are RELATIVE, never `@/…`: the runner runs under the jiti CLI, which ignores tsconfig `paths`.
  * The imported file has no imports of its own.
  */
-import { randomUUID } from 'node:crypto';
 import {
   ProviderError,
   TERMINAL_PROVIDER_STATUSES,
@@ -29,7 +28,7 @@ import {
   type ProviderSubmission,
 } from '../lib/providers/types';
 
-export const ART_PROVIDERS = ['hf', 'replicate', 'imagen'] as const;
+export const ART_PROVIDERS = ['hf', 'replicate'] as const;
 export type ArtProviderId = (typeof ART_PROVIDERS)[number];
 
 export function providerFromArgv(argv: readonly string[]): ArtProviderId {
@@ -40,15 +39,13 @@ export function providerFromArgv(argv: readonly string[]): ArtProviderId {
 }
 
 /**
- * USD per OUTPUT IMAGE, as the providers publish it: Replicate bills FLUX schnell at $3 per 1,000 images; the
- * Gemini API bills Imagen 4 Standard at $0.04 per image.
+ * USD per OUTPUT IMAGE, as the providers publish it: Replicate bills FLUX schnell at $3 per 1,000 images.
  * ⚠️ Static on purpose (there is no free estimate to ask), so a price rise makes the STOP line under-count: re-read
- * replicate.com/black-forest-labs/flux-schnell and ai.google.dev/gemini-api/docs/pricing before a --yes-spend run.
+ * replicate.com/black-forest-labs/flux-schnell before a --yes-spend run.
  * A model that is not in this table has no price and is never run.
  */
 export const PRICES_USD: Readonly<Record<string, number>> = {
   'black-forest-labs/flux-schnell': 0.003,
-  'imagen-4.0-generate-001': 0.04,
 };
 
 export function priceOf(model: string): number | null {
@@ -67,7 +64,7 @@ export function staticQuote(model: string, images: unknown): ProviderEstimate {
 
 // ─── The seam the runner talks to ─────────────────────────────────────────────────────────────────────────────
 
-/** Image bytes a provider answered with (Imagen's base64; a Replicate `data:` output). */
+/** Image bytes a provider answered with (a Replicate `data:` output). */
 export interface InlineOutput { bytes: Buffer; mimeType: string }
 
 export interface ArtResult extends ProviderResult {
@@ -76,7 +73,7 @@ export interface ArtResult extends ProviderResult {
 }
 
 export interface ArtSubmission extends ProviderSubmission {
-  /** The finished take, when the provider answered the submit with it (Imagen always; Replicate under Prefer: wait). */
+  /** The finished take, when the provider answered the submit with it (Replicate under Prefer: wait). */
   result?: ArtResult;
 }
 
@@ -105,7 +102,7 @@ const SOUL_T2I_RE = /^higgsfield-ai\/soul\//;
 /** Soul render settings with no counterpart elsewhere — dropped (batch_size becomes the image count). */
 const SOUL_ONLY: ReadonlySet<string> = new Set(['resolution', 'enhance_prompt', 'batch_size']);
 const CARRIED: ReadonlySet<string> = new Set(['prompt', 'aspect_ratio', 'seed']);
-/** Both FLUX schnell and Imagen return at most four images per request. */
+/** FLUX schnell returns at most four images per request. */
 const MAX_IMAGES = 4;
 
 export interface PlainShot { prompt: string; aspectRatio: string; images: number; seed: number | null }
@@ -304,92 +301,6 @@ export function createReplicateArtClient(o: ReplicateArtClientOptions): ArtClien
       const status = p ? replicateStatus(p) : null;
       if (!p || !status) throw new ProviderError('bad_response', { httpStatus: res.status, detail: scrubbed(text, token) });
       return replicateResult(requestId, status, p);
-    },
-  };
-}
-
-// ─── Google · Imagen 4 on the Gemini API ──────────────────────────────────────────────────────────────────────────
-
-/** The host lib/veo/geminiTransport.ts uses (that module cannot load here: `server-only` + `@/` imports). */
-export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-export const IMAGEN_MODEL = 'imagen-4.0-generate-001';
-const IMAGEN_ASPECTS: ReadonlySet<string> = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
-const IMAGEN_MODEL_RE = /^imagen-[a-z0-9][a-z0-9.-]{0,63}$/;
-/** Four 1K images are generated inside the one request. */
-const IMAGEN_TIMEOUT_MS = 120_000;
-
-export interface ImagenArtClientOptions {
-  apiKey: string;
-  fetchImpl?: typeof fetch;
-  timeoutMs?: number;
-}
-
-/**
- * Imagen answers the POST with the images themselves (base64): no request to poll, no URL to fetch — the bytes go
- * straight to disk. ⚠️ The key travels ONLY in the `x-goog-api-key` header, never `?key=` (a URL ends up in logs,
- * traces and error reports), with `redirect: 'manual'` so it is never carried to another host.
- */
-export function createImagenArtClient(o: ImagenArtClientOptions): ArtClient {
-  const doFetch = o.fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
-  const apiKey = o.apiKey.trim();
-
-  return {
-    provider: 'imagen',
-
-    prepare(endpoint, input) {
-      const s = plainSoulShot(endpoint, input);
-      if (!IMAGEN_ASPECTS.has(s.aspectRatio)) throw refuse(`Imagen has no ${s.aspectRatio} aspect ratio`);
-      // No seed: the Gemini API's Imagen takes none. 'allow_all' as the removed app leg sent it (the key's provisioning).
-      return {
-        endpoint: IMAGEN_MODEL,
-        input: { instances: [{ prompt: s.prompt }], parameters: { sampleCount: s.images, aspectRatio: s.aspectRatio, personGeneration: 'allow_all' } },
-      };
-    },
-
-    async estimate(endpoint, input) {
-      return staticQuote(endpoint, (input.parameters as { sampleCount?: unknown } | undefined)?.sampleCount);
-    },
-
-    /** POST /models/<model>:predict — EXACTLY ONCE; the answer IS the finished take. */
-    async submit(endpoint, input) {
-      if (!IMAGEN_MODEL_RE.test(endpoint) || priceOf(endpoint) === null) {
-        throw new ProviderError('bad_request', { detail: `${endpoint} is not a priced Imagen model` });
-      }
-      if (!apiKey) throw new ProviderError('not_configured');
-      let res: Response;
-      try {
-        res = await doFetch(`${GEMINI_API_BASE}/models/${endpoint}:predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json; charset=utf-8', 'x-goog-api-key': apiKey },
-          body: JSON.stringify(input),
-          cache: 'no-store',
-          redirect: 'manual',
-          signal: AbortSignal.timeout(o.timeoutMs ?? IMAGEN_TIMEOUT_MS),
-        });
-      } catch (e) {
-        throw new ProviderError(isTimeout(e) ? 'timeout' : 'network', { ambiguous: true, detail: scrubbed(e instanceof Error ? e.message : String(e), apiKey) });
-      }
-      const text = await res.text().catch(() => '');
-      if (res.status < 200 || res.status >= 300) throw submitHttpError(res.status, scrubbed(text, apiKey));
-      const p = parseJson(text);
-      if (!p) throw new ProviderError('bad_response', { httpStatus: res.status, ambiguous: true, detail: scrubbed(text, apiKey) });
-
-      const inline: InlineOutput[] = [];
-      for (const pred of Array.isArray(p.predictions) ? p.predictions : []) {
-        const { bytesBase64Encoded: b64, mimeType } = (pred ?? {}) as { bytesBase64Encoded?: unknown; mimeType?: unknown };
-        if (typeof b64 !== 'string' || !b64) continue; // a filtered sample carries a reason, not bytes
-        const bytes = Buffer.from(b64, 'base64');
-        if (bytes.byteLength) inline.push({ bytes, mimeType: typeof mimeType === 'string' && mimeType ? mimeType : 'image/png' });
-      }
-      // There is no provider request id: a local one marks the attempt as submitted (and so counted).
-      const requestId = `imagen-${randomUUID()}`;
-      const status: ProviderStatus = inline.length ? 'completed' : 'nsfw';
-      const error = inline.length ? null : 'every sample was filtered — no image returned';
-      return { requestId, status, correlationId: null, result: { requestId, status, outputUrls: [], inline, error, correlationId: null } };
-    },
-
-    async status() {
-      throw new ProviderError('not_found', { detail: 'Imagen answers inline — there is no request to poll' });
     },
   };
 }

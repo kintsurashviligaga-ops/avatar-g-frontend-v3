@@ -85,7 +85,8 @@ export const LIVE_ACTION_NAMES = [
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
 /** The studios a call may prepare — each one is also a lib/studio/tools.ts ToolId (OmniStudio's selectTool). */
-export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar', 'presentation', 'model3d'] as const;
+// model3d is gone (GG 2026-11-13: keep 3D off; its Replicate engine is refused in production).
+export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar', 'presentation'] as const;
 export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
 
 /**
@@ -94,7 +95,7 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
  */
 export const LIVE_OPEN_TOOLS = [
   'chat', 'video', 'image', 'interior', 'music', 'avatar',
-  'vfx', 'montage', 'model3d',
+  'vfx', 'montage',
 ] as const;
 export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
 
@@ -261,8 +262,8 @@ function deepFreeze<T>(value: T): T {
 const TOOL_PARAM: LiveSchema = {
   type: 'STRING',
   enum: [...LIVE_STUDIO_TOOLS],
-  description: 'Which studio: video, image, music, avatar (a photo that talks), presentation (a slide deck on a topic) or model3d '
-    + '(a 3D model from a description). presentation and model3d are created with the Create button in their panel.',
+  description: 'Which studio: video, image, music, avatar (a photo that talks) or presentation (a slide deck on a topic). '
+    + 'presentation is created with the Create button in its panel.',
 };
 
 const ASPECT_PARAM: LiveSchema = {
@@ -344,7 +345,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'open_studio',
     description: 'Switch the app to a current menu tool without preparing anything in it: chat, video, image, '
-      + 'interior, music, avatar, vfx, montage (video editor), model3d.',
+      + 'interior, music, avatar, vfx, montage (video editor).',
     parameters: {
       type: 'OBJECT',
       properties: { tool: { type: 'STRING', enum: [...LIVE_OPEN_TOOLS], description: 'The tool to open.' } },
@@ -970,7 +971,6 @@ const TOOL_ALIASES: Readonly<Record<string, LiveStudioTool>> = {
   music: 'music', song: 'music', track: 'music', audio: 'music',
   avatar: 'avatar', lipsync: 'avatar', talking_avatar: 'avatar', 'talking avatar': 'avatar',
   presentation: 'presentation', slides: 'presentation', deck: 'presentation', slideshow: 'presentation',
-  model3d: 'model3d', '3d': 'model3d', '3d_model': 'model3d', '3d model': 'model3d',
 };
 
 const ASPECT_ALIASES: Readonly<Record<string, LiveAspectRatio>> = {
@@ -1024,7 +1024,7 @@ const OPEN_TOOL_ALIASES: Readonly<Record<string, string>> = {
   chat: 'chat', text: 'chat', photographer: 'photoshoot', photoshoot: 'photoshoot', interior: 'interior',
   interior_designer: 'interior', product: 'product', product_ad: 'product', swap: 'swap',
   character_swap: 'swap', vfx: 'vfx', motion: 'motion', montage: 'montage', editor: 'montage', video_editor: 'montage',
-  dubbing: 'dubbing', dub: 'dubbing', model3d: 'model3d', '3d': 'model3d', presentation: 'presentation', slides: 'presentation',
+  dubbing: 'dubbing', dub: 'dubbing', presentation: 'presentation', slides: 'presentation',
   // Keep the old Photo tool distinct from the prepare-generation synonym for Image.
   deck: 'presentation', photo: 'photo', culling: 'photo', photo_culling: 'photo',
 };
