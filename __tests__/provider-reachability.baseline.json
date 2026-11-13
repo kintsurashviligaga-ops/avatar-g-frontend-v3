@@ -26,9 +26,7 @@
       "nanobananaapi"
     ],
     "app/api/app/health/route.ts": [
-      "anthropic",
-      "openai",
-      "udio"
+      "openai"
     ],
     "app/api/app/worker/tick/route.ts": [
       "openai"
