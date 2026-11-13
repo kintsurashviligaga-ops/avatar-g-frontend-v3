@@ -225,6 +225,10 @@ export function eventText(e: RunEvent, labels: Readonly<Record<string, string>>,
     case 'step.cancelled': return lang === 'en' ? `${who}: stopped` : lang === 'ru' ? `${who}: остановлен` : `${who}: გაჩერდა`;
     case 'step.skipped': return lang === 'en' ? `${who}: not started` : lang === 'ru' ? `${who}: не начат` : `${who}: არ დაწყებულა`;
     case 'step.reused': return lang === 'en' ? `${who}: kept from the earlier try` : lang === 'ru' ? `${who}: взят из прошлой попытки` : `${who}: წინა ცდიდან დარჩა`;
+    // v2 runs only (lib/agent/run/engineBridge): the owner's pause, and one automatic retry within the approved price.
+    case 'run.paused': return lang === 'en' ? 'Paused: nothing new starts' : lang === 'ru' ? 'Пауза: новое не запускается' : 'შეჩერდა: ახალი არაფერი იწყება';
+    case 'run.unpaused': return lang === 'en' ? 'Continued after the pause' : lang === 'ru' ? 'Продолжено после паузы' : 'პაუზის შემდეგ გაგრძელდა';
+    case 'step.retry': return lang === 'en' ? `${who}: trying once more` : lang === 'ru' ? `${who}: ещё одна попытка` : `${who}: კიდევ ერთი ცდა`;
     case 'step.requote': return lang === 'en' ? `${who}: priced again` : lang === 'ru' ? `${who}: цена пересчитана` : `${who}: ფასი თავიდან დაითვალა`;
     default: return null;
   }

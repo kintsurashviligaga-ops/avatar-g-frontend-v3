@@ -25,6 +25,7 @@ import type { AuditEvent } from '@/lib/agent/media/montageExec';
 import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote } from '@/lib/agent/media/quoteToken';
 import type { AgentApproval } from '../contracts';
 import type { RunValidateError, RunValidateOutcome } from './runValidate';
+import { newRunV2, planTickV2, resumedRunV2 } from './engineBridge';
 import {
   RUN_KIND, TICK_LEASE_MS, emit, isFinalStep, isTerminalRun, moveStep, newRun, planTick, resolvedRefs, resumedRun, runOf, settle,
   stepOf, type ChildView, type RunState, type StepQuote,
@@ -66,11 +67,16 @@ export interface RunExecDeps {
    * a run (or its resume) is created. Absent while AGENT_VALIDATE is off, so today's behaviour is unchanged.
    */
   validate?(userId: string, spec: RunSpec): Promise<RunValidateOutcome>;
+  /**
+   * Phase 3.5b: does a NEW run for this user go on lib/agent/engine (a v2 run)? Absent, or false, while
+   * AGENT_ENGINE_MEDIA is off: every run is v1 as today. A run keeps the engine it started on until it ends.
+   */
+  engineFor?(userId: string): Promise<boolean>;
 }
 
 export type RunErrorCode =
   | 'bad_spec' | 'not_configured' | 'quote_invalid' | 'quote_changed' | 'quote_expired' | 'jobs_unavailable' | 'not_found'
-  | 'not_running' | 'not_waiting' | 'not_final' | 'nothing_to_resume' | RunValidateError;
+  | 'not_running' | 'not_waiting' | 'not_final' | 'nothing_to_resume' | 'not_pausable' | RunValidateError;
 
 export interface RunError { ok: false; error: RunErrorCode; message: string; step?: string }
 
@@ -164,7 +170,9 @@ export async function startRun(
   const approval: AgentApproval = {
     quoteFingerprint: fingerprint, channel: 'tap', evidence: (spec.title ?? `${spec.steps.length} steps`).slice(0, 120), at: iso(now), userId,
   };
-  const state = newRun(spec, approval, (tool) => deps.adapters[tool].listPrice, now);
+  const price = (tool: RunTool) => deps.adapters[tool].listPrice;
+  const onEngine = deps.engineFor ? await deps.engineFor(userId).catch(() => false) : false;
+  const state = onEngine ? newRunV2(runId, spec, approval, price, now) : newRun(spec, approval, price, now);
   const put = await enqueue(deps.store, {
     id: runId, userId, serviceType: serviceOf(spec), kind: RUN_KIND,
     params: { subtype: 'agent-run', via: 'agent-g', steps: spec.steps.length, ...(spec.title ? { prompt: spec.title } : {}), _run: state },
@@ -274,7 +282,8 @@ export async function tickRun(deps: RunExecDeps, input: { id: string; startWorke
     last = { row, run, children: views };
     if (isTerminalRun(run)) return last;
     const now = deps.now();
-    const { next, actions } = planTick(run, views, now);
+    // v1 runs keep planTick until they end; a v2 run is decided by the engine (./engineBridge). Same shape either way.
+    const { next, actions } = run.v === 2 ? planTickV2(run, views, now) : planTick(run, views, now);
     const starts = actions.filter((a) => a.type === 'start').map((a) => a.step);
     let mayStart = starts.length > 0;
     if (mayStart && run.tick && run.tick.until > now && run.tick.owner !== me) {
@@ -361,6 +370,12 @@ async function startSteps(deps: RunExecDeps, runId: string, userId: string, ids:
     for (const [id, q] of quotes) {
       const step = stepOf(next, id);
       if (!step || isFinalStep(step) || step.taskId || next.cancelRequested) continue;
+      if (!q.ok && next.v === 2) {
+        // The engine decides what a refused quote means (fail, or retry once when the code is retryable).
+        step.error = q.error;
+        step.attemptError = q.error;
+        continue;
+      }
       if (!q.ok) {
         step.error = q.error;
         moveStep(next, step, 'failed', now, 'step.failed', q.error);
@@ -415,7 +430,8 @@ async function enqueueStep(deps: RunExecDeps, runId: string, userId: string, id:
   }
   // A stop that landed while the job was being queued: the stop's own tick could not see this job yet.
   const after = await readRunRow(deps, runId);
-  if (!after || after.run.cancelRequested || isTerminalRun(after.run)) {
+  const stepAfter = after ? stepOf(after.run, id) : undefined;
+  if (!after || after.run.cancelRequested || isTerminalRun(after.run) || !stepAfter || isFinalStep(stepAfter)) {
     await adapter.cancel(userId, step.taskId);
     return;
   }
@@ -431,6 +447,13 @@ async function failStep(deps: RunExecDeps, runId: string, id: string, error: str
     const s = stepOf(next, id)!;
     s.error = error;
     delete s.quote;
+    if (next.v === 2) {
+      // No job was made: the engine hears of it on the next tick and fails (or retries) the attempt.
+      delete s.taskId;
+      s.attemptError = error;
+      if (await writeRun(deps, r.row, next)) return;
+      continue;
+    }
     moveStep(next, s, 'failed', deps.now(), 'step.failed', error);
     settle(next, deps.now());
     if (await writeRun(deps, r.row, next)) return;
@@ -464,6 +487,18 @@ export async function approveStep(
       continue;
     }
     s.approval = { quoteFingerprint: step.quote.quoteId, channel: 'tap', evidence: `${step.quote.credits} credits`, at: iso(now), userId: input.userId };
+    if (next.v === 2) {
+      // The engine releases the step on the next tick, within its worker cap, and queues this exact quote then.
+      s.approvedQuoteId = step.quote.quoteId;
+      emit(next, now, 'step.approved', stepId, `${step.quote.credits} credits`);
+      if (!(await writeRun(deps, r.row, next))) continue;
+      await deps.audit({
+        userId: input.userId, op: 'agent_run', phase: 'approve', outcome: 'ok', runId: input.id, jobId: step.quote.taskId,
+        toolId: step.capability, approval: 'tap', credits: step.quote.credits, detail: stepId,
+      });
+      await tickRun(deps, { id: input.id, startWorkers: input.startWorkers });
+      return { ok: true };
+    }
     s.approvedCredits = step.quote.credits;
     s.taskId = step.quote.taskId;
     moveStep(next, s, 'queued', now, 'step.approved', `${step.quote.credits} credits`);
@@ -474,6 +509,27 @@ export async function approveStep(
       toolId: step.capability, approval: 'tap', credits: step.quote.credits, detail: stepId,
     });
     await enqueueStep(deps, input.id, input.userId, stepId, input.startWorkers);
+    return { ok: true };
+  }
+  return err('not_running', 'The run changed while this was being saved. Try again.');
+}
+
+/**
+ * The owner pauses or un-pauses a v2 run (Phase 3.5b). A flag, as the run status contract has no `paused`: running jobs
+ * finish, nothing new starts until it is un-paused. A v1 run cannot be paused.
+ */
+export async function pauseRun(deps: RunExecDeps, input: { userId: string; id: string; paused: boolean; startWorkers: boolean }): Promise<{ ok: true } | RunError> {
+  for (let i = 0; i < 3; i += 1) {
+    const r = await readRunRow(deps, input.id);
+    if (!r || r.row.userId !== input.userId) return err('not_found', 'No such run.');
+    if (isTerminalRun(r.run) || r.run.cancelRequested) return err('not_running', 'This run is no longer running.');
+    if (r.run.v !== 2) return err('not_pausable', 'This run cannot be paused.');
+    if (!!r.run.paused === input.paused) return { ok: true };
+    const next = clone(r.run);
+    next.paused = input.paused;
+    if (!(await writeRun(deps, r.row, next))) continue;
+    await deps.audit({ userId: input.userId, op: 'agent_run', phase: 'step', outcome: 'ok', runId: input.id, detail: input.paused ? 'paused' : 'unpaused' });
+    await tickRun(deps, { id: input.id, startWorkers: input.startWorkers });
     return { ok: true };
   }
   return err('not_running', 'The run changed while this was being saved. Try again.');
@@ -520,7 +576,7 @@ export async function resumeRun(deps: RunExecDeps, input: { userId: string; id: 
   const approval: AgentApproval = {
     quoteFingerprint: specFingerprint(r.run.spec), channel: 'tap', evidence: `resume of ${input.id}`, at: iso(now), userId: input.userId,
   };
-  const state = resumedRun(r.run, input.id, approval, now);
+  const state = r.run.v === 2 ? resumedRunV2(r.run, input.id, runId, approval, now) : resumedRun(r.run, input.id, approval, now);
   if (!state) return err('nothing_to_resume', 'Every step of this run was delivered.');
   const put = await enqueue(deps.store, {
     id: runId, userId: input.userId, serviceType: serviceOf(r.run.spec), kind: RUN_KIND,

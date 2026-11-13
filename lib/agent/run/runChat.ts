@@ -298,7 +298,7 @@ export function runPartialText(locale: string): string {
 export type RunChatCode =
   | 'upload_failed' | 'bad_spec' | 'not_configured' | 'quote_invalid' | 'quote_changed' | 'quote_expired' | 'jobs_unavailable'
   | 'not_found' | 'not_running' | 'not_waiting' | 'not_final' | 'nothing_to_resume' | 'closed' | 'unauthenticated'
-  | 'rate_limited' | 'network' | 'capability_unavailable' | 'policy_denied';
+  | 'rate_limited' | 'network' | 'capability_unavailable' | 'policy_denied' | 'not_pausable';
 
 const ERR: Record<RunChatCode, Record<Lang, string>> = {
   upload_failed: { ka: '{f} ვერ ავტვირთე (მაქს. 50 მბ, ვიდეო ან აუდიო).', en: 'I could not upload {f} (up to 50 MB, video or audio).', ru: 'Не удалось загрузить {f} (до 50 МБ, видео или аудио).' },
@@ -318,6 +318,7 @@ const ERR: Record<RunChatCode, Record<Lang, string>> = {
   rate_limited: { ka: 'ძალიან ბევრი მოთხოვნაა ერთად. სცადე ერთ წუთში.', en: 'Too many requests at once. Try again in a minute.', ru: 'Слишком много запросов. Попробуйте через минуту.' },
   capability_unavailable: { ka: 'ამ გეგმის ერთ-ერთი ნაბიჯი ახლა მიუწვდომელია, ამიტომ არაფერი დაწყებულა და არც ჩამოიჭრა.', en: 'One step of this plan is unavailable right now, so nothing was started or charged.', ru: 'Один из шагов плана сейчас недоступен, поэтому ничего не запущено и не списано.' },
   policy_denied: { ka: 'ამ გეგმის ერთ-ერთი ნაბიჯი შენს ანგარიშზე არ არის ხელმისაწვდომი, ამიტომ არაფერი დაწყებულა და არც ჩამოიჭრა.', en: 'One step of this plan is not open to your account, so nothing was started or charged.', ru: 'Один из шагов плана недоступен для вашего аккаунта, поэтому ничего не запущено и не списано.' },
+  not_pausable: { ka: 'ამ დავალების დაპაუზება არ შეიძლება.', en: 'This task cannot be paused.', ru: 'Эту задачу нельзя поставить на паузу.' },
   network: { ka: 'კავშირი გაწყდა. დავალება შეიძლება ისევ მიმდინარეობდეს: ის „დავალებებშიც“ ჩანს.', en: 'The connection dropped. The task may still be going: it is also in your tasks.', ru: 'Соединение прервалось. Задача может ещё идти: она есть и в списке задач.' },
 };
 
