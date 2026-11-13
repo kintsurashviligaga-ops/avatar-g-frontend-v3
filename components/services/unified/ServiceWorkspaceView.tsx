@@ -26,9 +26,9 @@ import { supabase } from '@/lib/supabase/browser'
 import { serviceCardImage } from '@/lib/services/cardImage'
 import { signInPath } from '@/lib/routing/signIn'
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop'
+import { readableServiceError } from './serviceErrorText'
 import { TOOL_META, type ToolId } from '@/lib/studio/tools'
 import {
-  apiErrorMessage,
   buildGenerateRequest,
   extractOutputText,
   extractOutputUrl,
@@ -221,6 +221,9 @@ function downloadName(serviceId: string, result: ResultState) {
   return result.kind === 'audio' ? `${serviceId}.mp3` : `${serviceId}.md`
 }
 
+/** An error whose message is already user copy (ka/en/ru), safe to show as is. */
+class ShownError extends Error {}
+
 function ServiceFormView({ serviceId, form, lang, cardImage }: { serviceId: string; form: ServiceForm; lang: WorkspaceLang; cardImage: string | null }) {
   const c = COPY[lang]
   const [values, setValues] = useState<Record<string, string>>(() => formDefaults(form))
@@ -265,10 +268,10 @@ function ServiceFormView({ serviceId, form, lang, cardImage }: { serviceId: stri
           setError(c.signInToCreate)
           return
         }
-        throw new Error(apiErrorMessage(payload) ?? c.failed)
+        throw new ShownError(readableServiceError(payload, lang, c.failed))
       }
       const data = unwrapApiData(payload)
-      if (data.status === 'error' || data.error) throw new Error(apiErrorMessage(data) ?? c.failed)
+      if (data.status === 'error' || data.error) throw new ShownError(readableServiceError(data, lang, c.failed))
       if (form.route.kind === 'pipeline' && form.route.output === 'audio') {
         const url = extractOutputUrl(data)
         if (url) {
@@ -280,7 +283,8 @@ function ServiceFormView({ serviceId, form, lang, cardImage }: { serviceId: stri
       if (!text) throw new Error(c.failed)
       setResult({ kind: 'text', text })
     } catch (requestError) {
-      setError(requestError instanceof Error && requestError.message ? requestError.message : c.failed)
+      // Only our own sentences reach the screen; a thrown network/JSON error or raw server text never does.
+      setError(requestError instanceof ShownError ? requestError.message : c.failed)
     } finally {
       setBusy(false)
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { describeServiceError } from '@/components/studio/ui/serviceError';
 import { Brain, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 
 interface MemoryRow {
@@ -49,6 +50,33 @@ const T: Record<string, Record<Lang, string>> = {
   remove: { en: 'Delete', ka: 'წაშლა', ru: 'Удалить' },
   deleted: { en: 'Everything was deleted.', ka: 'ყველაფერი წაიშალა.', ru: 'Всё удалено.' },
   failed: { en: 'That did not work. Try again.', ka: 'ვერ მოხერხდა. სცადე თავიდან.', ru: 'Не получилось. Попробуйте ещё раз.' },
+  // Phase 7.6 (2026-11-13): the rest of the page was English only, and a failure printed the server's own text.
+  minChars: { en: 'At least {n} characters', ka: 'მინიმუმ {n} სიმბოლო', ru: 'Минимум {n} символов' },
+  chars: { en: '{n} characters', ka: '{n} სიმბოლო', ru: 'Символов: {n}' },
+  title: { en: 'Memory', ka: 'მეხსიერება', ru: 'Память' },
+  subtitle: { en: 'What Agent G remembers about you.', ka: 'რა ახსოვს Agent G-ს შენზე.', ru: 'Что Agent G помнит о вас.' },
+  placeholder: {
+    en: 'Add a memory… e.g. I prefer Georgian replies, I run a coffee shop in Tbilisi.',
+    ka: 'დაამატე რამე დასამახსოვრებლად… მაგ.: ქართულად მიპასუხე, თბილისში ყავის მაღაზია მაქვს.',
+    ru: 'Добавьте факт… например: отвечай по-грузински, у меня кофейня в Тбилиси.',
+  },
+  saving: { en: 'Saving…', ka: 'ინახება…', ru: 'Сохранение…' },
+  saveMemory: { en: 'Save memory', ka: 'დამახსოვრება', ru: 'Запомнить' },
+  save: { en: 'Save', ka: 'შენახვა', ru: 'Сохранить' },
+  empty: {
+    en: '{T.empty![lang]}',
+    ka: 'ჯერ არაფერია დამახსოვრებული. დაამატე ზემოთ და Agent G დაიმახსოვრებს.',
+    ru: 'Пока ничего нет. Добавьте факт выше, и Agent G его запомнит.',
+  },
+  autoTag: { en: 'Auto-extracted from chat', ka: 'ჩატიდან ავტომატურად', ru: 'Взято из чата автоматически' },
+  manualTag: { en: 'Added manually', ka: 'ხელით დამატებული', ru: 'Добавлено вручную' },
+  edit: { en: 'Edit memory', ka: 'რედაქტირება', ru: 'Изменить' },
+  deleteOne: { en: 'Delete memory', ka: 'წაშლა', ru: 'Удалить' },
+  loadFailed: { en: 'We could not load your memory. Reload the page.', ka: 'მეხსიერება ვერ ჩაიტვირთა. გადატვირთე გვერდი.', ru: 'Не удалось загрузить память. Обновите страницу.' },
+  saveFailed: { en: 'We could not save this. Try again.', ka: 'ვერ შევინახეთ. სცადე თავიდან.', ru: 'Не удалось сохранить. Попробуйте ещё раз.' },
+  updateFailed: { en: 'We could not update this. Try again.', ka: 'ვერ განვაახლეთ. სცადე თავიდან.', ru: 'Не удалось изменить. Попробуйте ещё раз.' },
+  deleteFailed: { en: 'We could not delete this. Try again.', ka: 'ვერ წავშალეთ. სცადე თავიდან.', ru: 'Не удалось удалить. Попробуйте ещё раз.' },
+  network: { en: 'No connection. Check your internet and try again.', ka: 'კავშირი არ არის. შეამოწმე ინტერნეტი და სცადე თავიდან.', ru: 'Нет связи. Проверьте интернет и попробуйте снова.' },
 };
 const KEY_LABEL: Record<string, Record<Lang, string>> = {
   name: { en: 'Name', ka: 'სახელი', ru: 'Имя' },
@@ -94,18 +122,18 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
       });
       const json = (await res.json().catch(() => ({}))) as MemoryApiList;
       if (!res.ok) {
-        setError(json.error ?? 'Failed to load memories');
+        setError(describeServiceError(json.error, lang, T.loadFailed![lang]));
         return;
       }
       setMemories(json.memories ?? []);
       setProfile(json.profile ?? []);
       setAutoMemory(json.autoMemory !== false);
     } catch {
-      setError('Network error');
+      setError(T.network![lang]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     void load();
@@ -126,17 +154,17 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
       });
       const json = (await res.json().catch(() => ({}))) as MemoryApiOne;
       if (!res.ok || !json.memory) {
-        setError(json.error ?? 'Failed to save memory');
+        setError(describeServiceError(json.error, lang, T.saveFailed![lang]));
         return;
       }
       setMemories((prev) => [json.memory as MemoryRow, ...prev]);
       setDraft('');
     } catch {
-      setError('Network error');
+      setError(T.network![lang]);
     } finally {
       setSaving(false);
     }
-  }, [draft, saving]);
+  }, [draft, saving, lang]);
 
   // ─── Update ─────────────────────────────────────────────────────────
   const beginEdit = (m: MemoryRow) => {
@@ -162,18 +190,18 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
       });
       const json = (await res.json().catch(() => ({}))) as MemoryApiOne;
       if (!res.ok || !json.memory) {
-        setError(json.error ?? 'Failed to update memory');
+        setError(describeServiceError(json.error, lang, T.updateFailed![lang]));
         return;
       }
       const updated = json.memory as MemoryRow;
       setMemories((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
       cancelEdit();
     } catch {
-      setError('Network error');
+      setError(T.network![lang]);
     } finally {
       setEditSaving(false);
     }
-  }, [editingId, editDraft, editSaving]);
+  }, [editingId, editDraft, editSaving, lang]);
 
   // ─── Delete ─────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
@@ -188,14 +216,14 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
       });
       if (!res.ok) {
         const json = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(json.error ?? 'Failed to delete memory');
+        setError(describeServiceError(json.error, lang, T.deleteFailed![lang]));
         setMemories(snapshot);
       }
     } catch {
-      setError('Network error');
+      setError(T.network![lang]);
       setMemories(snapshot);
     }
-  }, [memories]);
+  }, [memories, lang]);
 
   // ─── What was picked out of the chats, the switch, and "delete all" ──
   const handleDeleteFact = useCallback(async (key: string) => {
@@ -266,11 +294,10 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white sm:text-xl">
-                Memory <span className="text-white/50">/</span>{' '}
-                <span className="text-white/80">მეხსიერება</span>
+                {T.title![lang]}
               </h1>
               <p className="text-xs text-white/50">
-                What Agent G remembers about you.
+                {T.subtitle![lang]}
               </p>
             </div>
           </div>
@@ -299,15 +326,15 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Add a memory… e.g. I prefer Georgian replies, I run a coffee shop in Tbilisi."
+            placeholder={T.placeholder![lang]}
             rows={3}
             className="w-full resize-none rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-cyan-400/50"
           />
           <div className="mt-2 flex items-center justify-between">
             <span className="text-[11px] text-white/40">
               {draft.trim().length < MIN_FACT_LENGTH
-                ? `Min ${MIN_FACT_LENGTH} chars`
-                : `${draft.trim().length} chars`}
+                ? T.minChars![lang].replace('{n}', String(MIN_FACT_LENGTH))
+                : T.chars![lang].replace('{n}', String(draft.trim().length))}
             </span>
             <button
               type="button"
@@ -316,7 +343,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
               className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-1.5 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5" />
-              {saving ? 'Saving…' : 'Save memory'}
+              {saving ? T.saving![lang] : T.saveMemory![lang]}
             </button>
           </div>
         </div>
@@ -368,7 +395,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
                           className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-medium text-white/70 hover:bg-white/[0.06]"
                         >
                           <X className="h-3 w-3" />
-                          Cancel
+                          {T.cancel![lang]}
                         </button>
                         <button
                           type="button"
@@ -379,7 +406,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
                           className="inline-flex items-center gap-1 rounded-md bg-cyan-400 px-2.5 py-1 text-xs font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Save className="h-3 w-3" />
-                          {editSaving ? 'Saving…' : 'Save'}
+                          {editSaving ? T.saving![lang] : T.save![lang]}
                         </button>
                       </div>
                     </div>
@@ -396,14 +423,14 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
                               ? 'border-purple-400/30 bg-purple-400/10 text-purple-300'
                               : 'border-cyan-400/30 bg-cyan-400/10 text-cyan-300')
                           }
-                          title={isAuto ? 'Auto-extracted from chat' : 'Added manually'}
+                          title={isAuto ? T.autoTag![lang] : T.manualTag![lang]}
                         >
                           {m.source}
                         </span>
                         <button
                           type="button"
                           onClick={() => beginEdit(m)}
-                          aria-label="Edit memory"
+                          aria-label={T.edit![lang]}
                           className="rounded-md p-1.5 text-white/40 transition-colors hover:bg-white/5 hover:text-white"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -411,7 +438,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
                         <button
                           type="button"
                           onClick={() => handleDelete(m.id)}
-                          aria-label="Delete memory"
+                          aria-label={T.deleteOne![lang]}
                           className="rounded-md p-1.5 text-white/40 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
