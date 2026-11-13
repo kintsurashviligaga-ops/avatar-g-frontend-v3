@@ -14,7 +14,7 @@ also flow into the Cloud Billing export, which M-9 reconciliation needs anyway.
   - **Stable** per user, so a report maps back to one account (we recompute it from our user list).
   - **Pseudonymous**: without our secret Google cannot reverse it or link it to other services.
   - **Rotatable**: a new secret gives new ids and the old mapping disappears with the old secret.
-- Anonymous traffic gets `sid=anon`, so it is still separable from signed-in traffic.
+- Anonymous traffic gets `sid=anon` (**GG R-3, 2026-11-13: yes**), so it is separable from signed-in traffic.
 - `cap = <capability>` (chat, video_omni_1_2, music, …) for billing reconciliation.
 - **Fail closed:** no secret, or a secret under 32 characters, means no `sid` label at all and a `no_secret` problem the
   caller reports. Never the raw id.

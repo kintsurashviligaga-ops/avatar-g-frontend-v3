@@ -10,7 +10,7 @@ every new module is pure and has no caller yet. Each wiring step is its own smal
 | # | Document | Code in this PR | What it decides |
 |---|----------|-----------------|-----------------|
 | 01 | [Prompt-injection review](01-prompt-injection-review.md) | `lib/security/untrustedFence.ts` (+4 tests) | every place untrusted text reaches a model, how it is framed today, 2 gaps |
-| 02 | [Data retention policy](02-data-retention.md) | `sql/01_fk_cascades_readonly.sql` (GG runs, read-only) | how long each kind of data lives, and what account deletion must remove |
+| 02 | [Data retention policy](02-data-retention.md) | `lib/privacy/*` (+9 tests), `sql/01` (read-only), `sql/02` (draft) | how long each kind of data lives, and what account deletion must remove |
 | 03 | [Safety identifiers](03-safety-identifiers.md) | `lib/security/safetyId.ts` (+6 tests) | a pseudonymous per-user id on Vertex requests, so one abuser can be cut off |
 | 04 | [Computer Use confirmation](04-computer-use-confirmation.md) | `lib/agent/computerUse/confirmPolicy.ts` (+9 tests) | which proposed browser actions run, pause for a tap, or are refused |
 
@@ -18,14 +18,18 @@ every new module is pure and has no caller yet. Each wiring step is its own smal
 
 1. Wire `fenceUntrusted` into chat attachments and Drive files (gap G-1, G-2). No flag needed; behaviour for honest
    files is unchanged.
-2. Fix account deletion (02, D-1…D-4) once GG has run the read-only cascade SQL and decided the ledger question.
+2. Turn on `ACCOUNT_DELETE_V2` once GG has run the read-only cascade SQL (it confirms nothing else cascades away),
+   then apply the chat-purge function and its cron.
 3. Set `SAFETY_ID_SECRET` (≥ 32 chars, Vercel Production only), then wire `vertexRequestLabels` into the shared Vertex
    client with `SAFETY_LABELS=off`; turn it `on` after one day of clean logs.
 4. Computer Use policy is wired only when the Computer Use pilot (D-16) is built. Until then it is the contract.
 
-## Decisions GG needs to make (none block the drafts)
+## GG decisions (2026-11-13 16:47Z) and where they live
 
-- **R-1** Ledger rows on account deletion: keep them pseudonymised for accounting (recommended) or delete them as today.
-  Your accountant should confirm how many years Georgian law requires payment records to be kept.
-- **R-2** Chat history retention for inactive accounts: keep until the user deletes it (today) or delete after N months.
-- **R-3** Whether anonymous traffic gets one shared `sid=anon` label (proposed) or none.
+- **R-1 Ledger on account deletion: KEEP, pseudonymised.** Implemented: `lib/privacy/accountDeletion.ts`, wired into
+  `POST /api/account/delete` behind `ACCOUNT_DELETE_V2=on` (off by default). The auth user is soft-deleted, so the
+  ledger and BOG history (all `ON DELETE CASCADE` from `auth.users`) survive, linked only to a UUID. Exact retention
+  years: GG's accountant (open).
+- **R-2 Chats: purge after 365 days without a sign-in**, keep account and ledger. Prepared: `lib/privacy/chatRetention.ts`
+  and `sql/02_purge_inactive_chats_DRAFT.sql` (not applied; a daily cron calls it after GG's OK).
+- **R-3 Anonymous traffic: `sid=anon`.** Already the behaviour of `vertexRequestLabels`.
