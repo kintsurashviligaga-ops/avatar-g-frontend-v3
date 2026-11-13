@@ -1,9 +1,10 @@
-# GO / NO-GO — საბოლოო ინტეგრაცია (2026-10-15, განახლდა 2026-10-16 06:15Z)
+# GO / NO-GO — საბოლოო ინტეგრაცია (2026-10-15, განახლდა 2026-10-16 07:20Z)
 
 ## ვერდიქტი
 
-- **ეტაპობრივი release (admin canary, მომხმარებლისთვის ახალი არაფერი ირთვება): CONDITIONAL GO.** პირობები: CI მწვანეა
-  release-ის ზუსტ commit-ზე; Video Core-ის ფასიანი ტესტი Production-ზე დასრულებულია; GG-მ დააჭირა merge + deploy ბარათს.
+- **ეტაპობრივი release (admin canary, მომხმარებლისთვის ახალი არაფერი ირთვება): GO, შესრულდა.** სამივე პირობა შესრულდა
+  (CI 10/10 8acfefcf-ზე, Video Core-ის ფასიანი ტესტი 05:20Z-ზე დასრულდა, GG-მ დააჭირა ბარათს 06:37:59Z-ზე). PR #74 main-შია
+  (ffde345c), Production 06:43Z-დან (dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD). 30 წუთში ახალი შეცდომა არ გამოჩნდა.
 - **ყველა მომხმარებლისთვის გახსნა: NO-GO.** მიზეზები ქვემოთაა (Preview იზოლირებული არ არის, ახალ სტუდიებს რეალური ფასიანი
   ტესტი არ ჰქონიათ, ხმა რეალურ ტელეფონზე არ შემოწმებულა).
 
@@ -48,7 +49,8 @@ Migration არ არის, env არ იცვლება, ფასი �
 
 ## ტესტები
 
-- CI: 10/10 მწვანე ba35a07e-ზე (03). release-ის commit-ზე ხელახლა გაეშვება და ბარათი შედეგს დაასახელებს.
+- CI: 10/10 მწვანე ba35a07e-ზე (03) და release-ის commit-ზე 8acfefcf (06:35Z).
+- Production release-ის შემდეგ: 04 T-19 (PROVEN_PRODUCTION), T-20 (canary: 1, 2 Production-ზე; 3 მხოლოდ ტესტით; 4 კოდით).
 - Jest სრული (f52f918e, main de15464d-ით): suites 939 passed / 0 failed / 12 skipped; tests 14,372 / 0 / 114.
   ამას ემატება 2 ახალი suite (20 ტესტი), ყველა მწვანე.
 - ახალი regression ტესტები: `components/studio/liveRunGate.test.ts` (FR-6), `lib/routing/shellRedirects.test.ts` (FR-11).
@@ -57,7 +59,7 @@ Migration არ არის, env არ იცვლება, ფასი �
 
 ## GG-ის გადასაწყვეტი (თითო ბარათით)
 
-1. Merge PR #74 + ეტაპობრივი deploy (admin canary, flag-ები გამორთული, rollback მზადაა).
+1. ~~Merge PR #74 + ეტაპობრივი deploy~~ — შესრულდა 2026-10-16 06:43Z.
 2. იზოლირებული Supabase პროექტი Preview-სთვის (FR-2).
 3. ფასიანი რეალური ტესტები ახალ სტუდიებზე (Imagen, Lyria), თითო ცალკე.
 4. რეალური ტელეფონის ხმის ტესტი (08). ფული არ ეხარჯება, GG-ის ხელი სჭირდება.
@@ -65,6 +67,7 @@ Migration არ არის, env არ იცვლება, ფასი �
 
 ## Rollback
 
-Vercel Instant Rollback release-მდე არსებულ deployment-ზე. 2026-10-16 06:11Z-ზე ეს იყო
-dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc, Video Core PR #78); release-ის წინ ხელახლა ჩაიწერება. ბაზას არაფერი სჭირდება (migration არ არის).
+Vercel Instant Rollback release-მდე არსებულ deployment-ზე: dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc, Video Core PR #78),
+release-ის წინ ხელახლა შემოწმდა. საჭირო არ გახდა. თუ Production ამის შემდეგ სხვა thread-ის release-ზე გადავა, rollback
+მხოლოდ იმ thread-თან ერთად. ბაზას არაფერი სჭირდება (migration არ არის).
 ნაბიჯები: 09_RELEASE_ROLLBACK_RUNBOOK.md.

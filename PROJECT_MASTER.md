@@ -28,8 +28,10 @@
 **⚠️ AGENT: განაახლე ეს სექცია ყოველი Part-ის დასრულებისას.**
 ```
 FINAL INTEGRATION (2026-10-15, branch claude/final-integration-release-wt2y8s = PR #74): main 369acfc + #60 Image,
-          #65 Music, #68 Voice v2, #67 provider boundary + Phase 1 fixes. Staged release CONDITIONAL GO, customer-wide
-          NO-GO (docs/handoffs/final-release/GO_NO_GO_KA.md). Resume: docs/handoffs/final-release/CONTINUE_FROM_HERE.md.
+          #65 Music, #68 Voice v2, #67 provider boundary + Phase 1 fixes. RELEASED 2026-10-16: main ffde345c, Production
+          dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD (06:43Z), rollback target dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc). Image admin-only,
+          Music + Voice v2 off, Google boundary on. Customer-wide NO-GO (docs/handoffs/final-release/GO_NO_GO_KA.md).
+          Resume: docs/handoffs/final-release/CONTINUE_FROM_HERE.md.
 CURRENT PHASE: Part 2 (Vertex Migration + Provider Cleanup) — Part 1 complete 2026-10-08 (docs/handoffs/part-1-report.md);
           Master Task §60 steps 1–25 done; step 26 held until the owner approved the deploy (2026-10-09 03:19:58Z)
 CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN).
