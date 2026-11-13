@@ -7,7 +7,7 @@
  *   Motion        its panel ran Kling through Replicate, which MASTER TASK v3.1 withdraws: no import, no tab, and the
  *                 catalog service is hidden, so no menu, search or Agent G route opens it.
  *   LiveAvatar    the voice button opens Gemini Live's selfie avatar, then the plain voice chat; the LiveAvatar/LiveKit tier
- *                 that was tried first is no longer mounted (its component stays, unused, as the plan says).
+ *                 that was tried first is gone (its component and session route were deleted in v5.1 M-14).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,8 +50,8 @@ describe('Motion transfer is hidden', () => {
 });
 
 describe('the voice button opens the selfie avatar', () => {
-  test('no LiveAvatar tier is left in the shell; the component stays unmounted', () => {
-    expect(existsSync(join(process.cwd(), 'components/voice/LiveAvatarRealtime.tsx'))).toBe(true);
+  test('no LiveAvatar tier is left in the shell; the component is deleted (v5.1 M-14)', () => {
+    expect(existsSync(join(process.cwd(), 'components/voice/LiveAvatarRealtime.tsx'))).toBe(false);
     // The comment that says why it is gone names the flag and the file; no code imports, renders or reads them.
     expect(chrome).not.toMatch(/import\([^)]*LiveAvatarRealtime|from ['"][^'"]*LiveAvatarRealtime|<LiveAvatarRealtime\b/);
     expect(chrome).not.toMatch(/process\.env\.NEXT_PUBLIC_LIVEAVATAR_ENABLED|liveAvatarUnavailable/);

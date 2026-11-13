@@ -11,7 +11,7 @@ import { envBool, getFeatureFlag, resolveAllFlags, setFeatureFlag, isKnownFlag, 
 // the env-wins and default-fallback precedence without mocking.
 
 const SAVE: Record<string, string | undefined> = {};
-const FLAGS = ['FILM_AUDIO_MIX_ENABLED', 'FILM_LIPSYNC_ENABLED', 'LIPSYNC_HEYGEN'];
+const FLAGS = ['FILM_AUDIO_MIX_ENABLED', 'FILM_LIPSYNC_ENABLED'];
 
 beforeEach(() => {
   for (const k of FLAGS) { SAVE[k] = process.env[k]; delete process.env[k]; }
@@ -40,13 +40,13 @@ describe('getFeatureFlag precedence', () => {
     process.env.FILM_AUDIO_MIX_ENABLED = '0';
     invalidateFlagCache();
     expect(await getFeatureFlag('FILM_AUDIO_MIX_ENABLED', false)).toBe(false);
-    // LIPSYNC_HEYGEN default true: '0' env forces off
-    process.env.LIPSYNC_HEYGEN = '0';
-    expect(await getFeatureFlag('LIPSYNC_HEYGEN', true)).toBe(false);
+    // A caller default of true: '0' env still forces off
+    process.env.FILM_LIPSYNC_ENABLED = '0';
+    expect(await getFeatureFlag('FILM_LIPSYNC_ENABLED', true)).toBe(false);
   });
   it('falls back to the built-in default when neither env nor DB is set (DB fail-open)', async () => {
     expect(await getFeatureFlag('FILM_AUDIO_MIX_ENABLED', false)).toBe(false);
-    expect(await getFeatureFlag('LIPSYNC_HEYGEN', true)).toBe(true);
+    expect(await getFeatureFlag('FILM_LIPSYNC_ENABLED', true)).toBe(true);
   });
 
   // Pin the DELIBERATE widening vs the old strict checks (old: FILM_* `=== '1'`, HEYGEN `!== '0'`).
@@ -57,8 +57,8 @@ describe('getFeatureFlag precedence', () => {
       expect(await getFeatureFlag('FILM_AUDIO_MIX_ENABLED', false)).toBe(true);
     }
     for (const v of ['0', 'false', 'off', 'no']) {
-      process.env.LIPSYNC_HEYGEN = v; invalidateFlagCache();
-      expect(await getFeatureFlag('LIPSYNC_HEYGEN', true)).toBe(false);
+      process.env.FILM_LIPSYNC_ENABLED = v; invalidateFlagCache();
+      expect(await getFeatureFlag('FILM_LIPSYNC_ENABLED', true)).toBe(false);
     }
   });
 });
@@ -75,10 +75,10 @@ describe('resolveAllFlags', () => {
   it('reports default source when nothing is set', async () => {
     const all = await resolveAllFlags();
     expect(all).toHaveLength(FLAG_DEFS.length);
-    const heygen = all.find((x) => x.name === 'LIPSYNC_HEYGEN')!;
-    expect(heygen.source).toBe('default');
-    expect(heygen.effective).toBe(true); // its default
-    expect(heygen.dbEnabled).toBeNull();
+    const mix = all.find((x) => x.name === 'FILM_AUDIO_MIX_ENABLED')!;
+    expect(mix.source).toBe('default');
+    expect(mix.effective).toBe(false); // its default
+    expect(mix.dbEnabled).toBeNull();
   });
 });
 

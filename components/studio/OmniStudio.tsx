@@ -50,7 +50,7 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
 import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { FilmQaBadge } from './FilmQaBadge';
@@ -624,10 +624,7 @@ const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', st
 /** The composer's format pill, both ways: a video's orientation ⇄ the ratio label the pill shows. */
 const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portrait'> = { '9:16': 'vertical', '16:9': 'landscape', '1:1': 'square', '4:5': 'portrait' };
 
-// P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
-// with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
-// keying the singer's mouth to the master's embedded Georgian vocal. Returns the synced
-// URL or null (caller keeps the un-synced master — fail-open).
+// The film's lip-sync pass was removed in v5.1 M-14 (GG 2026-11-12); the Lip-Sync card only says it did not run.
 // PHASE 20 — LIP-SYNC OBSERVABILITY. The music-video singer-performance sync is the CORRECT
 // approach (per-shot HeyGen close-ups composited into the montage — NOT whole-master
 // sync/lipsync-2, which warps wide shots and was reverted twice: 8d72d47 reverts 64a9c93 +
@@ -636,7 +633,7 @@ const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portr
 // was the real "lips don't track the vocal" symptom. These short localized lines surface WHY
 // on the Director's Console Lip-Sync card so a skip is never mysterious.
 type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'no_credits' | 'short_result' | 'no_clips' | 'composite_failed' | 'not_requested';
-/** `saved` — the lip-sync job itself delivered (and was charged): /api/video/lipsync filed that clip in the Library, so the
+/** `saved` — the lip-sync job itself delivered (and was charged): the old lip-sync route filed that clip in the Library, so the
  *  line says where the paid clip went when the montage around it could not use it. */
 function lipsyncSkipReason(reason: LipSkipReason, locale: string, opts: { saved?: boolean } = {}): string {
   const M: Record<LipSkipReason, { en: string; ru: string; ka: string }> = {
@@ -654,227 +651,6 @@ function lipsyncSkipReason(reason: LipSkipReason, locale: string, opts: { saved?
   const line = locale === 'ru' ? m.ru : locale === 'ka' ? m.ka : m.en;
   if (!opts.saved) return line;
   return `${line} · ${locale === 'ru' ? 'клип с липсинком сохранён в Библиотеке' : locale === 'ka' ? 'ლიპსინკის კლიპი ბიბლიოთეკაშია' : 'the lip-synced clip is in your Library'}`;
-}
-
-/**
- * One /api/video/lipsync job, start to end: the clip's URL, or null on any miss (fail-open). The route reserves the
- * avatar price when it hands out a job id and refunds it when the render fails, so the header balance is re-read at
- * both ends; a 402 comes back as `noCredits` (nothing was charged) so the card names the balance, not the engine.
- */
-type LipsyncOutcome = { url: string | null; noCredits?: boolean };
-async function runLipsyncJob(body: Record<string, unknown>, signal: AbortSignal, mine: () => boolean): Promise<LipsyncOutcome> {
-  const balanceMoved = () => { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } };
-  let jobId: string | null = null;
-  try {
-    const r = await fetch('/api/video/lipsync', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      credentials: 'include', signal,
-    });
-    const j = (await r.json().catch(() => ({}))) as { jobId?: string | null; code?: string };
-    if (r.status === 402 || j.code === 'insufficient_credits') return { url: null, noCredits: true };
-    jobId = j.jobId ?? null;
-  } catch { return { url: null }; }
-  if (!jobId) return { url: null };
-  balanceMoved();
-  try {
-    for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
-      await new Promise((res) => setTimeout(res, 6000));
-      try {
-        const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
-        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-        if (pj.done) return { url: pj.url ?? null };
-      } catch { /* transient poll error — keep polling */ }
-    }
-    return { url: null };
-  } finally {
-    balanceMoved(); // a failed render was refunded by the poll that saw it
-  }
-}
-
-// MUSIC-VIDEO lip-sync — generate a clean HeyGen SINGER PERFORMANCE: a close-up storyboard
-// face lip-synced to the song's vocal (the talking-photo path, which tries HeyGen first).
-// This replaces the old whole-master relip (sync/lipsync-2 warped the montage's wide/aerial
-// shots). Fail-open: a miss returns url null so the caller just omits the companion clip.
-function heygenSingerPerformance(faceUrl: string, audioUrl: string, orientation: 'landscape' | 'vertical', signal: AbortSignal, mine: () => boolean): Promise<LipsyncOutcome> {
-  // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the
-  // vocal. `characterRef` (the CLEAN portrait) is the preferred face — HeyGen needs a
-  // front-facing portrait, not a stylized scene frame.
-  return runLipsyncJob({ videoUrl: faceUrl, characterRef: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }, signal, mine);
-}
-
-// Stage 2b — COMPOSITE the HeyGen close-ups INTO the cinematic montage. Face-forward beats
-// (Medium / Arc / Close-Up) take a 5s window of the continuous HeyGen performance at their
-// timeline position (so lips match the song there); wide beats (Establishing / Wide / Reso-
-// lution) keep the cinematic LTX clip. Re-assembles with the SONG as the master audio.
-// Fail-open: a miss returns null and the caller keeps the cinematic + companion clips.
-async function compositeMusicVideo(
-  heygenUrl: string,
-  matrix: FilmStudioMatrix,
-  storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
-  musicUrl: string,
-  orientation: 'landscape' | 'vertical',
-  transition: Transition,
-  signal: AbortSignal,
-  mine: () => boolean,
-  filmTokenId: string | null,
-): Promise<string | null> {
-  try {
-    // The film's REAL per-scene length (4–8s). A hardcoded 8 here made the re-stitch declare 8s segments
-    // for a film rendered on a 6s grid, and the assembler then pad-froze 2s of every clip (tpad clone) —
-    // 8s of frozen frames in a 24s film. Older tokens carry no clipSec → the 8s default, as before.
-    const clipSec = matrix.clipSec ?? FILM_CLIP_SEC;
-    const ltxByOrd = new Map<number, string>();
-    for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
-    const beatByOrd = new Map<number, string>();
-    for (const s of storyboardScenes ?? []) beatByOrd.set(s.ordinal, (s.beat ?? '').toLowerCase());
-    const ordinals = [...ltxByOrd.keys()].sort((a, b) => a - b);
-    if (ordinals.length < 2) return null;
-    const FACE = /close|medium|arc/;
-    const segs: { url: string; durationSec: number }[] = [];
-    for (const ord of ordinals) {
-      // Keep the cinematic INTRO (drone over the city → into the venue: scenes 1-2 of a
-      // 4+ scene music video) as the LTX clip — never lip-sync a shot with no singer.
-      const isIntro = ordinals.length >= 4 && ord <= 2;
-      const isFace = !isIntro && FACE.test(beatByOrd.get(ord) ?? '');
-      let url = ltxByOrd.get(ord) as string;
-      if (isFace && mine()) {
-        try {
-          const r = await fetch('/api/video/trim', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-            body: JSON.stringify({ videoUrl: heygenUrl, startSec: (ord - 1) * clipSec, durationSec: clipSec }),
-          });
-          const seg = ((await r.json().catch(() => ({}))) as { url?: string | null }).url ?? null;
-          if (seg) url = seg; // else keep the LTX clip for this scene
-        } catch { /* keep LTX */ }
-      }
-      segs.push({ url, durationSec: clipSec });
-    }
-    if (segs.length < 2 || !mine()) return null;
-    const r = await fetch('/api/video/assemble', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-      body: JSON.stringify({
-        segments: segs,
-        musicUrl,
-        musicVideoMode: true,
-        // Re-stitch of an already-billed film → same token so assemble skips the second charge.
-        ...(filmTokenId ? { filmTokenId } : {}),
-        ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
-        ...(transition ? { globalRender: { transition } } : {}),
-      }),
-    });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { url?: unknown } | null;
-    return j && typeof j.url === 'string' && j.url.length > 0 ? j.url : null;
-  } catch {
-    return null;
-  }
-}
-
-// DOCUMENTARY talking head — lip-sync the CLEAN portrait to the spoken DIALOGUE. Same
-// talking-photo engine as the singer (HeyGen first), but the audio is ElevenLabs TTS of the
-// dialogue text in the narrator gender — the route's `text`+`gender` path does the TTS
-// internally, so the returned clip already carries the narration in its audio track.
-// Fail-open: any miss → null.
-function heygenSpeakingHead(
-  portrait: string,
-  dialogue: string,
-  gender: 'male' | 'female',
-  orientation: 'landscape' | 'vertical',
-  signal: AbortSignal,
-  mine: () => boolean,
-): Promise<LipsyncOutcome> {
-  // No `kind:'film'` → talking-photo (HeyGen first) animates the portrait. `text`+`gender`
-  // → the route synthesizes the narrator voice (ElevenLabs) and keys the mouth to it.
-  return runLipsyncJob({ characterRef: portrait, videoUrl: portrait, text: dialogue, gender, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }, signal, mine);
-}
-
-// DOCUMENTARY composite — narrate the film in the character's OWN voice + face. Mirrors
-// compositeMusicVideo, but: (1) the audio source is the spoken DIALOGUE (not a song vocal),
-// (2) ElevenLabs TTS of that dialogue drives the lip-sync (narrator gender per the panel),
-// (3) the CLEAN portrait is lip-synced via talking-photo, (4) the talking head is composited
-// at the CLOSE-UP beat (cameraShot 'close-up' / beat /close/) — (5) or scene 3 by default if
-// no close-up exists. The talking-head clip carries the narration, so we re-assemble with that
-// clip itself as the master audio bed (ffmpeg maps its audio stream) → the documentary is
-// narrated in the synced voice. Fail-open: any miss → null and the caller keeps the base master.
-/** compositeDocumentary's answer when the lip-sync was refused for the balance (never a URL: those are https). */
-const NO_LIPSYNC_CREDITS = 'no_credits' as const;
-async function compositeDocumentary(
-  portrait: string,
-  matrix: FilmStudioMatrix,
-  storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
-  dialogue: string,
-  gender: 'male' | 'female',
-  orientation: 'landscape' | 'vertical',
-  transition: Transition,
-  signal: AbortSignal,
-  mine: () => boolean,
-  filmTokenId: string | null,
-): Promise<string | null | typeof NO_LIPSYNC_CREDITS> {
-  try {
-    // 1+2+3. ElevenLabs TTS of the dialogue + lip-sync the CLEAN portrait to it (talking-photo).
-    const head = await heygenSpeakingHead(portrait, dialogue, gender, orientation, signal, mine);
-    if (head.noCredits) return NO_LIPSYNC_CREDITS;
-    const talkingHead = head.url;
-    if (!talkingHead || !mine()) return null;
-
-    // 4+5. Choose the scene that hosts the talking head: a CLOSE-UP beat, else scene 3, else
-    // the middle scene of the montage.
-    const ltxByOrd = new Map<number, string>();
-    for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
-    const beatByOrd = new Map<number, string>();
-    for (const s of storyboardScenes ?? []) beatByOrd.set(s.ordinal, (s.beat ?? '').toLowerCase());
-    const ordinals = [...ltxByOrd.keys()].sort((a, b) => a - b);
-    if (ordinals.length < 2) return null;
-    const closeUpOrd =
-      ordinals.find((o) => /close/.test(beatByOrd.get(o) ?? '')) ??
-      (ordinals.includes(3) ? 3 : ordinals[Math.min(2, ordinals.length - 1)]);
-
-    // Swap the close-up scene's cinematic clip for the talking head; keep every other scene.
-    // durationSec must be the film's REAL grid (4–8s) or the assembler pad-freezes every clip up to 8s.
-    const segs: { url: string; durationSec: number }[] = ordinals.map((ord) => ({
-      url: ord === closeUpOrd ? talkingHead : (ltxByOrd.get(ord) as string),
-      durationSec: matrix.clipSec ?? FILM_CLIP_SEC,
-    }));
-    if (segs.length < 2 || !mine()) return null;
-
-    // Re-assemble the documentary — the talking-head clip is the master audio bed so the film
-    // is narrated in the synced voice (NOT musicVideoMode → narration-forward documentary mix).
-    const r = await fetch('/api/video/assemble', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-      body: JSON.stringify({
-        segments: segs,
-        musicUrl: talkingHead,
-        // Re-stitch of an already-billed film → same token so assemble skips the second charge.
-        ...(filmTokenId ? { filmTokenId } : {}),
-        ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
-        ...(transition ? { globalRender: { transition } } : {}),
-      }),
-    });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { url?: unknown } | null;
-    return j && typeof j.url === 'string' && j.url.length > 0 ? j.url : null;
-  } catch {
-    return null;
-  }
-}
-
-// Reject a lip-sync result that isn't a sane full-length master (e.g. a 5s talking-head
-// SadTalker mangled from a multi-shot film) so a good 30s master is never replaced by
-// garbage. Resolves false on any load error/timeout.
-function videoDurationAtLeast(url: string, minSec: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof document === 'undefined') { resolve(false); return; }
-    try {
-      const v = document.createElement('video');
-      v.preload = 'metadata';
-      v.muted = true;
-      const to = setTimeout(() => resolve(false), 12000);
-      v.onloadedmetadata = () => { clearTimeout(to); resolve(Number.isFinite(v.duration) && v.duration >= minSec); };
-      v.onerror = () => { clearTimeout(to); resolve(false); };
-      v.src = url;
-    } catch { resolve(false); }
-  });
 }
 
 // P10 — best-effort client preview of which scenes a remix edit will re-render
@@ -2611,7 +2387,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [voiceRecSec, setVoiceRecSec] = useState(0);
   // Trained RVC voice (faithful) — set by the in-chat VoiceTrainer once a model is ready,
   // and a toggle to sing with it instead of a one-shot upload.
-  const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
+  // RVC voice training was removed (v5.1 M-14, GG 2026-11-12): no user has a trained voice, so its toggles never show.
+  const hasTrainedVoice: boolean = false;
   const [useMyVoice, setUseMyVoice] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
   // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
@@ -3088,12 +2865,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // DAY-6 — an optional full TIMECODED Master Production Script (SCENE/VOICE/DIALOGUE sheets). When filled it
   // drives the structured storyboard + multi-voice casting (parseMasterScript) instead of the single-prompt path.
   const [videoMasterScript, setVideoMasterScript] = useState('');
-  // P1 — Music Video: after the master assembles, sync the singer's mouth to the
-  // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
-  // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
-  // (prediction q9m5k5nexdrmr0cyyhnt2ca090, ~113s, output mp4). Default ON; fail-open
-  // to the un-synced master if anything misses.
-  const [videoLipsync] = useState(true);
+  // The film's lip-sync pass (HeyGen / sync on Replicate) was removed in v5.1 M-14 (GG 2026-11-12): always off.
+  const videoLipsync = false;
   // PHASE 2 L6 — Smart ducking (default ON): in documentary mode the music bed
   // auto-ducks under the dialogue via the assembler's 3-track sidechain. The slider
   // sets the duck depth (−6…−18 dB). Only affects films that carry voice + music +
@@ -4202,22 +3975,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         finalUrl = url;
         patchFilmBubbleBy((m) => !!m && m.role === 'assistant' && !!m.videoUrl, (m) => ({ ...m, videoUrl: url }));
       };
-      // A CLEAN front-facing face for any talking-head lip-sync — HeyGen's talking_photo
-      // needs a clear portrait, not a stylized scene frame (that was the null bug). Prefer
-      // the threaded anchor/selfie; generate one on-demand; last resort a close scene frame.
-      const resolveCleanFace = async (): Promise<string | null> => {
-        if (characterPortrait && /^https?:/i.test(characterPortrait)) return characterPortrait;
-        if (mine()) {
-          try {
-            const sc = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
-            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true, musicVideoMode: isMusicVideo }) });
-            const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
-            if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
-          } catch { /* fall through */ }
-        }
-        return (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
-          ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
-      };
       // Patch the Lip-Sync card on whichever bubble carries the Director's Console roster.
       // PHASE 20 — accepts an optional `note` (a localized reason) so a skip is never silent:
       // the reason lands on the card AND a console breadcrumb, turning the old mysterious
@@ -4233,99 +3990,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // GRAPHICS INPUT — defaults to the base master so the Graphics agent ALWAYS runs, even
       // when Lip-Sync is skipped (FIX 1: never break the graphics chain). Each lip-sync leg
       // below upgrades it to the lip-synced video.
-      let graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
+      const graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
       if (res.ok && res.masterUrl && mine()) {
-        // PHASE 22 (VECTOR 3) — PRE-FLIGHT HeyGen HEALTH GATE. Both lip-sync legs below drive HeyGen
-        // (talking_photo). If the key is expired/credit-blocked/throttled, HeyGen accepts the create
-        // then stalls, and the client polls ~8 min before giving up — a silent freeze. A cached,
-        // fail-open readiness probe lets us skip that doomed poll and surface a reason in ~ms instead.
-        // Only a DEFINITIVE {ok:false} blocks (see heygenHealthCheck); any flaky/uncertain result lets
-        // the render proceed exactly as before.
-        let heygenReady = true;
-        if (wantsLipsync) {
-          try {
-            const hr = await fetch('/api/video/lipsync?health=heygen', { credentials: 'include', signal });
-            const hj = (await hr.json().catch(() => ({}))) as { ok?: boolean };
-            heygenReady = hj?.ok !== false;
-          } catch { /* fail-open — a failed health check never blocks a render */ }
-        }
-        if (wantsLipsync && !heygenReady) {
-          patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
-        } else if (isMusicVideo && wantsLipsync && res.musicUrl) {
-          // MUSIC VIDEO → the singer-performance sync (close-up HeyGen head composited into the
-          // montage). PHASE 20: staged so every bail surfaces WHICH step failed (the render was
-          // shipping un-synced lips with a bare "skipped"). Still fail-open → base master + graphics.
-          patchLipsyncCard('processing');
-          const songUrl: string = res.musicUrl;
-          let vocalForSync: string = songUrl;
-          try {
-            const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
-            const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
-            if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
-            else { try { console.info('[lipsync] isolate: no vocalUrl → syncing to the full mix'); } catch { /* ignore */ } }
-          } catch { try { console.info('[lipsync] isolate failed → syncing to the full mix'); } catch { /* ignore */ } }
-          // #1 root cause of un-synced lips: no clean face → HeyGen never runs. Surface it (and
-          // hint the fix: attach a reference photo) instead of a silent skip over the wide montage.
-          const face = await resolveCleanFace();
-          if (!face) {
-            patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
-          } else {
-            const sung = await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine);
-            const perf = sung.url;
-            if (sung.noCredits) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('no_credits', locale));
-            } else if (!perf) {
-              // HeyGen returned nothing (no provider key / credit block / timeout / down).
-              patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
-            } else if (!(await videoDurationAtLeast(perf, 8))) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('short_result', locale, { saved: true }));
-            } else if (!res.matrix || !mine()) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale, { saved: true }));
-            } else {
-              const composited = await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine, res.filmTokenId ?? null);
-              if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
-              else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale, { saved: true })); }
-            }
-          }
-        } else if (isMusicVideo && wantsLipsync && !res.musicUrl) {
-          // Music video wanted lip-sync but no song track landed → nothing to sync the mouth to.
-          patchLipsyncCard('skipped', lipsyncSkipReason('no_song', locale));
-        } else if (!isMusicVideo && wantsLipsync) {
-          // DOCUMENTARY with dialogue → compositeDocumentary: ElevenLabs TTS of the dialogue
-          // drives a talking-photo lip-sync of the CLEAN portrait, composited into the montage
-          // at the close-up beat (or scene 3), narrated in the synced voice. Replaces the old
-          // video-input sync/lipsync-2 pass (which warped the multi-shot master, returning null
-          // on a montage with no consistent on-screen head). Fail-open → base master + graphics.
-          // PHASE 22 (VECTOR 2) — staged like the music-video branch so a documentary skip is NEVER
-          // a bare "skipped": surface no_face (resolveCleanFace null) / no_clips / composite_failed.
-          patchLipsyncCard('processing');
-          const face = await resolveCleanFace();
-          if (!face) {
-            patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
-          } else if (!res.matrix || !mine()) {
-            patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale));
-          } else {
-            const composited = await compositeDocumentary(
-              face,
-              res.matrix,
-              storyboardScenes,
-              videoSpeech.trim(),
-              videoVocalGender === 'male' ? 'male' : 'female',
-              orientation === 'vertical' ? 'vertical' : 'landscape',
-              videoTransition,
-              signal,
-              mine,
-              res.filmTokenId ?? null,
-            );
-            if (composited === NO_LIPSYNC_CREDITS) { patchLipsyncCard('skipped', lipsyncSkipReason('no_credits', locale)); }
-            else if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
-            else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale)); }
-          }
-        } else {
-          // PHASE 22 (VECTOR 2) — the not-wanted fallthrough (lip-sync toggle off, or documentary with
-          // no dialogue): say so explicitly instead of a bare, ambiguous "skipped".
-          patchLipsyncCard('skipped', lipsyncSkipReason('not_requested', locale));
-        }
+        // The lip-sync pass (HeyGen talking photo / sync on Replicate) was removed in v5.1 M-14 (GG 2026-11-12): the
+        // film keeps its master, and the card says the pass did not run.
+        patchLipsyncCard('skipped', lipsyncSkipReason('not_requested', locale));
       }
 
       // ── GRAPHICS AGENT — a MUSIC VIDEO's overlay, on graphicsInput (lip-synced if it ran, else base master).
@@ -8317,23 +7986,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
   useMicRelease(() => { if (voiceStreamRef.current) stopVoiceRecording(); }, 'music');
 
-  // Detect an existing TRAINED voice model (RVC) so the Music panel can surface a
-  // "sing in my trained voice" toggle. GET /api/voice/train reports the user's model
-  // status; 'completed' means a faithful RVC model is ready (the same probe VoiceTrainer
-  // uses). Fail-open — on any error the toggle simply never appears, and the one-shot
-  // upload/record voice-CLONE path (music-01) still works without it.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch('/api/voice/train', { credentials: 'include' });
-        const j = (await r.json().catch(() => ({}))) as { status?: string };
-        if (alive && j.status === 'completed') setHasTrainedVoice(true);
-      } catch { /* fail-open — no trained-voice toggle */ }
-    })();
-    return () => { alive = false; };
-  }, []);
-
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).
   // Chat can send on text OR attachments alone; the generative modes need a text
@@ -8605,11 +8257,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'prepare_generation': {
-        // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
-        if (d.tool === 'presentation' || d.tool === 'model3d') {
+        // A deck: the studio panel opens with the topic filled in (its own Create runs it). 3D is off (GG 2026-11-13).
+        if (d.tool === 'presentation') {
           selectTool(d.tool, 'voice');
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
-          reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          reply({ ok: true, tool: d.tool, applied: { topic: true } });
           return true;
         }
         // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".
@@ -13149,7 +12801,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         desktop (open by default), Gemini's bottom sheet below `lg`. Only its classes change with the width.
         ⚠️ TWO PARENTS (an <aside> for desktop, a portaled sheet for phones) REMOUNTED THE PANELS ON EVERY CROSSING OF
         1024 px — an iPad rotated mid-job lost ServiceParamsPanel's 3D poll (the paid model never reached the chat) and
-        MotionControlPanel's picked files. Mounted while hidden, for the same reason: closing is not discarding. */}
+        a picked file. Mounted while hidden, for the same reason: closing is not discarding. */}
     {/* Outside the layer, above the composer: a tap there puts the settings away (the composer below stays live). */}
     {settingsLayerOpen && settingsAnchor && !isDesktop && (
       <div aria-hidden="true" data-testid="settings-layer-dismiss" onClick={closeSettingsLayer}

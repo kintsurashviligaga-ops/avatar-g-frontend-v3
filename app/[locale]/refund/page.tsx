@@ -33,7 +33,7 @@ const copy: Record<Lang, {
     sections: [
       {
         title: '1. ძირითადი პრინციპი',
-        body: 'AI კონტენტის გენერაცია იწვევს პირდაპირ, დაუბრუნებელ გამომთვლელ (compute) ხარჯს ჩვენს დამხმარე მესამე-მხარის სერვისებზე (Runway, Replicate, HeyGen, ElevenLabs და სხვ.). ვინაიდან ეს ხარჯი უკვე გაწეულია გენერაციის მომენტში, წარმატებით შესრულებული გენერაცია, როგორც წესი, დაბრუნებას არ ექვემდებარება.',
+        body: 'AI კონტენტის გენერაცია იწვევს პირდაპირ, დაუბრუნებელ გამომთვლელ (compute) ხარჯს ჩვენს დამხმარე სერვისზე (Google Vertex AI). ვინაიდან ეს ხარჯი უკვე გაწეულია გენერაციის მომენტში, წარმატებით შესრულებული გენერაცია, როგორც წესი, დაბრუნებას არ ექვემდებარება.',
       },
       {
         title: '2. ინდივიდუალური განხილვა',
@@ -71,7 +71,7 @@ const copy: Record<Lang, {
     sections: [
       {
         title: '1. Core Principle',
-        body: 'AI content generation incurs a direct, non-refundable compute cost on our backing third-party providers (Runway, Replicate, HeyGen, ElevenLabs, etc.). Because that cost is already spent at the moment of generation, a successfully completed generation is generally not eligible for a refund.',
+        body: 'AI content generation incurs a direct, non-refundable compute cost on our backing provider (Google Vertex AI). Because that cost is already spent at the moment of generation, a successfully completed generation is generally not eligible for a refund.',
       },
       {
         title: '2. Individual Evaluation',
@@ -109,7 +109,7 @@ const copy: Record<Lang, {
     sections: [
       {
         title: '1. Основной принцип',
-        body: 'AI-генерация контента влечёт прямые невозвратные вычислительные (compute) расходы у наших сторонних провайдеров (Runway, Replicate, HeyGen, ElevenLabs и др.). Поскольку эти расходы уже понесены в момент генерации, успешно выполненная генерация, как правило, не подлежит возврату.',
+        body: 'AI-генерация контента влечёт прямые невозвратные вычислительные (compute) расходы у нашего провайдера (Google Vertex AI). Поскольку эти расходы уже понесены в момент генерации, успешно выполненная генерация, как правило, не подлежит возврату.',
       },
       {
         title: '2. Индивидуальное рассмотрение',

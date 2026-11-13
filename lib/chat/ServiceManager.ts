@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
-import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
 import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
@@ -10,8 +9,6 @@ import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
-import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
-import { pollVideoProvider } from '@/lib/video/videoProviderCascade';
 import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -34,11 +31,9 @@ export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 // PHASE 24 — 'runway' is an async provider tier (Runway Gen-3 Alpha primary i2v). It surfaces on the
 // wire as provider:'replicate' (DeterministicProvider has no 'runway'); the real engine lives in
 // metadata.videoProvider — same pattern as 'video-cascade'.
-type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade' | 'runway' | 'gemini-veo';
+type AsyncProvider = 'replicate' | 'ltx' | 'video-cascade' | 'runway' | 'gemini-veo';
 type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
 
-const LTX_BASE_URL = 'https://api.ltx.video';
-const HEYGEN_BASE_URL = 'https://api.heygen.com';
 const TASK_REF_VERSION = 1;
 
 // Veo refusals already written to the log, per warm instance. Bounded: past the cap it starts over, which at worst
@@ -50,15 +45,6 @@ function firstVeoDecline(key: string): boolean {
   loggedVeoDeclines.add(key);
   return true;
 }
-
-// PHASE 51 §2 — Re-hosted LTX render URLs live for 7 days. A sync LTX call
-// returns the MP4 *binary*; turning that into a multi-MB `data:` URL is the
-// known iOS / standalone-PWA infinite-spinner failure (the <video> element
-// never fires loadedmetadata for a giant inline source). We re-host the bytes
-// to our CSP-allowed *.supabase.co storage and hand the browser a real https
-// URL it can stream natively — with a 7-day signed lifetime so the asset
-// survives well past the render session.
-const LTX_REHOST_TTL_SEC = 7 * 24 * 60 * 60;
 
 type EncodedTaskRef = {
   v: number;
@@ -114,8 +100,6 @@ export interface ServiceManagerResponse {
   };
 }
 
-const TERMINAL_LTX_STATUS = new Set(['completed', 'succeeded', 'success', 'failed', 'error', 'canceled']);
-const FAILED_LTX_STATUS = new Set(['failed', 'error', 'canceled']);
 
 /** One Veo submit, as the render path sees it: a task-ref response, or the engine's reason for the miss. */
 type VeoSubmit =
@@ -251,14 +235,6 @@ export class ServiceManager {
       return this.pollReplicateTask(decoded, taskRefOrPredictionId);
     }
 
-    if (decoded.provider === 'video-cascade') {
-      return this.pollVideoCascadeTask(decoded, taskRefOrPredictionId);
-    }
-
-    if (decoded.provider === 'heygen') {
-      return this.pollHeygenTask(decoded, taskRefOrPredictionId);
-    }
-
     if (decoded.provider === 'runway') {
       return this.pollRunwayTaskRef(decoded, taskRefOrPredictionId);
     }
@@ -267,11 +243,30 @@ export class ServiceManager {
       return this.pollVeoTaskRef(decoded, taskRefOrPredictionId);
     }
 
-    return this.pollLtxTask(decoded, taskRefOrPredictionId);
+    // An LTX or 'video-cascade' (Kling / Luma / LTX / Replicate-Kling) task ref. Both are retired (v5.1 M-14): no
+    // route creates one any more, so an old one is answered honestly instead of calling the vendor.
+    const retiredProvider: DeterministicProvider = decoded.provider === 'ltx' ? 'ltx' : 'replicate';
+    return {
+      success: false,
+      provider: retiredProvider,
+      operation: decoded.operation,
+      responseType: decoded.responseType,
+      message: 'This render used an engine that is no longer available.',
+      predictionId: taskRefOrPredictionId,
+      predictionStatus: 'failed',
+      metadata: {
+        provider: retiredProvider,
+        operation: decoded.operation,
+        sessionId: decoded.sessionId,
+        taskRef: taskRefOrPredictionId,
+        providerTaskId: decoded.providerTaskId,
+        promptHash: decoded.promptHash,
+      },
+    };
   }
 
   private async runTextToImage(rawRequest: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    // ⚠️ ONE TRANSLATION FOR EVERY LEG. Imagen and the Gemini image model read `request.userPrompt` verbatim and are
+    // ⚠️ ONE TRANSLATION FOR EVERY LEG. The Gemini image model reads `request.userPrompt` verbatim and are
     // trained overwhelmingly on English — so a Georgian brief was noise and each fell back to its priors, returning a
     // competent image unrelated to the request. Rebinding the request here fixes it at the single entry point. Only the
     // DESCRIPTION passes through — this path carries no lyrics, dialogue or on-screen copy. Fail-open:
@@ -280,13 +275,9 @@ export class ServiceManager {
     const request: ServiceManagerRequest = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
 
     // ⚠️ GOOGLE ONLY (MASTER TASK v3.1, audit F-04): no outside engine runs, whatever was configured or picked and
-    // whatever MEDIA_GOOGLE_ONLY says. Imagen (prompt-only, when enabled) → Google's own image model (lib/ai/geminiImage,
-    // the model the NanoBanana reseller sold, called directly) → an honest failure. The FLUX, NanoBanana and Grok legs
-    // are gone, and no miss moves to another vendor.
-    if (hasGeminiImagenProvider() && !request.imageUrl) {
-      const imagen = await this.tryImagenImage(request);
-      if (imagen) return imagen;
-    }
+    // whatever MEDIA_GOOGLE_ONLY says. Google's own image model (lib/ai/geminiImage, the model the NanoBanana reseller
+    // sold, called directly) → an honest failure. The FLUX, NanoBanana and Grok legs are gone, and no miss moves to
+    // another vendor. The Imagen 4 leg is gone too (v5.1 M-14): Google retired the model and it was 404 on Vertex.
     return (await this.tryGeminiImage(request, 'google-only')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
   }
 
@@ -352,70 +343,6 @@ export class ServiceManager {
         },
       };
     } catch {
-      return null;
-    }
-  }
-
-  /**
-   * IMAGEN 4 (§1.6.2 / §3.2.2). Imagen returns base64 bytes inline — no operation to poll — so the image is
-   * hosted here and the caller receives a normal signed https URL, identical in shape to the other engines.
-   * Returns null on ANY miss so `runTextToImage` moves on to Gemini image (Google). NEVER throws. Callers check
-   * imagenApplies first.
-   */
-  private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
-    const opts = request.selectedOptions || {};
-    const count = Number(this.getOption(opts, ['numberOfImages', 'imageCount', 'n'])) || 1;
-    const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
-    const aspect = this.normalizeAspectRatio(this.getOption(opts, ['aspect', 'aspectRatio', 'ratio'])) || undefined;
-
-    try {
-      const images = await generateImagenImages({
-        prompt: request.userPrompt,
-        ...(aspect ? { aspectRatio: aspect } : {}),
-        numberOfImages: count,
-        ...(negativePrompt ? { negativePrompt } : {}),
-      });
-      if (!images?.length) return null;
-
-      const stamp = Date.now();
-      const hosted = await Promise.all(
-        images.map((img, i) => {
-          const ext = img.mimeType.includes('jpeg') || img.mimeType.includes('jpg') ? 'jpg' : 'png';
-          return uploadBufferAndSign('renders', `imagen/${request.sessionId}/${stamp}-${i}.${ext}`, img.buffer, img.mimeType, 604_800)
-            .catch(() => null);
-        }),
-      );
-      const urls = hosted.filter((u): u is string => typeof u === 'string' && !!u);
-      // Generated but undeliverable (storage miss) → a miss rather than a broken success.
-      if (!urls.length) return null;
-
-      const model = geminiImagenModel();
-      // eslint-disable-next-line no-console
-      console.log(`[imagen] ${model} produced ${urls.length}/${images.length} hosted image(s)`);
-      return {
-        success: true,
-        provider: 'nanobanana', // surface provider union has no 'gemini' member; the real engine is in metadata
-        operation: 'text-to-image',
-        responseType: 'image',
-        message: 'Image generation completed successfully.',
-        assetUrl: urls[0] as string,
-        assetType: 'image',
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'nanobanana' as const,
-          imageProvider: 'gemini-imagen',
-          model,
-          operation: 'text-to-image',
-          outputType: 'image',
-          sessionId: request.sessionId,
-          promptHash: this.hashPrompt(request.userPrompt),
-          confidence: request.confidence,
-          images: urls,
-        },
-      };
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[imagen] threw → trying Gemini image:', err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -488,35 +415,6 @@ export class ServiceManager {
       if (w > 0 && h > 0) return w > h ? '16:9' : w < h ? '9:16' : '1:1';
     }
     return /vert|portrait|9:16|story|tall/i.test(a) ? '9:16' : '16:9';
-  }
-
-  /** Resolve a 'video-cascade' task-ref by dispatching to the winning provider's poll (encoded as "name::id"). */
-  private async pollVideoCascadeTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    const sep = decoded.providerTaskId.indexOf('::');
-    const providerName = sep > 0 ? decoded.providerTaskId.slice(0, sep) : 'replicate-kling';
-    const taskId = sep > 0 ? decoded.providerTaskId.slice(sep + 2) : decoded.providerTaskId;
-    const r = await pollVideoProvider(providerName, taskId);
-    const baseMeta = {
-      provider: 'replicate' as const, videoProvider: providerName, operation: decoded.operation,
-      sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
-    };
-    if (r.status === 'succeeded' && r.url) {
-      return {
-        success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: 'Generation completed successfully.', assetUrl: r.url, assetType: decoded.responseType,
-        predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
-      };
-    }
-    if (r.status === 'failed') {
-      return {
-        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: r.error || 'Video generation failed.', predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
-      };
-    }
-    return {
-      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-      message: 'Rendering…', predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
-    };
   }
 
   /** Resolve a 'runway' task-ref via Runway's GET /v1/tasks/{id}. Fail-open: unknown status → keep polling.
@@ -824,32 +722,6 @@ export class ServiceManager {
     return undefined;
   }
 
-  // PHASE 51 §2 — Re-host an LTX binary MP4 to our Supabase storage and return a
-  // CSP-allowed *.supabase.co signed URL the browser can stream natively. The
-  // sync LTX API returns the MP4 *binary* directly; turning that into a
-  // multi-megabyte `data:` URL is what froze PreviewWorkspace on the live DOM.
-  // Fail-safe by contract: any storage failure returns the data: URL so a
-  // successful render is never lost — we degrade transport, never the result.
-  private async rehostLtxVideo(
-    bytes: Buffer,
-    contentType: string,
-    sessionId: string,
-    promptHash: string,
-  ): Promise<string> {
-    const ct = contentType && contentType.includes('/') ? contentType.split(';')[0] || 'video/mp4' : 'video/mp4';
-    const ext = ct.includes('webm') ? 'webm' : 'mp4';
-    const base64 = bytes.toString('base64');
-    const dataUrl = `data:${ct};base64,${base64}`;
-    try {
-      const safeSession = (sessionId || 'anon').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'anon';
-      const path = `ltx/${safeSession}/${promptHash}-${Date.now()}.${ext}`;
-      const hosted = await uploadAndSign('renders', path, base64, ct, LTX_REHOST_TTL_SEC);
-      return hosted || dataUrl;
-    } catch {
-      return dataUrl;
-    }
-  }
-
   private async pollReplicateTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
     const prediction = await pollPrediction(decoded.providerTaskId);
 
@@ -938,279 +810,6 @@ export class ServiceManager {
       predictionStatus: prediction.status,
       metadata: {
         provider: 'replicate',
-        operation: decoded.operation,
-        sessionId: decoded.sessionId,
-        taskRef,
-        providerTaskId: decoded.providerTaskId,
-        promptHash: decoded.promptHash,
-      },
-    };
-  }
-
-  private async pollHeygenTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    const apiKey = process.env.HEYGEN_API_KEY?.trim();
-    if (!apiKey) {
-      throw new Error('HEYGEN_API_KEY is not configured');
-    }
-
-    const res = await fetch(`${HEYGEN_BASE_URL}/v1/video_status.get?video_id=${encodeURIComponent(decoded.providerTaskId)}`, {
-      headers: { 'X-Api-Key': apiKey },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`HeyGen status check failed (${res.status}): ${err || 'unknown error'}`);
-    }
-
-    const payload = await res.json().catch(() => ({}));
-    const data = payload && typeof payload === 'object' && 'data' in payload
-      ? (payload.data as Record<string, unknown>)
-      : (payload as Record<string, unknown>);
-
-    const status = String(data.status || '').toLowerCase();
-    const outputUrl = typeof data.video_url === 'string' ? data.video_url : this.extractUrl(payload);
-
-    if (status === 'completed' && outputUrl) {
-      return {
-        success: true,
-        provider: 'heygen',
-        operation: decoded.operation,
-        responseType: 'video',
-        message: 'Avatar generation completed successfully.',
-        assetUrl: outputUrl,
-        assetType: 'video',
-        predictionId: taskRef,
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'heygen',
-          operation: decoded.operation,
-          outputType: 'video',
-          sessionId: decoded.sessionId,
-          taskRef,
-          providerTaskId: decoded.providerTaskId,
-          promptHash: decoded.promptHash,
-        },
-      };
-    }
-
-    if (status === 'failed') {
-      const errorMessage = typeof data.error === 'string' ? data.error : 'HeyGen generation failed.';
-      return {
-        success: false,
-        provider: 'heygen',
-        operation: decoded.operation,
-        responseType: 'video',
-        message: errorMessage,
-        predictionId: taskRef,
-        predictionStatus: 'failed',
-        metadata: {
-          provider: 'heygen',
-          operation: decoded.operation,
-          sessionId: decoded.sessionId,
-          taskRef,
-          providerTaskId: decoded.providerTaskId,
-          promptHash: decoded.promptHash,
-        },
-      };
-    }
-
-    return {
-      success: true,
-      provider: 'heygen',
-      operation: decoded.operation,
-      responseType: 'video',
-      message: 'Still processing…',
-      predictionId: taskRef,
-      predictionStatus: 'processing',
-      metadata: {
-        provider: 'heygen',
-        operation: decoded.operation,
-        sessionId: decoded.sessionId,
-        taskRef,
-        providerTaskId: decoded.providerTaskId,
-        promptHash: decoded.promptHash,
-      },
-    };
-  }
-
-  private async pollLtxTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    // PHASE 45 §1 — accept the key under any provisioned alias.
-    const apiKey = resolveLtxApiKey();
-    if (!apiKey) {
-      throw new Error('LTX video API key is not configured (LTX_VIDEO_API_KEY / LTX_API_KEY / LTX2_API_KEY)');
-    }
-
-    // PHASE 59 — Poll the DOCUMENTED /v2 status endpoints. GET /v2/{kind}-to-video/{id}
-    // is the only status route that actually exists (the old /v1/{id} guesses all
-    // 404'd, which is what wedged every clip on "processing"). A text job 404s on
-    // the image path and vice-versa, so we try both and use whichever resolves.
-    const candidateUrls = [
-      `${LTX_BASE_URL}/v2/text-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
-      `${LTX_BASE_URL}/v2/image-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
-    ];
-
-    // A deterministic auth/billing rejection (401 unauthorized / 402 payment
-    // required / 403 forbidden) is NEVER transient — masking it as "processing"
-    // is what wedges a clip on the 0/5 spinner until the client deadline. Track
-    // it across candidates and surface a terminal failure below. (404 stays
-    // transient: a freshly-dispatched job legitimately 404s before it registers,
-    // and 429 is a rate-limit, not a dead job — both keep polling as 'processing'.)
-    let authBillingRejected = false;
-
-    for (const url of candidateUrls) {
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        cache: 'no-store',
-      });
-
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 402 || res.status === 403) {
-          authBillingRejected = true;
-        }
-        continue;
-      }
-
-      const contentType = res.headers.get('content-type') || '';
-
-      if (!contentType.includes('application/json')) {
-        const bytes = Buffer.from(await res.arrayBuffer());
-        // PHASE 51 §2 — same re-host as the sync path: never hand the client a
-        // multi-MB data: video (the iOS infinite-spinner failure). Re-host to
-        // *.supabase.co, fail-safe to the data: URL when storage is down.
-        const hostedUrl = await this.rehostLtxVideo(bytes, contentType, decoded.sessionId, decoded.promptHash);
-        return {
-          success: true,
-          provider: 'ltx',
-          operation: decoded.operation,
-          responseType: 'video',
-          message: 'Video generation completed successfully.',
-          assetUrl: hostedUrl,
-          assetType: 'video',
-          predictionId: taskRef,
-          predictionStatus: 'succeeded',
-          metadata: {
-            provider: 'ltx',
-            operation: decoded.operation,
-            outputType: 'video',
-            rehosted: /^https:\/\//i.test(hostedUrl),
-            sessionId: decoded.sessionId,
-            taskRef,
-            providerTaskId: decoded.providerTaskId,
-            promptHash: decoded.promptHash,
-          },
-        };
-      }
-
-      const payload = await res.json().catch(() => ({}));
-      const outputUrl = this.extractUrl(payload);
-      const status = this.extractStatus(payload);
-
-      if (outputUrl && (!status || status === 'completed' || status === 'succeeded' || status === 'success')) {
-        return {
-          success: true,
-          provider: 'ltx',
-          operation: decoded.operation,
-          responseType: 'video',
-          message: 'Video generation completed successfully.',
-          assetUrl: outputUrl,
-          assetType: 'video',
-          predictionId: taskRef,
-          predictionStatus: 'succeeded',
-          metadata: {
-            provider: 'ltx',
-            operation: decoded.operation,
-            outputType: 'video',
-            sessionId: decoded.sessionId,
-            taskRef,
-            providerTaskId: decoded.providerTaskId,
-            promptHash: decoded.promptHash,
-          },
-        };
-      }
-
-      if (status && TERMINAL_LTX_STATUS.has(status)) {
-        return {
-          success: !FAILED_LTX_STATUS.has(status),
-          provider: 'ltx',
-          operation: decoded.operation,
-          responseType: 'video',
-          message: FAILED_LTX_STATUS.has(status)
-            ? (this.extractText(payload) || 'LTX generation failed.')
-            : 'Video generation completed.',
-          assetUrl: outputUrl,
-          assetType: outputUrl ? 'video' : undefined,
-          predictionId: taskRef,
-          predictionStatus: FAILED_LTX_STATUS.has(status) ? 'failed' : 'succeeded',
-          metadata: {
-            provider: 'ltx',
-            operation: decoded.operation,
-            outputType: 'video',
-            sessionId: decoded.sessionId,
-            taskRef,
-            providerTaskId: decoded.providerTaskId,
-            promptHash: decoded.promptHash,
-            raw: payload,
-          },
-        };
-      }
-
-      return {
-        success: true,
-        provider: 'ltx',
-        operation: decoded.operation,
-        responseType: 'video',
-        message: this.extractText(payload) || 'Still processing…',
-        predictionId: taskRef,
-        predictionStatus: 'processing',
-        metadata: {
-          provider: 'ltx',
-          operation: decoded.operation,
-          sessionId: decoded.sessionId,
-          taskRef,
-          providerTaskId: decoded.providerTaskId,
-          promptHash: decoded.promptHash,
-          raw: payload,
-        },
-      };
-    }
-
-    // Every candidate status URL responded non-OK with a deterministic
-    // auth/billing rejection — the provider key is invalid or out of funds. This
-    // is terminal: reporting 'processing' here is exactly what stranded the clip
-    // on a 0/5 spinner. Surface a clean 'failed' so the film union flips and the
-    // client salvages/halts immediately instead of waiting out the poll window.
-    if (authBillingRejected) {
-      return {
-        success: false,
-        provider: 'ltx',
-        operation: decoded.operation,
-        responseType: 'video',
-        message: 'LTX rejected the request (authentication or insufficient provider funds).',
-        predictionId: taskRef,
-        predictionStatus: 'failed',
-        metadata: {
-          provider: 'ltx',
-          operation: decoded.operation,
-          sessionId: decoded.sessionId,
-          taskRef,
-          providerTaskId: decoded.providerTaskId,
-          promptHash: decoded.promptHash,
-          providerRejection: 'auth-or-billing',
-        },
-      };
-    }
-
-    return {
-      success: true,
-      provider: 'ltx',
-      operation: decoded.operation,
-      responseType: 'video',
-      message: 'Still processing…',
-      predictionId: taskRef,
-      predictionStatus: 'processing',
-      metadata: {
-        provider: 'ltx',
         operation: decoded.operation,
         sessionId: decoded.sessionId,
         taskRef,
@@ -1388,7 +987,7 @@ export class ServiceManager {
 
       if (
         parsed.v !== TASK_REF_VERSION
-        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway' && parsed.provider !== 'gemini-veo')
+        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway' && parsed.provider !== 'gemini-veo')
         || typeof parsed.providerTaskId !== 'string'
         || typeof parsed.sessionId !== 'string'
         || typeof parsed.serviceContext !== 'string'

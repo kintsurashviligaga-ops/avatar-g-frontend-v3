@@ -49,19 +49,12 @@ export function refuseOutsideEngine(req?: Request | null): NextResponse {
 /** Every user-facing entry that refuses, with what it refuses. `file` calls refuseOutsideEngine (pinned by the test). */
 export const GATED_ENTRIES: ReadonlyArray<{ file: string; when: string }> = [
   { file: 'app/api/ai/edit/route.ts', when: 'object removal (Replicate inpaint) → refused; ffmpeg ops run' },
-  { file: 'app/api/voice/train/route.ts', when: 'voice training (RVC on Replicate) → refused; the status GET stays open' },
   { file: 'app/api/generate/route.ts', when: 'studio models (Higgsfield) → refused; the job list stays open' },
   { file: 'app/api/genjutsu/generate/route.ts', when: 'motion / swap (Higgsfield) → refused; scene (Veo) runs' },
   { file: 'app/api/pipeline/route.ts', when: 'legacy wizard media legs (Nano Banana, HeyGen, World Labs, Udio, lip-sync) → refused; its text services run' },
-  { file: 'app/api/heygen/presenter/route.ts', when: 'Avatar presenter (HeyGen) → refused; the status GET stays open' },
-  { file: 'app/api/heygen/avatar/route.ts', when: 'HeyGen avatar video → refused; the poll GET stays open' },
-  { file: 'app/api/video/voice-narration/route.ts', when: 'film narration in the trained voice (RVC on Replicate, uncharged) → refused; the film keeps its original narration' },
-  { file: 'app/api/avatar/live/session/route.ts', when: 'live avatar session (HeyGen LiveAvatar, uncharged) → refused' },
-  { file: 'app/api/video/lipsync/route.ts', when: 'talking photo / film lip-sync (HeyGen, SadTalker, sync) → refused' },
   // app/api/ai/music/route.ts and lib/ai/musicEnginesStatus.ts are not listed: since Music Studio v1 (Phase 2) they refuse /
   // show off every non-Google music engine with their own answer (lib/music/studio/boundary).
   { file: 'app/api/video/remix/route.ts', when: 'restyle / character / background / redub (NanoBanana, Kling, roop, sync) → refused; ffmpeg ops, voiceover and the Veo product ad run' },
-  { file: 'app/api/motion-control/route.ts', when: 'Motion transfer (Kling) → refused' },
   { file: 'app/api/v2/model3d/create/route.ts', when: '3D (TRELLIS) → refused' },
   { file: 'app/api/ai/edit-photo/route.ts', when: 'photo editor (Replicate) → refused' },
   { file: 'app/api/ai/upscale/route.ts', when: 'upscale (Replicate) → refused' },

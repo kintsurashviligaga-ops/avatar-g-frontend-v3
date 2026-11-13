@@ -100,7 +100,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── VIDEO ─────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'video.generate', category: 'video', order: 10, tool: 'video', pricingKey: 'video', status: 'live',
-    boundary: 'violation', boundaryNote: 'Veo + Gemini; voice is ElevenLabs until it moves to Cloud TTS; the HeyGen talking-head pass (/api/video/lipsync) is refused before any charge (no Google engine)',
+    boundary: 'violation', boundaryNote: 'Veo + Gemini; voice is ElevenLabs until it moves to Cloud TTS; the HeyGen talking-head pass was removed (v5.1 M-14)',
     label: l('ვიდეოს გენერაცია', 'Generate video', 'Создать видео'),
     // ONE clip, like Gemini's Veo (GG 2026-10-25 16:10Z): 4 · 6 · 8 · 10 s from the words as typed; no storyboard, no film.
     description: l('ერთი კლიპი შენი აღწერიდან, 4–10 წამი', 'One clip from your words, 4–10 seconds', 'Один клип по вашему описанию, 4–10 секунд'),
@@ -147,7 +147,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     // HIDDEN (Phase 2 PR 7, GG's plan of 2026-10-23), like the video remix: the panel only showed a form the server
     // refused, so no menu, search or Agent G route offers it. The id stays (§50 analytics identity).
     id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'hidden',
-    boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate (/api/motion-control): refused before any charge (no Google engine)',
+    boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate: its route was removed (v5.1 M-14, GG 2026-11-12); nothing runs or charges',
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
     // ⚠️ Says what runs: a photo + a written motion (Kling image-to-video). It used to promise "like a reference video",
     // but no engine here reads one (Replicate's Kling has no video-to-video) and the panel's video slot never left the
@@ -213,7 +213,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── AVATAR ────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'avatar.talking', category: 'avatar', order: 30, tool: 'avatar', pricingKey: 'avatar', status: 'live',
-    boundary: 'violation', boundaryNote: 'HeyGen talking photo / Replicate SadTalker (/api/video/lipsync): refused before any charge (no Google engine); the Veo avatar (/api/avatar/veo) runs for whoever may use it',
+    boundary: 'violation', boundaryNote: 'HeyGen talking photo / Replicate SadTalker: removed (v5.1 M-14, GG 2026-11-12); the Veo avatar (/api/avatar/veo) runs for whoever may use it',
     label: l('მოლაპარაკე ავატარი', 'Talking avatar', 'Говорящий аватар'),
     description: l('ფოტო ალაპარაკდება შენი ტექსტით ან ხმით', 'A photo speaks your script or voice', 'Фото говорит вашим текстом или голосом'),
     visibleInSidebar: true,

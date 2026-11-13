@@ -18,8 +18,11 @@ export interface ToolGroup {
 }
 
 const AGENT_TOOL: ToolId = 'chat';
-/** Tools GG took out of every menu (2026-10-21). They stay ToolIds, but no picker, sidebar or sheet lists them. */
-export const HIDDEN_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation', 'product']);
+/**
+ * Tools GG took out of every menu (2026-10-21). They stay ToolIds, but no picker, sidebar or sheet lists them.
+ * model3d joined 2026-11-13 (GG: keep 3D off): its only engine, Replicate TRELLIS, is refused in production (google_only).
+ */
+export const HIDDEN_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation', 'product', 'model3d']);
 const HIDE = HIDDEN_TOOLS;
 
 export function toolGroups(): ToolGroup[] {

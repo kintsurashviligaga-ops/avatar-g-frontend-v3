@@ -54,14 +54,14 @@ test('the result\'s length: an edit, the video\'s; an extend, the video and the 
   expect(omniEditOutputSeconds('extend', 3, 10)).toBe(13);
 });
 
-test('credits: GG\'s card, by billed seconds and resolution', () => {
-  // 720p 4/6/8/10 s = ✦34/48/61/74; 1080p = ✦48/68/88/108 (card 2026-10-25 17:04Z).
-  expect([4, 6, 8, 10].map((s) => omniEditCredits({ op: 'extend', inputSec: 5, seconds: s }))).toEqual([34, 48, 61, 74]);
-  expect([4, 6, 8, 10].map((s) => omniEditCredits({ op: 'extend', inputSec: 5, seconds: s, resolution: '1080p' }))).toEqual([48, 68, 88, 108]);
-  expect(omniEditCredits({ op: 'edit', inputSec: 5, resolution: '720p' })).toBe(48);
-  expect(omniEditCredits({ op: 'edit', inputSec: 9, resolution: '1080p' })).toBe(108);
+test('credits: the price book, by billed seconds and resolution', () => {
+  // Omni 1.2 (GG card 2026-11-12 14:22Z): 720p 4/6/8/10 s = ✦25/35/44/53; 1080p = ✦35/48/62/76.
+  expect([4, 6, 8, 10].map((s) => omniEditCredits({ op: 'extend', inputSec: 5, seconds: s }))).toEqual([25, 35, 44, 53]);
+  expect([4, 6, 8, 10].map((s) => omniEditCredits({ op: 'extend', inputSec: 5, seconds: s, resolution: '1080p' }))).toEqual([35, 48, 62, 76]);
+  expect(omniEditCredits({ op: 'edit', inputSec: 5, resolution: '720p' })).toBe(35);
+  expect(omniEditCredits({ op: 'edit', inputSec: 9, resolution: '1080p' })).toBe(76);
   // Anything that is not 1080p is priced as 720p, the default.
-  expect(omniEditCredits({ op: 'edit', inputSec: 3, resolution: null })).toBe(34);
+  expect(omniEditCredits({ op: 'edit', inputSec: 3, resolution: null })).toBe(25);
 });
 
 test('words that ask what happens next make an extend, in Georgian, English and Russian; anything else is an edit', () => {
@@ -114,6 +114,9 @@ describe('parseOmniEditRequest', () => {
 
 test('omniSourceOfJob: a clip\'s length or an edit\'s grid length; never an extend\'s result or a Veo clip', () => {
   expect(omniSourceOfJob('v1_X::9:16::1::o4')).toEqual({ seconds: 4 });
+  expect(omniSourceOfJob('v1_X::9:16::1::o8m2')).toEqual({ seconds: 8 });
+  expect(omniSourceOfJob('v1_X::9:16::1::oe6m2')).toEqual({ seconds: 6 });
+  expect(omniSourceOfJob('v1_X::9:16::1::ox6m2')).toBeNull();
   expect(omniSourceOfJob('v1_X::16:9::1::o10~gj1.a.b')).toEqual({ seconds: 10 });
   expect(omniSourceOfJob('v1_X::9:16::1::oe6~gj1.a.b')).toEqual({ seconds: 6 });
   for (const id of ['v1_X::9:16::1::ox8', 'op::9:16::1::c8', 'op::9:16::1', '', 'v1_X::9:16::1::o5']) expect(omniSourceOfJob(id)).toBeNull();

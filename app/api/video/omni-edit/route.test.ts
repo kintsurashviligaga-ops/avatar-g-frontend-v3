@@ -29,7 +29,10 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(async
 jest.mock('../../../../lib/server/serviceSwitches', () => ({ serviceOffResponse: jest.fn(async () => null) }));
 jest.mock('../../../../lib/security/callerMedia', () => ({ resolveCallerMedia: jest.fn() }));
 jest.mock('../../../../lib/video/omniEditInput', () => ({ prepareOmniEditInput: jest.fn() }));
-jest.mock('../../../../lib/video/omniClip', () => ({ submitOmniEdit: jest.fn(), isOmniInteractionId: (id: string) => /^[A-Za-z0-9_-]{8,256}$/.test(id) }));
+jest.mock('../../../../lib/video/omniClip', () => ({
+  submitOmniEdit: jest.fn(), isOmniInteractionId: (id: string) => /^[A-Za-z0-9_-]{8,256}$/.test(id),
+  OMNI_MODEL: 'gemini-omni-1.2-flash', omniModelOfJob: (v: boolean) => (v ? 'gemini-omni-1.2-flash' : 'gemini-omni-1.1-flash-preview'),
+}));
 
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
@@ -126,20 +129,20 @@ test('a video Omni cannot take costs nothing: over 10 s, too short to edit, unre
   expect(claimDailySlot).toHaveBeenCalledTimes(1);
 });
 
-test('an edit of a 5 s portrait video: billed as 6 s at 720p (✦48), its own length asked for, the frame kept', async () => {
-  const res = await POST(post({ ...EDIT, expectedCredits: 48 }));
+test('an edit of a 5 s portrait video: billed as 6 s at 720p (✦35), its own length asked for, the frame kept', async () => {
+  const res = await POST(post({ ...EDIT, expectedCredits: 35 }));
   expect(res.status).toBe(202);
   const j = await res.json();
-  expect(j).toMatchObject({ success: true, op: 'edit', credits: 48, seconds: 6, outputSeconds: 5, inputSeconds: 5, resolution: '720p', aspect: '9:16', engine: 'Gemini Omni Flash' });
+  expect(j).toMatchObject({ success: true, op: 'edit', credits: 35, seconds: 6, outputSeconds: 5, inputSeconds: 5, resolution: '720p', aspect: '9:16', engine: 'Gemini Omni Flash' });
   expect(j.taskId).toMatch(/^genjutsu:[0-9a-f-]{36}$/);
 
   const order = [(createJob as jest.Mock).mock.invocationCallOrder[0]!, (deductCredits as jest.Mock).mock.invocationCallOrder[0]!, (submitOmniEdit as jest.Mock).mock.invocationCallOrder[0]!];
   expect(order).toEqual([...order].sort((a, b) => a - b));
   expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({
     subtype: 'video', op: 'omni-edit', engine: 'omni', prompt: 'გააღამე', aspect: '9:16', seconds: 6, inputSec: 5.04, outputSec: 5,
-    resolution: '720p', _reserve: { credits: 48 },
+    resolution: '720p', _reserve: { credits: 35 },
   });
-  expect(deductCredits).toHaveBeenCalledWith(UID, 48, expect.stringMatching(/^genjutsu:reserve:/));
+  expect(deductCredits).toHaveBeenCalledWith(UID, 35, expect.stringMatching(/^genjutsu:reserve:/));
   expect(submitOmniEdit).toHaveBeenCalledWith({
     op: 'edit', prompt: 'გააღამე', video: { base64: 'TVA0', mimeType: 'video/mp4' }, inputSec: 5.04, seconds: 5, resolution: '720p', userId: UID,
   });
@@ -149,18 +152,18 @@ test('an edit of a 5 s portrait video: billed as 6 s at 720p (✦48), its own le
   expect(parseVeoJobId(jobId)).toMatchObject({ engine: 'omni', omniOp: 'edit', operation: ID, clipSec: 6, aspect: '9:16' });
 });
 
-test('an extend by 10 s at 1080p: billed for the new seconds only (✦108); the result is the video and the new part', async () => {
+test('an extend by 10 s at 1080p: billed for the new seconds only (✦76); the result is the video and the new part', async () => {
   (prepareOmniEditInput as jest.Mock).mockResolvedValueOnce({ ...READY, seconds: 7.9, width: 1280, height: 720 });
   const j = await (await POST(post({ ...EXTEND, seconds: 10, resolution: '1080p' }))).json();
-  expect(j).toMatchObject({ op: 'extend', credits: 108, seconds: 10, outputSeconds: 17.9, inputSeconds: 7.9, resolution: '1080p', aspect: '16:9' });
+  expect(j).toMatchObject({ op: 'extend', credits: 76, seconds: 10, outputSeconds: 17.9, inputSeconds: 7.9, resolution: '1080p', aspect: '16:9' });
   expect((submitOmniEdit as jest.Mock).mock.calls[0][0]).toMatchObject({ op: 'extend', seconds: 10, inputSec: 7.9, resolution: '1080p' });
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ omniOp: 'extend', clipSec: 10, aspect: '16:9' });
 });
 
 test('a stale price on the card is refused before any charge, with the server\'s price; so is a balance that cannot pay', async () => {
-  const stale = await POST(post({ ...EDIT, expectedCredits: 34 }));
+  const stale = await POST(post({ ...EDIT, expectedCredits: 25 }));
   expect(stale.status).toBe(409);
-  expect(await stale.json()).toMatchObject({ error: 'price_changed', credits: 48, seconds: 6, inputSeconds: 5 });
+  expect(await stale.json()).toMatchObject({ error: 'price_changed', credits: 35, seconds: 6, inputSeconds: 5 });
   (hasSufficientBalance as jest.Mock).mockResolvedValueOnce(false);
   const poor = await POST(post(EDIT));
   expect(poor.status).toBe(402);
@@ -188,7 +191,7 @@ test('Omni refuses the submit → refunded BY REF, the row closed, the slot give
   const res = await POST(post(EDIT));
   expect(res.status).toBe(422);
   expect(await res.json()).toMatchObject({ error: 'content_rejected', refunded: true });
-  expect(refundDebitByRef).toHaveBeenCalledWith(UID, expect.stringMatching(/^genjutsu:reserve:/), 48);
+  expect(refundDebitByRef).toHaveBeenCalledWith(UID, expect.stringMatching(/^genjutsu:reserve:/), 35);
   expect(failJob).toHaveBeenCalledWith(expect.any(String), 'omni edit safety');
   expect(releaseDailySlot).toHaveBeenCalled();
 
@@ -205,17 +208,29 @@ const madeHere = (bare: string, u = UID): string => withGenjutsuCharge(bare, sig
 const CLIP4 = composeOmniJobId(SRC, '9:16', 1_793_029_000_000, undefined, 4);
 
 test('a clip made here is extended by its own interaction: nothing uploaded or re-encoded, billed for the new seconds', async () => {
-  const res = await POST(post({ op: 'extend', prompt: 'ის კარს აღებს და ამბობს: „ნახვამდის“', from: madeHere(CLIP4), seconds: 8, resolution: '1080p', expectedCredits: 88 }));
+  const res = await POST(post({ op: 'extend', prompt: 'ის კარს აღებს და ამბობს: „ნახვამდის“', from: madeHere(CLIP4), seconds: 8, resolution: '1080p', expectedCredits: 62 }));
   expect(res.status).toBe(202);
   const j = await res.json();
-  expect(j).toMatchObject({ op: 'extend', credits: 88, seconds: 8, inputSeconds: 4, outputSeconds: 12, resolution: '1080p', aspect: '9:16' });
+  expect(j).toMatchObject({ op: 'extend', credits: 62, seconds: 8, inputSeconds: 4, outputSeconds: 12, resolution: '1080p', aspect: '9:16' });
   expect(resolveCallerMedia).not.toHaveBeenCalled();
   expect(prepareOmniEditInput).not.toHaveBeenCalled();
   expect(submitOmniEdit).toHaveBeenCalledWith({
-    op: 'extend', prompt: 'ის კარს აღებს და ამბობს: „ნახვამდის“', previous: { id: SRC, aspect: '9:16' }, inputSec: 4, seconds: 8, resolution: '1080p', userId: UID,
+    // A clip from before M-3 (no `m2`) was made on 1.1, so it is continued on 1.1.
+    op: 'extend', prompt: 'ის კარს აღებს და ამბობს: „ნახვამდის“', previous: { id: SRC, aspect: '9:16', model: 'gemini-omni-1.1-flash-preview' }, inputSec: 4, seconds: 8,
+    resolution: '1080p', userId: UID,
   });
-  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ op: 'omni-extend', source: 'turn', inputSec: 4, outputSec: 12, _reserve: { credits: 88 } });
+  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ op: 'omni-extend', source: 'turn', inputSec: 4, outputSec: 12, _reserve: { credits: 62 } });
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', omniOp: 'extend', clipSec: 8, aspect: '9:16' });
+});
+
+test('a clip made on Omni 1.2 (`m2`) is continued on 1.2, and the continuation\'s id says 1.2 too', async () => {
+  (submitOmniEdit as jest.Mock).mockResolvedValueOnce({ ok: true, id: 'v1_ChBjbGlwTWFkZU9uMTIwMDE', model: 'gemini-omni-1.2-flash' });
+  const clip12 = composeOmniJobId(SRC, '9:16', 1_793_029_000_000, undefined, 4, true);
+  const res = await POST(post({ op: 'extend', prompt: 'go on', from: madeHere(clip12), seconds: 8, resolution: '1080p', expectedCredits: 62 }));
+  expect(res.status).toBe(202);
+  expect((submitOmniEdit as jest.Mock).mock.calls[0][0].previous).toEqual({ id: SRC, aspect: '9:16', model: 'gemini-omni-1.2-flash' });
+  const j = await res.json();
+  expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', omniOp: 'extend', omni12: true });
 });
 
 test('only the caller\'s own Omni clip or edit is continued: another account\'s, a forged id, a Veo clip, an extend\'s result → refused free', async () => {
@@ -237,6 +252,6 @@ test('only the caller\'s own Omni clip or edit is continued: another account\'s,
 
 test('an edit of a clip made here is priced at the clip\'s own length', async () => {
   const j = await (await POST(post({ op: 'edit', prompt: 'გააღამე', from: madeHere(composeOmniJobId(SRC, '16:9', 1_793_029_000_000, undefined, 6)) }))).json();
-  expect(j).toMatchObject({ op: 'edit', credits: 48, seconds: 6, inputSeconds: 6, outputSeconds: 6, aspect: '16:9' });
+  expect(j).toMatchObject({ op: 'edit', credits: 35, seconds: 6, inputSeconds: 6, outputSeconds: 6, aspect: '16:9' });
   expect((submitOmniEdit as jest.Mock).mock.calls[0][0]).toMatchObject({ previous: { id: SRC, aspect: '16:9' }, seconds: 6 });
 });

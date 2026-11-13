@@ -20,7 +20,7 @@ afterAll(() => { process.env = SAVED; });
 describe('auditConfig', () => {
   test('all integrations missing when no env is set', () => {
     const audits = auditConfig();
-    expect(audits.length).toBeGreaterThanOrEqual(12);
+    expect(audits.length).toBeGreaterThanOrEqual(10); // LTX row removed (v5.1 M-14)
     expect(audits.every((a) => a.status === 'missing')).toBe(true);
   });
 
@@ -63,14 +63,14 @@ describe('productionReadiness', () => {
   test('ready=false when a hard-required integration is missing', () => {
     const r = productionReadiness();
     expect(r.ready).toBe(false);
-    expect(r.hardMissing).toEqual(expect.arrayContaining(['heygen', 'replicate', 'ltx', 'udio', 'stripe']));
+    expect(r.hardMissing).toEqual(expect.arrayContaining(['replicate', 'udio', 'stripe']));
+    // LTX is retired (v5.1 M-14): a missing LTX key no longer blocks readiness.
+    expect(r.hardMissing).not.toContain('ltx');
   });
 
   test('fail-open integrations degrade but do NOT block readiness', () => {
     // Provision only the hard-required (non-fail-open) integrations.
-    process.env.HEYGEN_API_KEY = 'h';
     process.env.REPLICATE_API_TOKEN = 'r';
-    process.env.LTX_API_KEY = 'l';
     process.env.UDIO_API_KEY = 'u';
     process.env.STRIPE_SECRET_KEY = 's';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec'; // revenue loop needs BOTH keys

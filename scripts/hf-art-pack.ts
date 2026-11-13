@@ -22,9 +22,9 @@
  * and the manifest carries prompts, prices, request ids and provider URLs. Only the selected, resized finals go public.
  *
  * Providers (`--provider`, default hf; scripts/art-providers.ts): hf = Higgsfield, priced by its free /estimate;
- * replicate = FLUX schnell, imagen = Imagen 4 — both priced from the static PRICES_USD table, so their --dry needs no
+ * replicate = FLUX schnell, priced from the static PRICES_USD table, so its --dry needs no
  * key and makes no network call. A pack has ONE budget whichever provider spends it. Only a plain Soul text-to-image
- * shot can go to replicate/imagen; anything else is refused and stays on hf.
+ * shot can go to replicate; anything else is refused and stays on hf.
  *
  * Usage (from the repo root; `npm run art:templates --` is `npx jiti scripts/hf-art-pack.ts --pack templates`):
  *   npm run art:templates -- --dry                            # price every pending shot (free) against the stop line
@@ -40,9 +40,8 @@ import { loadEnvConfig } from '@next/env';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ProviderEstimate } from '@/lib/providers/types';
-import { resolveGeminiKey } from '../lib/orchestrator/gemini-guard';
 import {
-  createImagenArtClient, createReplicateArtClient, isTerminal, offlineFetch, providerFromArgv,
+  createReplicateArtClient, isTerminal, offlineFetch, providerFromArgv,
   type ArtClient, type ArtProviderId, type ArtRequest, type ArtResult, type InlineOutput,
 } from './art-providers';
 
@@ -138,7 +137,7 @@ export function substitute(value: unknown, selected: Manifest['selected']): unkn
     return value.replace(/\{\{([A-Z][0-9]+)\}\}/g, (_, id: string) => {
       const pick = selected[id];
       if (!pick) throw new Error(`shot ${id} has no selected output yet`);
-      // An Imagen take came back as bytes: there is no URL another provider could fetch it from.
+      // A take that came back as bytes: there is no URL another provider could fetch it from.
       if (!/^https:\/\//i.test(pick.url)) throw new Error(`shot ${id}'s selected take has no provider URL to reference`);
       return pick.url;
     });
@@ -226,7 +225,7 @@ export async function saveOutputs(
 }
 
 /**
- * Writes outputs that came back as bytes (Imagen) straight to <work>/raw/<shot>-<attempt>-<i>.<ext> — nothing is
+ * Writes outputs that came back as bytes (a Replicate `data:` output) straight to <work>/raw/<shot>-<attempt>-<i>.<ext> — nothing is
  * fetched. The manifest records `inline:<type>` in place of a URL: the bytes themselves never go into it.
  */
 export function saveInline(
@@ -347,7 +346,7 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
       continue;
     }
 
-    // A provider that answered the submit with the finished take (Imagen; Replicate under Prefer: wait) is not polled:
+    // A provider that answered the submit with the finished take (Replicate under Prefer: wait) is not polled:
     // its files are written or fetched right now — Replicate's are gone within the hour.
     let result: ArtResult;
     if (answered) {
@@ -385,7 +384,7 @@ function loadHfClient(): HfClientModule {
 
 /**
  * The client for `--provider`.
- * ⚠️ A --dry run on a statically priced provider (replicate, imagen) gets NO credential and a fetch that throws: it
+ * ⚠️ A --dry run on a statically priced provider (replicate) gets NO credential and a fetch that throws: it
  * cannot call out, let alone spend. Higgsfield prices through its own (free) /estimate, so its dry run needs the key.
  */
 export function artClientFor(provider: ArtProviderId, o: { dry: boolean }, loadHf: () => HfClientModule = loadHfClient): ArtClient {
@@ -394,12 +393,6 @@ export function artClientFor(provider: ArtProviderId, o: { dry: boolean }, loadH
     const token = (process.env.REPLICATE_API_TOKEN ?? '').trim();
     if (!token) throw new Error('REPLICATE_API_TOKEN is not configured');
     return createReplicateArtClient({ token });
-  }
-  if (provider === 'imagen') {
-    if (o.dry) return createImagenArtClient({ apiKey: '', fetchImpl: offlineFetch });
-    const apiKey = resolveGeminiKey(); // the key the app's own Imagen leg uses (lib/ai/geminiImagen.ts)
-    if (!apiKey) throw new Error('no Gemini API key is configured (GEMINI_API_KEY)');
-    return createImagenArtClient({ apiKey });
   }
   const { createHfClient, hfAuthHeaderFromEnv } = loadHf();
   const auth = hfAuthHeaderFromEnv();

@@ -38,7 +38,7 @@ import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { isOmniInteractionId, submitOmniEdit } from '@/lib/video/omniClip';
+import { OMNI_MODEL, isOmniInteractionId, omniModelOfJob, submitOmniEdit, type OmniModel } from '@/lib/video/omniClip';
 import {
   omniEditBilledSeconds, omniEditCredits, omniEditInputCheck, omniEditOutputSeconds, omniEditRequestSeconds, parseOmniEditRequest,
   type OmniEditRequest,
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 /** What Omni is given: the caller's upload, measured and re-encoded, or a clip it made for them (its interaction). */
 type EditSource =
   | { kind: 'upload'; base64: string; mimeType: 'video/mp4'; seconds: number; aspect: '16:9' | '9:16' }
-  | { kind: 'turn'; interactionId: string; seconds: number; aspect: '16:9' | '9:16' };
+  | { kind: 'turn'; interactionId: string; seconds: number; aspect: '16:9' | '9:16'; model: OmniModel };
 
 /**
  * A clip made in this chat (lib/video/omniEdit omniSourceOfJob): the id the clip route signed for THIS caller, an Omni clip
@@ -108,7 +108,7 @@ function turnSource(from: string, userId: string): EditSource | NextResponse {
   if (!job || job.engine !== 'omni' || (job.omniOp !== 'clip' && job.omniOp !== 'edit') || !job.clipSec || !isOmniInteractionId(job.operation)) {
     return fail(400, 'invalid_request', { issues: [{ path: 'from', code: 'invalid' }] });
   }
-  return { kind: 'turn', interactionId: job.operation, seconds: job.clipSec, aspect: job.aspect };
+  return { kind: 'turn', interactionId: job.operation, seconds: job.clipSec, aspect: job.aspect, model: omniModelOfJob(job.omni12) };
 }
 
 /** The caller's upload, measured and re-encoded before it is priced: a video Omni cannot take costs nothing. */
@@ -188,7 +188,7 @@ async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<
 
   const sub = await submitOmniEdit({
     op: r.op, prompt: r.prompt,
-    ...(input.kind === 'turn' ? { previous: { id: input.interactionId, aspect } } : { video: { base64: input.base64, mimeType: input.mimeType } }),
+    ...(input.kind === 'turn' ? { previous: { id: input.interactionId, aspect, model: input.model } } : { video: { base64: input.base64, mimeType: input.mimeType } }),
     inputSec: input.seconds, seconds: omniEditRequestSeconds(r.op, input.seconds, r.seconds), resolution: r.resolution, userId,
   });
   if (!sub.ok) {
@@ -198,7 +198,7 @@ async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<
     return fail(sub.reason === 'invalid_request' || sub.reason === 'safety' ? 422 : 503, code, { refunded });
   }
 
-  const jobId = composeOmniJobId(sub.id, aspect, createdMs, { op: r.op, seconds: billed });
+  const jobId = composeOmniJobId(sub.id, aspect, createdMs, { op: r.op, seconds: billed }, undefined, sub.model === OMNI_MODEL);
   const token = signGenjutsuCharge({ u: userId, r: ref, j: jobId });
   if (!token) {
     const refunded = await refund('no charge token');
