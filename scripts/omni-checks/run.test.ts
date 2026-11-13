@@ -18,7 +18,7 @@ const EXT11 = 'interactions/old2::9:16::1763000000000::ox4~gj.sig';
 
 type Seen = { method: string; path: string; body: Record<string, unknown> | null; cookie: string | undefined };
 
-function fakeSite(opts: { clipPrice?: number; c3Fails?: boolean } = {}) {
+function fakeSite(opts: { clipPrice?: number; extendPrice?: number; c3Fails?: boolean; hangStart?: boolean; statusSignedOut?: boolean } = {}) {
   const seen: Seen[] = [];
   let balance = 500;
   const polls: Record<string, number> = {};
@@ -34,17 +34,20 @@ function fakeSite(opts: { clipPrice?: number; c3Fails?: boolean } = {}) {
       if (url.pathname === '/api/video/clip') {
         const price = opts.clipPrice ?? 20;
         if (body?.expectedCredits !== price) return send(409, { error: 'price_changed', credits: price });
+        if (opts.hangStart) return; // never answers: the client's timeout must fire
         balance -= price;
         return send(202, { success: true, jobId: ID12, credits: price });
       }
       if (url.pathname === '/api/video/omni-edit') {
-        if (body?.expectedCredits !== 25) return send(409, { error: 'price_changed', credits: 25 });
+        const ext = opts.extendPrice ?? 25;
+        if (body?.expectedCredits !== ext) return send(409, { error: 'price_changed', credits: ext });
         balance -= 25;
         return send(202, { success: true, jobId: body.from === ID12 ? EXT12 : EXT11, credits: 25 });
       }
       if (url.pathname === '/api/genjutsu/status') {
         const id = url.searchParams.get('id') ?? '';
         polls[id] = (polls[id] ?? 0) + 1;
+        if (opts.statusSignedOut) return send(401, { error: 'unauthorized' });
         if (polls[id] < 2) return send(200, { success: true, done: false, state: 'processing' });
         if (id === EXT11 && opts.c3Fails) {
           balance += 25;
@@ -58,7 +61,7 @@ function fakeSite(opts: { clipPrice?: number; c3Fails?: boolean } = {}) {
   return new Promise<{ base: string; seen: Seen[]; close: () => void }>((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as { port: number }).port;
-      resolve({ base: `http://127.0.0.1:${port}`, seen, close: () => server.close() });
+      resolve({ base: `http://127.0.0.1:${port}`, seen, close: () => { server.closeAllConnections?.(); server.close(); } });
     });
   });
 }
@@ -132,4 +135,40 @@ test('refuses a 1.2 clip as --from11, an unknown host, and a run with no sign-in
   expect((await run(['--base', 'http://127.0.0.1:9', '--from11', ID12], { MYAVATAR_TOKEN: 't' })).out).toContain('made on 1.2');
   expect((await run(['--base', 'https://evil.example'], { MYAVATAR_TOKEN: 't' })).out).toContain('--base must be');
   expect((await run(['--base', 'http://127.0.0.1:9'], {})).out).toContain('set MYAVATAR_COOKIE or MYAVATAR_TOKEN');
+});
+
+test('a C2 price that is not the approved row stops after C1, and C1 (paid) is still saved with its job id', async () => {
+  const site = await fakeSite({ extendPrice: 31 });
+  const out = mkdtempSync(join(tmpdir(), 'omni-checks-'));
+  const r = await run(['--base', site.base, '--go', '--skip-c3'], { MYAVATAR_COOKIE: SECRET_COOKIE, OMNI_CHECKS_POLL_MS: '5', OMNI_CHECKS_OUT: out });
+  site.close();
+  expect(r.code).toBe(1);
+  expect(posts(site.seen)).toEqual(['/api/video/clip 0', '/api/video/clip 20', '/api/video/omni-edit 0']);
+  const saved = JSON.parse(readFileSync(join(out, readdirSync(out)[0]!), 'utf8'));
+  expect(saved.spent).toBe(20);
+  expect(saved.stoppedBecause).toContain('not the approved row');
+  expect(saved.results[0]).toMatchObject({ name: 'C1 new clip on 1.2', pass: true, jobId: 'interactions/new::9:16::1763000000000::o4m2' });
+  expect(JSON.stringify(saved)).not.toContain('gj.sig');
+});
+
+test('a start request with no answer stops the run without retrying it, and says to check the Library', async () => {
+  const site = await fakeSite({ hangStart: true });
+  const out = mkdtempSync(join(tmpdir(), 'omni-checks-'));
+  const r = await run(['--base', site.base, '--go', '--skip-c3'], { MYAVATAR_COOKIE: SECRET_COOKIE, OMNI_CHECKS_OUT: out, OMNI_CHECKS_TIMEOUT_MS: '300' });
+  site.close();
+  expect(r.code).toBe(1);
+  expect(posts(site.seen)).toEqual(['/api/video/clip 0', '/api/video/clip 20']);
+  expect(r.out).toContain('nothing is paid twice');
+  const saved = JSON.parse(readFileSync(join(out, readdirSync(out)[0]!), 'utf8'));
+  expect(saved.results[0]).toMatchObject({ outcome: 'unknown', pass: false });
+  expect(saved.results[0].notes[0]).toContain('check the Library');
+});
+
+test('a sign-in that expires while polling ends that check at once instead of waiting 6 minutes', async () => {
+  const site = await fakeSite({ statusSignedOut: true });
+  const r = await run(['--base', site.base, '--go', '--skip-c3'], { MYAVATAR_COOKIE: SECRET_COOKIE, OMNI_CHECKS_POLL_MS: '5', OMNI_CHECKS_OUT: mkdtempSync(join(tmpdir(), 'omni-checks-')) });
+  site.close();
+  expect(r.code).toBe(1);
+  expect(r.out).toContain('no final state (signed_out)');
+  expect(r.out).toContain('job: interactions/new::9:16::1763000000000::o4m2');
 });

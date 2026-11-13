@@ -69,7 +69,11 @@ The script talks to the same routes the app uses (`/api/video/clip`, `/api/video
 
 - **PASS ready:** a clip came back on the expected model and op, at the price book's price.
 - **PASS failed_refunded (C3 only):** Google refused to continue an old 1.1 interaction, and the credits came back. This is the honest path for clips older than 7 days.
-- **FAIL:** something else happened: the wrong model, a different price, a failure without a refund, or no answer within 6 minutes. The line under it says which.
+- **FAIL:** something else happened: the wrong model, a different price, a failure without a refund, or no answer within 6 minutes. The line under it says which, and `job:` gives the clip's id so it can be found in the Library.
+- **FAIL unknown:** the start request got no answer (network or a 90 s timeout). The clip may be running and charged. The script stops at once and does not send it again. Look in the Library and at the balance before you run anything again.
+- **no final state (signed_out):** the sign-in expired while waiting. The clip keeps going on the server; check the Library, then sign in again before the next run.
+
+If the script stops half way (a later price differs, or a start got no answer), it still saves the result file with what was already paid for, its job id and the reason it stopped (`stoppedBecause`).
 
 ## Safety
 

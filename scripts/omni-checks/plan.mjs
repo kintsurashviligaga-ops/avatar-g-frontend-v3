@@ -70,7 +70,17 @@ export function withinBudget(spent, credits, max = MAX_RUN_CREDITS) {
  * The verdict of one check, from the start response, the final status and what the check expects.
  *   expectModel: the model the result must be on; allowRefundedFailure: C3 may end as a refunded failure.
  */
-export function judge({ name, start, final, expectCredits, expectModel, expectOp, allowRefundedFailure = false }) {
+/**
+ * Pass or fail one check from its start answer and final poll. Every result after a start carries the bare job id
+ * (no charge token), so a timeout or a stop can still be looked up in the Library.
+ */
+export function judge(input) {
+  const r = judgeInner(input);
+  const id = input.start?.jobId ? bareJobId(input.start.jobId) : null;
+  return id ? { ...r, jobId: id } : r;
+}
+
+function judgeInner({ name, start, final, expectCredits, expectModel, expectOp, allowRefundedFailure = false }) {
   const notes = [];
   if (!start || start.httpStatus !== 202 || !start.jobId) {
     return { name, pass: false, outcome: 'not_started', notes: [`start answered ${start?.httpStatus ?? 'nothing'} ${start?.error ?? ''}`.trim()] };

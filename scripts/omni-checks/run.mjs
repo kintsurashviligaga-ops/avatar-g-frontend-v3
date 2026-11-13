@@ -20,7 +20,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DEFAULT_CLIP_PROMPT, DEFAULT_EXTEND_PROMPT, EXPECTED_CREDITS, INTERACTION_TTL_MS, MAX_RUN_CREDITS, USD_PER_CREDIT,
-  interactionAgeDays, judge, readOmniJobId, withinBudget,
+  bareJobId, interactionAgeDays, judge, readOmniJobId, withinBudget,
 } from './plan.mjs';
 
 const args = process.argv.slice(2);
@@ -39,8 +39,16 @@ const EXTEND_PROMPT = opt('extend-prompt', DEFAULT_EXTEND_PROMPT);
 const POLL_MS = Number(process.env.OMNI_CHECKS_POLL_MS) || 10_000;
 const POLL_MAX_MS = 6 * 60_000;
 
+// Filled as the run goes, so a stop half way still saves what was paid for (see die and saveResults).
+const results = [];
+let spent = 0;
+let started = 0;
+let before = null;
+
 function die(msg) {
   console.error(`\n✗ ${msg}\n`);
+  // Once something paid has started, a stop must still leave a record: what ran, its job id and what it cost.
+  if (started > 0) saveResults(null, msg);
   process.exit(1);
 }
 // 127.0.0.1 only for run.test.ts's fake server: the sign-in is never sent anywhere else.
@@ -59,15 +67,20 @@ if (FROM11) {
   if (j.model !== 'gemini-omni-1.1-flash-preview') die('--from11 was made on 1.2 (its id has m2); C3 needs a clip from before #295');
 }
 
+/** Never throws: a network error or timeout comes back as httpStatus 0, so a paid step is never lost to a crash. */
 async function call(method, path, body) {
-  const r = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { ...authHeaders, accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(90_000),
-  });
-  const json = await r.json().catch(() => ({}));
-  return { httpStatus: r.status, ...json };
+  try {
+    const r = await fetch(`${BASE}${path}`, {
+      method,
+      headers: { ...authHeaders, accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(Number(process.env.OMNI_CHECKS_TIMEOUT_MS) || 90_000),
+    });
+    const json = await r.json().catch(() => ({}));
+    return { httpStatus: r.status, ...json };
+  } catch (e) {
+    return { httpStatus: 0, error: `network: ${e?.name === 'TimeoutError' ? 'no answer in time' : (e?.message ?? 'failed')}` };
+  }
 }
 
 /** The route's own price, free: a wrong expectedCredits is refused before anything is reserved. */
@@ -82,6 +95,8 @@ async function poll(jobId) {
   for (;;) {
     const s = await call('GET', `/api/genjutsu/status?id=${encodeURIComponent(jobId)}`);
     if (s.done) return s;
+    // A sign-in that expired mid-run never comes back by waiting; the job itself keeps going on the server.
+    if (s.httpStatus === 401 || s.httpStatus === 403) return { state: 'signed_out' };
     if (Date.now() - t0 > POLL_MAX_MS) return { state: 'timeout' };
     console.log(`  … ${s.state ?? s.httpStatus} (${Math.round((Date.now() - t0) / 1000)} s)`);
     await new Promise((r) => setTimeout(r, POLL_MS));
@@ -93,7 +108,17 @@ async function balance() {
   return typeof b.balance === 'number' ? b.balance : null;
 }
 
-let spent = 0;
+/** A copy for the thread, without the sign-in, the signed links or the charge tokens. */
+function saveResults(after, stoppedBecause) {
+  const dir = process.env.OMNI_CHECKS_OUT || join(process.cwd(), 'omni-checks-out');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `result-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  const clean = results.map(({ videoUrl, ...r }) => ({ ...r, hasVideo: !!videoUrl }));
+  const out = { base: BASE, at: new Date().toISOString(), spent, before, after, ...(stoppedBecause ? { stoppedBecause } : {}), results: clean };
+  writeFileSync(file, JSON.stringify(out, null, 2));
+  console.log(`saved: ${file}`);
+}
+
 async function paidStep(name, path, body, expectCredits) {
   const quoted = await priceOf(path, body);
   console.log(`${name}: the route quotes ✦${quoted} (price book: ✦${expectCredits})`);
@@ -101,15 +126,23 @@ async function paidStep(name, path, body, expectCredits) {
   if (!withinBudget(spent, quoted)) die(`${name}: would pass the ✦${MAX_RUN_CREDITS} cap for this run`);
   if (!GO) return null;
   const start = await call('POST', path, { ...body, expectedCredits: quoted });
-  if (start.httpStatus === 202) spent += start.credits ?? 0;
+  if (start.httpStatus === 0) {
+    // The request may or may not have reached the server: it could be running and charged. Never send it again blind.
+    started++;
+    results.push({ name, pass: false, outcome: 'unknown', notes: [`${start.error}; it may have started: check the Library and the balance before running again`] });
+    die(`${name}: no answer to the start request; stopped so nothing is paid twice`);
+  }
+  if (start.httpStatus === 202) {
+    started++;
+    spent += start.credits ?? 0;
+  }
   console.log(`${name}: started (${start.httpStatus})${start.jobId ? `, ${readOmniJobId(start.jobId)?.model}` : ` ${start.error ?? ''}`}`);
   const final = start.httpStatus === 202 ? await poll(start.jobId) : null;
   if (final?.state === 'failed' && final.refunded) spent -= start.credits ?? 0;
   return { start, final };
 }
 
-const results = [];
-const before = await balance();
+before = await balance();
 const cap = `cap ✦${MAX_RUN_CREDITS} ≈ $${(MAX_RUN_CREDITS * USD_PER_CREDIT).toFixed(2)}`;
 console.log(`\nOmni paid checks → ${BASE} ${GO ? `(PAID RUN, ${cap})` : '(dry run: price probes only)'}`);
 console.log(`balance before: ${before === null ? 'unknown (token sign-in cannot read it; use MYAVATAR_COOKIE)' : `✦${before}`}\n`);
@@ -158,6 +191,7 @@ console.log('\n── Result ──');
 for (const r of results) {
   console.log(`${r.pass ? '✓ PASS' : '✗ FAIL'}  ${r.name}: ${r.outcome}${r.credits !== undefined ? `, ✦${r.credits}` : ''}`);
   for (const n of r.notes ?? []) console.log(`      ${n}`);
+  if (r.jobId) console.log(`      job: ${r.jobId}`);
   if (r.videoUrl) console.log('      video: open it from the Library (signed link not printed)');
 }
 if (GO) {
@@ -166,12 +200,6 @@ if (GO) {
     const diff = before - after;
     console.log(`balance: ✦${before} → ✦${after} (difference ✦${diff}${diff === spent ? ', matches' : ', DOES NOT MATCH the run'})`);
   }
-  // A copy for the thread, without the sign-in, the signed links or the charge tokens.
-  const dir = process.env.OMNI_CHECKS_OUT || join(process.cwd(), 'omni-checks-out');
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, `result-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  const clean = results.map(({ videoUrl, ...r }) => ({ ...r, hasVideo: !!videoUrl }));
-  writeFileSync(file, JSON.stringify({ base: BASE, at: new Date().toISOString(), spent, before, after, results: clean }, null, 2));
-  console.log(`saved: ${file}`);
+  saveResults(after);
 }
 process.exit(GO && results.length && results.every((r) => r.pass) ? 0 : GO ? 1 : 0);
