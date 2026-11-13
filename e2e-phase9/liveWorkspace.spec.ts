@@ -33,7 +33,7 @@ test.describe('desktop', () => {
     // held: the searches have not started without the yes
     await page.waitForTimeout(1500);
     await expect(page.locator(`${WINE} li[data-step="s1"]`)).not.toHaveAttribute('data-state', 'active');
-    await expect(page.locator(`${WINE} [data-testid="run-credits"]`)).toContainText('0');
+    await expect(page.locator(`${WINE} [data-testid="run-credits"]`)).toHaveText('✦0 / ✦18');
     expect(errors).toEqual([]);
   });
 
