@@ -79,8 +79,15 @@ export interface LeaseWrite {
   params: Record<string, unknown>;
 }
 
+/**
+ * generation_jobs.service_type of a queued row: a produce kind, or 'document' (migration 20261031a, applied in
+ * production and DB-verified 2026-11-06, docs/production-truth/PRODUCT_TRUTH_MATRIX.md). A row with no signed URL is
+ * never a Library item, whatever its kind.
+ */
+export type LeaseServiceType = ProduceKind | 'document';
+
 export interface LeaseStore {
-  insert(row: { id: string; userId: string; serviceType: ProduceKind; params: Record<string, unknown> }): Promise<'inserted' | 'exists' | 'error'>;
+  insert(row: { id: string; userId: string; serviceType: LeaseServiceType; params: Record<string, unknown> }): Promise<'inserted' | 'exists' | 'error'>;
   read(id: string): Promise<LeaseRow | null>;
   /** Write iff the row's status is in `from` and its _exec.v is still `v`. True when it did. */
   cas(id: string, expect: { v: number; from: readonly JobStatus[] }, write: LeaseWrite): Promise<boolean>;
@@ -129,7 +136,7 @@ const bump = (exec: ExecState, change: Partial<ExecState>): ExecState => {
 export async function enqueue(
   store: LeaseStore,
   input: {
-    id: string; userId: string; serviceType: ProduceKind; kind: string; params: Record<string, unknown>; maxAttempts?: number;
+    id: string; userId: string; serviceType: LeaseServiceType; kind: string; params: Record<string, unknown>; maxAttempts?: number;
     /** Hold the row until release(): the caller still has to charge for it. */
     hold?: boolean;
   },
