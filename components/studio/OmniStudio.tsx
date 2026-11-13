@@ -68,7 +68,7 @@ import { ClipAskCard } from './clip/ClipAskCard';
 import { clipStepFromState, type ClipStep } from './clip/ClipProgress';
 import {
   changeClip, clipAskText, clipAspectFor, clipFailureText, clipHold, clipNeedsWordsText, clipOneClipNote, clipOrder, openClipTier, clipPhotoLostText, clipRepriced, clipRequestBody,
-  clipSecondsFromWords, clipStillRenderingText, clipTooLongText, type ClipAskState, type ClipChange,
+  clipSecondsFromWords, clipStillRenderingText, clipTooLongText, refineClipSettings, type ClipAskState, type ClipChange,
 } from './clip/clipOrder';
 import { toClipPhoto } from './clip/clipPhoto';
 import { EditAskCard } from './clip/EditAskCard';
@@ -6573,7 +6573,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
     }
-    const refine = text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && attachments.length === 0 ? refineChange(text) : null;
+    // ⚠️ AN EXPLICIT SEND IN THE VIDEO TOOL TOO (Phase 7.6 audit, like „გააგრძელე" above): the Video tool's Send is always
+    // explicit (runComposer), so „უკეთესად გააკეთე" there skipped this and became a new clip from those two words alone.
+    // The new card is still the one that charges, on its Create.
+    const refine = text && !opts?.confirmed && (!opts?.explicit || mode === 'video') && !opts?.fromLive && attachments.length === 0 ? refineChange(text) : null;
     if (refine) {
       let lastIdx = -1;
       for (let i = messages.length - 1; i >= 0; i--) {
@@ -8630,10 +8633,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // One video attached in the Video tool is edited or extended (offerEdit in send): Send shows that card's price.
   // Words in the box that have a character speak Georgian make it an Omni clip at every length (GG's card 2026-10-26
   // 10:55Z): the chips, the panel and Send show Omni's price before the card does.
-  const composerSpeech: DirectClipSpeech = activeTool === 'video' && promptSpeaksGeorgian(input) ? 'ka' : null;
+  // „უკეთესად გააკეთე" right after a clip is THAT clip asked again (send → proposeClip from its clipSpec): the chips and
+  // Send carry its length, frame, photos and Georgian line, not a fresh Veo clip's (Phase 7.6: „Veo 3.1 Fast" was shown
+  // under a Gemini Omni Flash clip).
+  const lastReply = (() => { for (let i = messages.length - 1; i >= 0; i--) { const m = messages[i]!; if (m.role === 'assistant' && !m.notice) return m; } return undefined; })();
+  const refineClip = activeTool === 'video' && attachments.length === 0 && lastReply?.videoUrl ? refineClipSettings(lastReply.clipSpec, input) : null;
+  const composerSpeech: DirectClipSpeech = activeTool === 'video' && (refineClip ? refineClip.speech === 'ka' : promptSpeaksGeorgian(input)) ? 'ka' : null;
   const composerClipResolution: DirectClipResolution = clipResolution ?? (composerSpeech ? OMNI_SPEECH_DEFAULT_RESOLUTION : OMNI_DEFAULT_RESOLUTION);
   // The photos a clip sent from the box carries: the panel's and the images attached to the box (send() takes both).
-  const composerClipPhotos = Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length + attachments.filter((a) => isImage(a.mimeType)).length);
+  const composerClipPhotos = refineClip ? refineClip.photos : Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length + attachments.filter((a) => isImage(a.mimeType)).length);
+  const composerClipSeconds: DirectClipSeconds = refineClip ? refineClip.seconds : snapDirectClipSeconds(videoDuration);
   // ⚠️ A CLIP CARD WAITING FOR CREATE, with the box empty: the chips and the panel are THAT card's settings. Send moved the
   // words into the card, so the box's own (no words → Veo) priced the chips' pickers by another clip: Veo 3.1 Lite / Fast /
   // Veo 3.1 at ✦54 / 75 / 224 beside a Gemini Omni Flash card at ✦82 (GG 2026-10-26 12:45Z). Now the card's words, photos
@@ -8643,9 +8652,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     ? { id: lastMsg.id, ask: lastMsg.clipAsk } : null;
   const toAskingClip = (change: ClipChange) => { if (askingClip) changeClipAsk(askingClip.id, changeClip(askingClip.ask, change)); };
   const clipSettings = {
-    seconds: askingClip ? askingClip.ask.seconds : snapDirectClipSeconds(videoDuration),
+    seconds: askingClip ? askingClip.ask.seconds : composerClipSeconds,
     onSeconds: (sec: DirectClipSeconds) => { setVideoDuration(sec); setVideoRequestedSec(null); toAskingClip({ seconds: sec }); },
-    aspect: askingClip ? askingClip.ask.aspect : (videoOrientation === 'landscape' ? '16:9' : '9:16') as DirectClipAspect,
+    aspect: askingClip ? askingClip.ask.aspect : refineClip ? refineClip.aspect : (videoOrientation === 'landscape' ? '16:9' : '9:16') as DirectClipAspect,
     onAspect: (a: DirectClipAspect) => { setVideoOrientation(a === '16:9' ? 'landscape' : 'vertical'); toAskingClip({ aspect: a }); },
     tier: askingClip ? askingClip.ask.tier : veoPlan.tier,
     onTier: (tier: VideoQuality) => { dispatchVeo({ type: 'tier', tier }); toAskingClip({ tier }); },
@@ -8669,7 +8678,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? omniEditCredits({ op: 'extend', inputSec: composerContinue.seconds, resolution: clipResolution }) || null
       : activeTool === 'video' && mode === 'video' && videoTab === 'cinema'
         // The clip the panel is set to (lib/video/directClip, the route's own price): its card shows the same on Create.
-        ? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, composerClipPhotos), photos: composerClipPhotos, resolution: clipResolution, speech: composerSpeech }) || null
+        ? directClipCredits({ seconds: composerClipSeconds, tier: openClipTier(veoPlan.tier, clipClosedTiers, composerClipPhotos), photos: composerClipPhotos, resolution: clipResolution, speech: composerSpeech }) || null
         : null;
   // The box's Send for a clip is the explicit press the panel's Generate was: same runTool path, same guest gate and
   // focus gate, and it opens the clip's card (its Create is the charge). A balance known to be short opens the top-up

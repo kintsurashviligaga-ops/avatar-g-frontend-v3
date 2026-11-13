@@ -18,6 +18,7 @@ import { describeGenerationFailure } from '@/components/studio/ui/serviceError';
 import type { ClipStep } from './ClipProgress';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import { clipSpeechRoom, promptSpeaksGeorgian, quotedSpeechSeconds } from '@/lib/video/clipPrompt';
+import { refineChange } from '@/lib/chat/refineRequest';
 import {
   DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_SECONDS, OMNI_DEFAULT_RESOLUTION, OMNI_SPEECH_DEFAULT_RESOLUTION, directClipCredits, directClipEngine,
   directClipQualityLabel, directClipSeconds, directClipTierAllowed,
@@ -163,6 +164,21 @@ export function clipRequestBody(state: ClipAskState): Record<string, unknown> {
     prompt: state.prompt, photos: state.photos, seconds: state.seconds, aspect: state.aspect, tier: state.tier,
     resolution: state.resolution, ...(state.speech ? { speech: state.speech } : {}), expectedCredits: state.credits,
   };
+}
+
+/**
+ * „უკეთესად გააკეთე" in the box right after a clip asks for THAT clip again (send → proposeClip from its clipSpec), so the
+ * chips and Send's price are that clip's: its length, frame, photos and its Georgian line. Without this the box (no words of
+ * its own) priced a Veo clip — „Veo 3.1 Fast" right under a Gemini Omni Flash clip (Phase 7.6 audit, GG 2026-11-13).
+ * Null when the words are not a refine, or there is no delivered clip to refine.
+ */
+export function refineClipSettings(
+  spec: { prompt: string; photos: readonly string[]; seconds: number; aspect: DirectClipAspect } | null | undefined,
+  boxText: string,
+): { seconds: DirectClipSeconds; aspect: DirectClipAspect; photos: number; speech: DirectClipSpeech } | null {
+  if (!spec || !boxText.trim() || !refineChange(boxText)) return null;
+  const photos = Math.min(DIRECT_CLIP_MAX_PHOTOS, spec.photos.filter(Boolean).length);
+  return { seconds: directClipSeconds(spec.seconds, photos), aspect: spec.aspect, photos, speech: promptSpeaksGeorgian(spec.prompt) ? 'ka' : null };
 }
 
 /** The engine by its product name: Gemini Omni Flash for 10 s or a Georgian line, else Veo 3.1 at its tier. */
