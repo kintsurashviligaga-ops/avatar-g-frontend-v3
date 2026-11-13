@@ -8,13 +8,16 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and exactly the services GG kept in the menu', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'montage', 'music', 'vfx', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'montage', 'music', 'video'].sort());
     expect(isToolId('remix')).toBe(false); // retired from every menu (GG 2026-10-18); the chat's touch-up lane keeps the id
     // GG's menu clean-up (2026-10-21): these left every menu, deep link and panel command; their ids and lines stay.
     for (const id of ['photoshoot', 'swap', 'motion', 'dubbing', 'presentation', 'photo'] as const) {
       expect(isToolId(id)).toBe(false);
       expect(TOOL_META[id]).toBeDefined();
     }
+    // VFX is removed (GG 2026-11-13): no menu opens it; its id and line stay.
+    expect(isToolId('vfx')).toBe(false);
+    expect(TOOL_META.vfx).toBeDefined();
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });
 
@@ -29,13 +32,11 @@ describe('studio tools', () => {
     expect(toolName('video', 'de')).toBe('ვიდეო'); // an unshipped locale falls back to Georgian
   });
 
-  it('VFX sits one level down beside the other video variants, in all three languages, and its line promises nothing that is not open', () => {
-    expect(MORE_TOOLS).toContain('vfx');
+  it('VFX is removed from every menu (GG 2026-11-13): montage is the only tool one level down', () => {
+    expect(MORE_TOOLS).toEqual(['montage']);
     expect(PRIMARY_TOOLS).not.toContain('vfx');
-    expect(MORE_TOOLS[0]).toBe('vfx'); // the product ad beside it is removed (GG 2026-10-27)
-    expect(isToolId('vfx')).toBe(true);
-    expect(toolName('vfx', 'en')).toBe('VFX');
-    for (const l of ['ka', 'en', 'ru'] as const) expect(toolSub('vfx', l)).not.toMatch(/motion transfer|მოძრაობის გადატანა|перенос движения/i);
+    expect(isToolId('vfx')).toBe(false);
+    expect(toolName('vfx', 'en')).toBe('VFX'); // the id and its line stay for old history and analytics
   });
 
   it('photo culling left the menus, and its line still says, in every language, that the photos stay on the device', () => {
@@ -66,7 +67,8 @@ describe('studio tools', () => {
   });
 
   it('isToolId accepts the ids and nothing else (it guards window events and ?tool=)', () => {
-    expect(isToolId('vfx')).toBe(true);
+    expect(isToolId('video')).toBe(true);
+    expect(isToolId('vfx')).toBe(false); // removed (GG 2026-11-13)
     expect(isToolId('product')).toBe(false); // removed (GG 2026-10-27): ?tool=product opens nothing
     expect(isToolId('surgical')).toBe(false);
     expect(isToolId(null)).toBe(false);

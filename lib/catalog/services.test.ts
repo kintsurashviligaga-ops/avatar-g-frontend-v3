@@ -177,7 +177,8 @@ describe('resolveService — Agent G intent and search', () => {
 
   it('a medium word („video") never outranks the service the sentence names', () => {
     expect(resolveService('swap the character in this video')?.id).toBe('video.character-swap');
-    expect(resolveService('add vfx to my video')?.id).toBe('video.vfx');
+    // VFX is removed (GG 2026-11-13): a VFX sentence never resolves to it.
+    expect(resolveService('add vfx to my video')?.id).not.toBe('video.vfx');
   });
 
   it('a subject noun is not a service: no misroute into a panel', () => {

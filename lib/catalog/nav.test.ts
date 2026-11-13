@@ -17,7 +17,7 @@ describe('toolGroups — the studio menus come from the catalog', () => {
   it('groups the tools by catalog category, CREATE before WORK', () => {
     expect(groups.map((g) => [g.id, g.tools])).toEqual([
       ['agent-g', ['chat']],
-      ['video', ['video', 'vfx', 'montage']],
+      ['video', ['video', 'montage']],
       ['image-photo', ['image', 'interior']],
       ['avatar', ['avatar']],
       ['music', ['music']],

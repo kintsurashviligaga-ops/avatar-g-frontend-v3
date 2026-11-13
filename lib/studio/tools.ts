@@ -34,8 +34,11 @@ export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'inte
 // line, but not in ALL_TOOLS, so nothing opens it; /api/video/remix refuses `productad` before any charge.
 // ⚠️ `model3d` IS OFF (GG 2026-11-13: keep 3D off): its only engine, Replicate TRELLIS, is refused in production
 // (503 google_only). A ToolId with its TOOL_META line, but not in ALL_TOOLS, so nothing opens it.
-/** Tools that live one level down: the VFX video variant and the montage editor. */
-export const MORE_TOOLS: readonly ToolId[] = ['vfx', 'montage'];
+// ⚠️ `vfx` IS REMOVED (GG 2026-11-13: „Please remove the VFX service entirely"): a ToolId with its TOOL_META line, but not in
+// ALL_TOOLS, so no menu, deep link, Live voice, panel command or saved hand-off opens it; /api/genjutsu/quote and /generate
+// answer 410 service_removed before any charge (lib/genjutsu/removed). lib/genjutsu/veoScene stays: the video clip route uses it.
+/** Tools that live one level down: the montage editor. */
+export const MORE_TOOLS: readonly ToolId[] = ['montage'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {
