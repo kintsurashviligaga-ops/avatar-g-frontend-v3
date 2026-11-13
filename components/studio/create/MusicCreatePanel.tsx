@@ -43,6 +43,8 @@ import { LyricsCard, SimpleCard, StylesCard, type CardNote } from './TextCards';
 import { musicCreateCopy, type MusicTempo } from './musicCreateCopy';
 import { enhanceStyleFor, writeLyricsFor, type WandFailure } from './musicWand';
 import { useMusicEngines } from './useMusicEngines';
+import { musicSummaryLine, musicUxV2Copy, musicUxV2On } from './musicUxV2';
+import { LYRICS_SECTIONS, insertSectionTag } from '@/lib/studio/lyricsTags';
 
 const UI_MODE_KEY = 'myavatar:music-ui-mode';
 const LYRICS_MAX = 1200;
@@ -264,6 +266,12 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
 
   const showResult = !p.isDesktop && !!p.result.track;
   const simple = uiMode === 'simple';
+  // Phase 7.6 M1–M4 (NEXT_PUBLIC_MUSIC_UX_V2, off): summary line, lyrics section chips, why vocals are locked, folded sliders.
+  const v2 = musicUxV2On();
+  const v2c = musicUxV2Copy(locale);
+  const vocalsWhy = v2 && vocalsLocked && !cover
+    ? <p data-testid="music-vocals-why" className="px-1 text-[11.5px] leading-snug text-app-muted">{v2c.vocalsWhy}</p>
+    : null;
 
   return (
     <div data-testid="music-panel" data-mode={uiMode} className="space-y-3 pb-1">
@@ -312,7 +320,8 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
           note={styleNote}
           keptLyrics={p.lyrics.trim().length}
         />
-      ) : (
+      ) : null}
+      {simple ? vocalsWhy : (
         <>
           <LyricsCard
             locale={locale}
@@ -330,6 +339,25 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
             onExpand={() => setExpand('lyrics')}
             note={lyricsNote}
           />
+          {vocalsWhy}
+          {v2 && lyricsOpen && !p.instrumental && !cover && (
+            <div data-testid="music-lyrics-sections" role="group" aria-label={v2c.sections} className="flex flex-wrap items-center gap-1.5 px-1">
+              <span className="text-[12px] text-app-muted">{v2c.sections}:</span>
+              {LYRICS_SECTIONS.map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  data-testid={`music-section-${sec.toLowerCase()}`}
+                  aria-label={v2c.addSection(v2c.section[sec])}
+                  title={`[${sec}]`}
+                  onClick={() => changeLyrics(insertSectionTag(p.lyrics, sec).text)}
+                  className="min-h-[36px] rounded-full bg-app-elevated/55 px-3 text-[12.5px] text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+                >
+                  {v2c.section[sec]}
+                </button>
+              ))}
+            </div>
+          )}
           <StylesCard
             locale={locale}
             open={stylesOpen}
@@ -361,8 +389,16 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
             tempo={p.tempo}
             onTempo={p.onTempo}
             templates={p.templates}
+            foldSliders={v2}
           />
         </>
+      )}
+
+      {v2 && (
+        <p data-testid="music-summary" aria-live="polite" className="px-1 text-[13px] leading-snug text-app-muted">
+          <span className="font-medium text-app-text">{v2c.youGet}</span>{' '}
+          {musicSummaryLine({ locale, duration: p.duration, cover, instrumental: p.instrumental, vocal: p.vocal, engine: enginePillLabel({ locale, pref, reference }), credits: price })}
+        </p>
       )}
 
       <CreateBar
