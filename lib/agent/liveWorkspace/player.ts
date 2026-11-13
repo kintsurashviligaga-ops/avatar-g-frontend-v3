@@ -39,7 +39,8 @@ export function tick(p: Player, now: number): Player {
 
 export function answer(p: Player, approvalId: string, ans: 'approved' | 'declined', now: number): Player {
   const a = p.state.approvals[approvalId];
-  if (!a || a.state !== 'pending') return p;
+  // An expired approval can no longer be answered (the server will refuse it the same way once wired).
+  if (!a || a.state !== 'pending' || now >= a.expiresAt) return p;
   let state = reduce(p.state, { type: 'approval.answered', runId: a.runId, at: now, data: { approvalId, answer: ans } });
   if (ans === 'approved') return { ...p, state, approvedAt: { ...p.approvedAt, [approvalId]: now } };
   state = reduce(state, { type: 'run.delivered', runId: a.runId, at: now, data: { cancelled: true } });

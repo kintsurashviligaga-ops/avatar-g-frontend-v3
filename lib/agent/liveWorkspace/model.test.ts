@@ -121,3 +121,12 @@ describe('the mock replay', () => {
 });
 
 test('EMPTY is empty', () => expect(EMPTY).toEqual({ runs: {}, order: [], approvals: {} }));
+
+test('an approval past its time cannot be answered', () => {
+  let p = start(mockScript('en', T0), T0);
+  p = tick(p, T0 + 6_000);
+  expect(p.state.approvals[MOCK_APPROVAL_PAY]?.state).toBe('pending');
+  const late = answer(p, MOCK_APPROVAL_PAY, 'approved', T0 + 5 * 60_000);
+  expect(late).toBe(p);
+  expect(answer(p, MOCK_APPROVAL_PAY, 'approved', T0 + 5 * 60_000 - 1).state.approvals[MOCK_APPROVAL_PAY]?.state).toBe('approved');
+});
