@@ -238,6 +238,27 @@
       "retirementDate": null,
       "source": "P1",
       "served": []
+    },
+    {
+      "id": "lyria-3-clip-preview",
+      "stage": "PREVIEW",
+      "releaseDate": "2026-03-25",
+      "retirementDate": null,
+      "source": "P4",
+      "served": ["Music (lib/ai/lyriaMusic default, LYRIA_MODEL)", "film music bed (lib/audio/lyriaBed)"],
+      "note": "P4 lists it with no shutdown date announced (checked 2026-11-13); the Vertex model-versions page (P1) has no Lyria rows",
+      "servedOutsideModelsTs": true
+    },
+    {
+      "id": "lyria-3-pro-preview",
+      "stage": "PREVIEW",
+      "releaseDate": "2026-03-25",
+      "retirementDate": null,
+      "source": "P4",
+      "replacement": "lyria-3.5",
+      "served": ["longer film music bed (lib/audio/lyriaBed, behind MUSIC_LYRIA_PRO_VERIFIED)"],
+      "note": "P4 lists it with no shutdown date announced and lyria-3.5 as the replacement (checked 2026-11-13)",
+      "servedOutsideModelsTs": true
     }
   ]
 }

@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminContext, isUuid } from '@/lib/admin/routeContext';
-import { SWITCHABLE_TOOLS, disabledServices, isSwitchableTool, setServiceEnabled } from '@/lib/server/serviceSwitches';
+import { AGENT_SWITCH_LABEL, SWITCHABLE_TOOLS, disabledServices, isSwitchableTool, setServiceEnabled } from '@/lib/server/serviceSwitches';
 import { TOOL_META } from '@/lib/studio/tools';
 
 export const dynamic = 'force-dynamic';
@@ -18,7 +18,9 @@ export async function GET() {
   return NextResponse.json({
     services: SWITCHABLE_TOOLS.map((tool) => ({
       tool,
-      label: { ka: TOOL_META[tool]?.name.ka ?? tool, en: TOOL_META[tool]?.name.en ?? tool },
+      label: tool in AGENT_SWITCH_LABEL
+        ? AGENT_SWITCH_LABEL[tool as keyof typeof AGENT_SWITCH_LABEL]
+        : { ka: TOOL_META[tool as keyof typeof TOOL_META]?.name.ka ?? tool, en: TOOL_META[tool as keyof typeof TOOL_META]?.name.en ?? tool },
       enabled: !off.has(tool),
     })),
   });

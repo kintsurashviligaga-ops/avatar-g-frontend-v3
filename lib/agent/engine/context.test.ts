@@ -29,14 +29,14 @@ describe('the tables', () => {
     }
   });
 
-  test('every default model except Lyria is in the lifecycle registry (Lyria is refused until its row is added)', () => {
+  test('every default model is in the lifecycle registry (Lyria included, GG 2026-11-13)', () => {
     const missing = ENGINE_TOOLS.map((t) => TOOL_MODEL[t]).filter((m): m is string => !!m && !lifecycleEntry(m, LIFECYCLE));
-    expect(missing).toEqual(['lyria-3-pro-preview']);
+    expect(missing).toEqual([]);
   });
 
-  test("today's three media-run tools call no model, and only montage sits behind a switch", () => {
+  test("today's three media-run tools call no model, and each sits behind its own admin switch", () => {
     expect([TOOL_MODEL.audio_extract, TOOL_MODEL.montage, TOOL_MODEL.edit]).toEqual([null, null, null]);
-    expect([TOOL_SWITCH.audio_extract, TOOL_SWITCH.montage, TOOL_SWITCH.edit]).toEqual([null, 'montage', null]);
+    expect([TOOL_SWITCH.audio_extract, TOOL_SWITCH.montage, TOOL_SWITCH.edit]).toEqual(['audio-extract', 'montage', 'media-edit']);
   });
 
   test('a montage or an edit makes a media run (30 min deadline); an MP3 extraction alone does not', () => {
@@ -57,6 +57,9 @@ describe('buildValidateContext', () => {
     expect(validateStep(ps('clip', 'montage'), ctx)).toMatchObject({ ok: false, code: 'capability_unavailable', reason: 'montage is switched off' });
     expect(validateStep(ps('v', 'video'), ctx)).toMatchObject({ ok: false, code: 'capability_unavailable' });
     expect(validateStep(ps('cut', 'edit'), ctx)).toMatchObject({ ok: true });
+    const off = buildValidateContext(facts({ switchedOff: new Set(['media-edit', 'audio-extract']) }));
+    expect(validateStep(ps('cut', 'edit'), off)).toMatchObject({ ok: false, code: 'capability_unavailable', reason: 'edit is switched off' });
+    expect(validateStep(ps('sound', 'audio_extract'), off)).toMatchObject({ ok: false, code: 'capability_unavailable' });
   });
 
   test('D-08: code and research are admin-only', () => {
@@ -82,8 +85,9 @@ describe('buildValidateContext', () => {
     expect(validateStep(ps('w', 'write'), buildValidateContext(facts()))).toMatchObject({ ok: true });
   });
 
-  test('music is refused until Lyria is in the registry', () => {
-    expect(validateStep(ps('song', 'music'), buildValidateContext(facts()))).toMatchObject({ ok: false, code: 'capability_unavailable', reason: 'lyria-3-pro-preview is not in the lifecycle registry' });
+  test('music on Lyria 3 Clip passes (no shutdown date announced); a model not in the registry is still refused', () => {
+    expect(validateStep(ps('song', 'music'), buildValidateContext(facts()))).toMatchObject({ ok: true });
+    expect(validateStep(ps('song', 'music'), buildValidateContext(facts({ models: { music: 'lyria-2' } })))).toMatchObject({ ok: false, reason: 'lyria-2 is not in the lifecycle registry' });
   });
 
   test('an audience gate closes a rolling-out tool for this user', () => {

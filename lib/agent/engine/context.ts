@@ -30,8 +30,8 @@ export const TOOL_MODEL: Readonly<Record<EngineTool, string | null>> = {
   edit: null,
   image: 'gemini-3.1-flash-image',
   video: 'gemini-omni-1.2-flash',
-  // Lyria is not in config/google-lifecycle.json yet, so a music step is refused until its row is added with a source.
-  music: 'lyria-3-pro-preview',
+  // lib/ai/lyriaMusic's default (LYRIA_MODEL overrides it there; pass the same override in ValidateFacts.models).
+  music: 'lyria-3-clip-preview',
   speech: 'gemini-3.8-flash-tts',
   write: 'gemini-3.8-flash',
 };
@@ -42,9 +42,9 @@ export const TOOL_SWITCH: Readonly<Record<EngineTool, string | null>> = {
   code: null,
   pdf: null,
   export: null,
-  audio_extract: null,
+  audio_extract: 'audio-extract',
   montage: 'montage',
-  edit: null,
+  edit: 'media-edit',
   image: 'image',
   video: 'video',
   music: 'music',

@@ -65,6 +65,8 @@ function liveValidate(adapters: Readonly<Record<RunTool, StepAdapter>>) {
       switchedOff: new Set(off),
       priceBook: { montage: adapters.montage.listPrice, audio_extract: adapters.audio_extract.listPrice, edit: adapters.edit.listPrice },
       runCeilingCredits: Number.isFinite(env) && env > 0 ? env : defaultRunCeiling(MAX_RUN_STEPS, prices),
+      // The model a music step would really call (lib/ai/lyriaMusic reads the same env).
+      ...(process.env.LYRIA_MODEL?.trim() ? { models: { music: process.env.LYRIA_MODEL.trim() } } : {}),
     }, (tool) => adapters[tool].listPrice);
   };
 }
