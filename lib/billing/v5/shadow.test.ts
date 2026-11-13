@@ -43,6 +43,10 @@ test('a failing or slow book, or a failing log, never throws and never blocks', 
   expect(Date.now() - t0).toBeLessThan(500);
   expect(log.mock.calls[1][0]).toMatchObject({ error: 'timeout' });
   await expect(shadowPrice('shadow', est, 2, { loadBook: async () => approved, log: () => { throw new Error('log down'); } })).resolves.toBeUndefined();
+  // a log write that never answers is given up on too
+  const t1 = Date.now();
+  await shadowPrice('shadow', est, 2, { loadBook: async () => approved, log: () => new Promise<void>(() => {}), timeoutMs: 30 });
+  expect(Date.now() - t1).toBeLessThan(500);
 });
 
 test('summary: per capability, mean and worst difference, failures counted', () => {

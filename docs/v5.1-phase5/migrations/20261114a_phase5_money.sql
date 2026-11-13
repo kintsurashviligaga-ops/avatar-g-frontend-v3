@@ -48,7 +48,8 @@ end $$;
 
 create index if not exists price_versions_key_idx on public.price_versions (capability, model, unit, valid_from desc);
 
--- An approved price is history: its numbers, window start, source and approver never change. Only valid_to may be set,
+-- An approved price is history: its id, numbers, window start, source and approver never change (provider_costs and
+-- every quote name it by id). Only valid_to may be set,
 -- once, from null (to end it when the next price starts). A wrong approved row is ended and replaced, never edited.
 create or replace function public.price_versions_guard() returns trigger
 language plpgsql set search_path = public as $$
@@ -58,7 +59,7 @@ begin
     return old;
   end if;
   if old.approved_by is not null then
-    if new.capability is distinct from old.capability or new.model is distinct from old.model or new.unit is distinct from old.unit
+    if new.id is distinct from old.id or new.capability is distinct from old.capability or new.model is distinct from old.model or new.unit is distinct from old.unit
        or new.usd_per_unit is distinct from old.usd_per_unit or new.credits_per_unit is distinct from old.credits_per_unit
        or new.valid_from is distinct from old.valid_from or new.source_url is distinct from old.source_url
        or new.fetched_at is distinct from old.fetched_at or new.approved_by is distinct from old.approved_by

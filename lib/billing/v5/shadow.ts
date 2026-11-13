@@ -69,7 +69,7 @@ export function shadowRecord(est: Estimate, codeCredits: number, book: readonly 
 
 /**
  * Compare the book with today's price for one call. Returns void: the caller keeps charging `codeCredits`.
- * Awaiting it is optional; it resolves within `timeoutMs` (+ the log call) and never rejects.
+ * Awaiting it is optional; it resolves within about 2 × `timeoutMs` (book read + log write) and never rejects.
  */
 export async function shadowPrice(mode: string | undefined, est: Estimate, codeCredits: number, ports: ShadowPorts): Promise<void> {
   if (priceBookMode(mode) !== 'shadow') return;
@@ -82,7 +82,7 @@ export async function shadowPrice(mode: string | undefined, est: Estimate, codeC
     rec = shadowRecord(est, codeCredits, null, atIso, e instanceof Error ? e.message.slice(0, 120) : 'load failed');
   }
   try {
-    await ports.log(rec);
+    await withTimeout(Promise.resolve(ports.log(rec)), ports.timeoutMs ?? SHADOW_TIMEOUT_MS);
   } catch {
     /* a lost shadow line never affects a user */
   }
@@ -91,7 +91,12 @@ export async function shadowPrice(mode: string | undefined, est: Estimate, codeC
 /** Seven days of records → a per-capability summary for GG (mean and worst difference, failures). */
 export function shadowSummary(records: readonly ShadowRecord[]) {
   const by = new Map<string, ShadowRecord[]>();
-  for (const r of records) by.set(`${r.capability}|${r.model}`, [...(by.get(`${r.capability}|${r.model}`) ?? []), r]);
+  for (const r of records) {
+    const k = `${r.capability}|${r.model}`;
+    const list = by.get(k);
+    if (list) list.push(r);
+    else by.set(k, [r]);
+  }
   return [...by.entries()]
     .map(([key, rs]) => {
       const priced = rs.filter((r) => r.diffPct !== null);

@@ -52,6 +52,13 @@ begin
   exception when raise_exception then
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
+  -- 3b. ... and so is its id (quotes and provider_costs name the row by id)
+  begin
+    update public.price_versions set id = 'pv_renamed' where id = 'pv_flash_out_1';
+    raise exception 'FAIL approved price renamed';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
   -- 4. valid_to may be set once, and never changed after
   update public.price_versions set valid_to = '2026-12-01' where id = 'pv_flash_out_2';
   begin
