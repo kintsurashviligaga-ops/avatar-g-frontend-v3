@@ -90,6 +90,17 @@ describe('buildValidateContext', () => {
     expect(validateStep(ps('song', 'music'), buildValidateContext(facts({ models: { music: 'lyria-2' } })))).toMatchObject({ ok: false, reason: 'lyria-2 is not in the lifecycle registry' });
   });
 
+  test('an empty, blank or null override never removes a model: the default is still checked', () => {
+    for (const music of [null, '', '   ']) {
+      const ctx = buildValidateContext(facts({ models: { music } }));
+      expect(ctx.modelOf('music')).toBe('lyria-3-clip-preview');
+    }
+    expect(buildValidateContext(facts({ models: { music: ' lyria-3-pro-preview ' } })).modelOf('music')).toBe('lyria-3-pro-preview');
+    // A pure ffmpeg tool stays model-free; an override cannot give it a model to dodge, nor take one away from video.
+    expect(buildValidateContext(facts({ models: { video: null } })).modelOf('video')).toBe('gemini-omni-1.2-flash');
+    expect(buildValidateContext(facts()).modelOf('montage')).toBeNull();
+  });
+
   test('an audience gate closes a rolling-out tool for this user', () => {
     const ctx = buildValidateContext(facts({ audience: { video: false } }));
     expect(validateStep(ps('v', 'video'), ctx)).toMatchObject({ ok: false, code: 'policy_denied' });
