@@ -8,7 +8,7 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and exactly the services GG kept in the menu', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'model3d', 'montage', 'music', 'vfx', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'montage', 'music', 'vfx', 'video'].sort());
     expect(isToolId('remix')).toBe(false); // retired from every menu (GG 2026-10-18); the chat's touch-up lane keeps the id
     // GG's menu clean-up (2026-10-21): these left every menu, deep link and panel command; their ids and lines stay.
     for (const id of ['photoshoot', 'swap', 'motion', 'dubbing', 'presentation', 'photo'] as const) {

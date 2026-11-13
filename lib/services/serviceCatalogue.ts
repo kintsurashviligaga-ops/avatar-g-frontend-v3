@@ -97,10 +97,9 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     tagline: { ka: 'ვიდეო სხვა ენაზე', en: 'A video in another language', ru: 'Видео на другом языке' },
   },
   {
-    // Live: backed by Replicate (TRELLIS), not Meshy — Meshy had no API key on any environment, so it
-    // could never run. Text mode goes text-to-image → reference image → reconstruction. The create route
-    // refuses every request in production (503 google_only, no Google engine).
-    id: 'model3d', icon: '🧊', live: true, target: { kind: 'path', path: '/3d' },
+    // NOT LIVE (GG 2026-11-13: keep 3D off). It runs on Replicate (TRELLIS), which has no Google engine, so
+    // /api/v2/model3d/create refuses every request (503 google_only); the tile shows as „soon", never as a tool.
+    id: 'model3d', icon: '🧊', live: false, target: { kind: 'path', path: '/3d' },
     name: { ka: '3D', en: '3D', ru: '3D' },
     tagline: { ka: 'ტექსტიდან GLB-მდე', en: 'Text to GLB', ru: 'Из текста в GLB' },
   },
