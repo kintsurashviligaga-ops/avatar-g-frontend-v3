@@ -78,7 +78,6 @@ import {
   clipDispatchConcurrency,
   clipDispatchJitterMs,
   clipRetryBackoffMs,
-  shouldDownshiftToLtx,
   mapWithConcurrency,
 } from './filmClipRetry';
 import { filmBalanceDecision } from './filmBalanceGate';
@@ -331,12 +330,6 @@ export async function submitFilmClip(
     if (backoff > 0) {
       await new Promise((resolve) => setTimeout(resolve, backoff));
     }
-    // PHASE 23 — once Kling has had its attempts, FORCE the LTX-2 down-shift on the remaining
-    // retries so a saturated / timing-out Kling cluster can't starve this scene: skipI2v makes
-    // execute() skip the premium create and land straight on LTX (which keeps the identity anchor
-    // + drift clause). Sticky by design — once we down-shift a scene, later retries stay on LTX.
-    // Google-only: never down-shift to LTX (skipI2v also skips Veo) — the scene stays on Veo or fails honestly.
-    if (shouldDownshiftToLtx(attempt) && clipReq.selectedOptions.googleOnly !== '1') clipReq.selectedOptions.skipI2v = '1';
     try {
       const dispatched = await withTrace(
         {
@@ -670,11 +663,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     null;
 
   // CARD A FIX — HOST the reference images. The composer hands us 1-3 photos as
-  // `data:image/...` URIs. The direct LTX endpoint (api.ltx.video) frequently
-  // REJECTS a data URI for its `image` input, so the identity anchor was being
-  // silently dropped (clips fell back to text-to-video → "it ignored my photo").
-  // Upload each data URI to a signed https URL up-front so EVERY downstream clip
-  // (direct LTX or Replicate) reliably ingests the subject. Fail-open per image:
+  // `data:image/...` URIs. A video engine that rejects a data URI for its image
+  // input silently dropped the identity anchor (clips fell back to text-to-video
+  // → "it ignored my photo"). Upload each data URI to a signed https URL up-front
+  // so EVERY downstream clip reliably ingests the subject. Fail-open per image:
   // an upload miss keeps the original ref, so a storage hiccup never fails the
   // film. https refs pass through untouched.
   const refList = normalizeReferenceImages(referenceImagesRaw);

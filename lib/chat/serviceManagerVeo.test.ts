@@ -50,12 +50,6 @@ jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: s
 jest.mock('../video/cinematicPrompt', () => ({ expandCinematicPrompt: jest.fn(async (p: string) => `${p}, cinematic 35mm`) }));
 // The engines a Google-only miss must NEVER fall back to — mocked so a regression shows up as a call, not a network hit.
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollPrediction: jest.fn() }));
-jest.mock('../ai/runway', () => ({
-  hasRunwayProvider: jest.fn(() => true),
-  runwayModel: jest.fn(() => 'gen4_turbo'),
-  createRunwayI2V: jest.fn(),
-  pollRunwayTask: jest.fn(),
-}));
 
 import { ServiceManager, type ServiceManagerRequest, type ServiceManagerResponse } from './ServiceManager';
 import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport } from '../veo/engine';
@@ -63,7 +57,6 @@ import { hostGcsVideo } from '../veo/deliver';
 import { createSignedAssetUrl, uploadBufferAndSign } from '../orchestrator/storage-adapter';
 import { guardedCall } from '../services/billing/guardedCall';
 import { createPrediction } from '../replicate/client';
-import { createRunwayI2V } from '../ai/runway';
 import { costPerSecondUsd, resolutionFor, resolveModel } from '../veo/capabilities';
 import type { VeoTransport, VeoVideo } from '../veo/types';
 
@@ -173,7 +166,6 @@ afterEach(() => {
 
 function expectNoOtherEngine(): void {
   expect(createPrediction).not.toHaveBeenCalled();
-  expect(createRunwayI2V).not.toHaveBeenCalled();
   expect(fetchSpy).not.toHaveBeenCalled();
 }
 

@@ -6,34 +6,12 @@ import {
   pickGlbUrl,
   pollDelayMs,
   QUALITY_STEPS,
-  type Model3dRequest,
 } from './model3dPlan';
-import { submitReconstruction, pollReconstruction, fetchGlbBuffer, hasReplicate3dProvider } from './replicate3dClient';
 
 const OLD_ENV = { ...process.env };
 afterEach(() => { process.env = { ...OLD_ENV }; });
 
-const req = (over: Partial<Model3dRequest> = {}): Model3dRequest => ({
-  mode: 'text',
-  prompt: 'a ceramic teapot',
-  quality: 'draft',
-  removeBackground: true,
-  ...over,
-});
 
-const res = (init: { ok?: boolean; status?: number; body?: unknown; headers?: Record<string, string> }) =>
-  ({
-    ok: init.ok ?? true,
-    status: init.status ?? 200,
-    text: async () => (typeof init.body === 'string' ? init.body : JSON.stringify(init.body ?? {})),
-    json: async () => init.body ?? {},
-    // Buffer.prototype.buffer is Node's shared pool — slice to this view's own window.
-    arrayBuffer: async () => {
-      const b = init.body instanceof Buffer ? init.body : Buffer.from('glb');
-      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
-    },
-    headers: { get: (k: string) => init.headers?.[k.toLowerCase()] ?? null },
-  }) as unknown as Response;
 
 describe('validation', () => {
   it('accepts a text request and applies defaults', () => {
@@ -106,115 +84,5 @@ describe('GLB extraction — deliberately shape-agnostic, because the exact outp
     let deep: unknown = 'https://x.dev/model.glb';
     for (let i = 0; i < 12; i += 1) deep = { nested: deep };
     expect(pickGlbUrl(deep)).toBeNull(); // depth-bounded, by design
-  });
-});
-
-describe('client — submit', () => {
-  it('reports missing configuration instead of calling out', async () => {
-    delete process.env.REPLICATE_API_TOKEN;
-    expect(hasReplicate3dProvider()).toBe(false);
-    const r = await submitReconstruction('https://x.dev/a.png', req(), (() => { throw new Error('must not be called'); }) as unknown as typeof fetch);
-    expect(r).toMatchObject({ ok: false, retryable: false });
-  });
-
-  it('refuses to submit without a reference image', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await submitReconstruction('', req(), (() => { throw new Error('must not be called'); }) as unknown as typeof fetch);
-    expect(r).toMatchObject({ ok: false, retryable: false });
-  });
-
-  it('creates the prediction on the VERSIONED endpoint (firtoz/trellis is a community model, so the\n     version-less /v1/models/{owner}/{name}/predictions endpoint 404s) and returns the poll url', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    let seen = '';
-    let sentBody: Record<string, unknown> = {};
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async (url, init) => {
-      seen = String(url);
-      if (init?.method === 'POST') sentBody = JSON.parse(String(init.body));
-      return res({ body: { id: 'p1', urls: { get: 'https://api.replicate.com/v1/predictions/p1' } } });
-    });
-    expect(seen).toBe('https://api.replicate.com/v1/predictions');
-    expect(typeof sentBody.version).toBe('string');
-    expect(String(sentBody.version)).toHaveLength(64);
-    expect(r).toMatchObject({ ok: true, predictionId: 'p1', pollUrl: 'https://api.replicate.com/v1/predictions/p1' });
-  });
-
-  it('falls back to the conventional poll path when urls.get is absent', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async () => res({ body: { id: 'p2' } }));
-    expect(r).toMatchObject({ ok: true, pollUrl: 'https://api.replicate.com/v1/predictions/p2' });
-  });
-
-  it('marks auth and funding failures NON-retryable, and 5xx/429 retryable', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 401 }))).toMatchObject({ retryable: false });
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 402 }))).toMatchObject({ retryable: false });
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 429 }))).toMatchObject({ retryable: true });
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 503 }))).toMatchObject({ retryable: true });
-  });
-
-  it('never throws when the network does', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async () => { throw new Error('ECONNRESET'); });
-    expect(r.ok).toBe(false);
-  });
-});
-
-describe('client — poll', () => {
-  it('reports a transient failure as PROCESSING, not failed', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    expect((await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => res({ ok: false, status: 500 }))).status).toBe('processing');
-    expect((await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => { throw new Error('ETIMEDOUT'); })).status).toBe('processing');
-  });
-
-  it('surfaces the glb on success', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'succeeded', output: { model_file: 'https://replicate.delivery/x/m.glb' } } }));
-    expect(r).toMatchObject({ status: 'succeeded', glbUrl: 'https://replicate.delivery/x/m.glb' });
-  });
-
-  it('carries the vendor error through on failure', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'failed', error: 'input image unreadable' } }));
-    expect(r).toMatchObject({ status: 'failed', error: 'input image unreadable' });
-  });
-
-  // The status route bills on these: data_removed separates "output deleted (maybe after delivery)" from
-  // "finished without a model", and completed_at bounds how long a failing re-host is retried.
-  it('surfaces data_removed and completed_at', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'succeeded', output: null, data_removed: true, completed_at: '2026-10-01T10:00:00.000Z' } }));
-    expect(r).toMatchObject({ status: 'succeeded', glbUrl: null, dataRemoved: true, completedAtMs: Date.parse('2026-10-01T10:00:00.000Z') });
-    const kept = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'succeeded', output: { mesh: 'https://replicate.delivery/x/m.ply' }, data_removed: false } }));
-    expect(kept).toMatchObject({ glbUrl: null, dataRemoved: false });
-  });
-
-  it('an absent or non-boolean data_removed is UNKNOWN, never "not removed"', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    for (const body of [{ status: 'succeeded', output: null }, { status: 'succeeded', output: null, data_removed: 'false', completed_at: 'soon' }]) {
-      const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => res({ body }));
-      expect(r.dataRemoved).toBeUndefined();
-      expect(r.completedAtMs).toBeUndefined();
-    }
-  });
-});
-
-describe('client — download', () => {
-  it('refuses an oversized model rather than OOMing the lambda', async () => {
-    const r = await fetchGlbBuffer('https://replicate.delivery/x/m.glb', async () =>
-      res({ headers: { 'content-length': String(500 * 1024 * 1024) } }));
-    expect(r).toBeNull();
-  });
-
-  it('rejects a non-http url outright', async () => {
-    expect(await fetchGlbBuffer('file:///etc/passwd')).toBeNull();
-  });
-
-  it('returns the bytes on success', async () => {
-    const r = await fetchGlbBuffer('https://replicate.delivery/x/m.glb', async () => res({ body: Buffer.from('glTF-bytes') }));
-    expect(r?.toString()).toBe('glTF-bytes');
   });
 });

@@ -12,7 +12,6 @@ import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { runwayModel, pollRunwayTask } from '@/lib/ai/runway';
 import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { veoSafetyCategory } from '@/lib/veo/safetyCodes';
@@ -28,9 +27,8 @@ import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 
-// PHASE 24 — 'runway' is an async provider tier (Runway Gen-3 Alpha primary i2v). It surfaces on the
-// wire as provider:'replicate' (DeterministicProvider has no 'runway'); the real engine lives in
-// metadata.videoProvider — same pattern as 'video-cascade'.
+// 'ltx', 'video-cascade' and 'runway' are kept only so an OLD task ref still decodes and is answered "engine no longer
+// available" (v5.1 M-14). No route creates one; only 'gemini-veo' (and 'replicate' for legacy refs) is polled.
 type AsyncProvider = 'replicate' | 'ltx' | 'video-cascade' | 'runway' | 'gemini-veo';
 type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
 
@@ -235,15 +233,11 @@ export class ServiceManager {
       return this.pollReplicateTask(decoded, taskRefOrPredictionId);
     }
 
-    if (decoded.provider === 'runway') {
-      return this.pollRunwayTaskRef(decoded, taskRefOrPredictionId);
-    }
-
     if (decoded.provider === 'gemini-veo') {
       return this.pollVeoTaskRef(decoded, taskRefOrPredictionId);
     }
 
-    // An LTX or 'video-cascade' (Kling / Luma / LTX / Replicate-Kling) task ref. Both are retired (v5.1 M-14): no
+    // An LTX, Runway or 'video-cascade' (Kling / Luma / LTX / Replicate-Kling) task ref. All are retired (v5.1 M-14): no
     // route creates one any more, so an old one is answered honestly instead of calling the vendor.
     const retiredProvider: DeterministicProvider = decoded.provider === 'ltx' ? 'ltx' : 'replicate';
     return {
@@ -415,35 +409,6 @@ export class ServiceManager {
       if (w > 0 && h > 0) return w > h ? '16:9' : w < h ? '9:16' : '1:1';
     }
     return /vert|portrait|9:16|story|tall/i.test(a) ? '9:16' : '16:9';
-  }
-
-  /** Resolve a 'runway' task-ref via Runway's GET /v1/tasks/{id}. Fail-open: unknown status → keep polling.
-   *  The `message` names the engine on every branch so the active provider node is identifiable in the
-   *  response (it rides into metadata.film.clips[].note) even where the Console UI still shows only status. */
-  private async pollRunwayTaskRef(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    const r = await pollRunwayTask(decoded.providerTaskId);
-    const engine = `Runway (${runwayModel()})`;
-    const baseMeta = {
-      provider: 'replicate' as const, videoProvider: 'runway', operation: decoded.operation,
-      sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
-    };
-    if (r.status === 'succeeded' && r.url) {
-      return {
-        success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: `${engine} rendered the scene.`, assetUrl: r.url, assetType: decoded.responseType,
-        predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
-      };
-    }
-    if (r.status === 'failed') {
-      return {
-        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: `${engine} generation failed.`, predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
-      };
-    }
-    return {
-      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-      message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
-    };
   }
 
   /** Seconds a non-Veo clip is booked at: the requested length, bounded to what the engines render (4–10 s). */
