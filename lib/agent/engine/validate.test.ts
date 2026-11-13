@@ -64,3 +64,20 @@ test('a plan over the run ceiling is policy_denied as a whole, even when each st
   expect(v.steps.every((s) => s.ok)).toBe(true);
   expect(v.plan).toMatchObject({ code: 'policy_denied', reason: expect.stringContaining('✦350') });
 });
+
+test('a link anywhere in a research step is checked, not only under urls', () => {
+  expect(validateStep(ps('r', 'research', { url: 'https://evil.example/x' }), ctx()).reason).toContain('evil.example is not on the allow-list');
+  expect(validateStep(ps('r', 'research', { sources: [{ link: 'https://evil.example/x' }] }), ctx()).ok).toBe(false);
+  expect(validateStep(ps('r', 'research', { url: 'ftp://geostat.ge/x' }), ctx()).ok).toBe(false);
+  expect(validateStep(ps('r', 'research', { urls: ['https://user:pw@geostat.ge/'] }), ctx()).ok).toBe(false);
+  expect(validateStep(ps('r', 'research', { urls: ['geostat.ge'] }), ctx()).ok).toBe(false);
+  expect(validateStep(ps('r', 'research', { url: 'https://geostat.ge./x', query: 'rent prices' }), ctx()).ok).toBe(true);
+});
+
+test('with a price book, the ceiling uses its prices, not the planner\'s guesses, and an unpriced step is refused', () => {
+  const plan: Plan = { title: 't', steps: [ps('a', 'video', {}, 1), ps('b', 'video', {}, 1)] };
+  const book = (s: { tool: string }) => (s.tool === 'video' ? 200 : null);
+  expect(validatePlan(plan, ctx({ priceOf: book })).plan).toMatchObject({ reason: expect.stringContaining('✦400') });
+  const unknown: Plan = { title: 't', steps: [ps('a', 'video', {}, 1), ps('w', 'write', {}, 0)] };
+  expect(validatePlan(unknown, ctx({ priceOf: book, runCeilingCredits: 10_000 }))).toMatchObject({ ok: false, plan: { reason: expect.stringContaining('"w" has no price') } });
+});

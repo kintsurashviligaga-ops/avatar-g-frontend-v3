@@ -42,22 +42,40 @@ export interface ValidateContext {
   domainAllowed: (host: string) => boolean;
   /** The most one run may be estimated at for this user, in credits. */
   runCeilingCredits: number;
+  /**
+   * The price book's price for a step (lib/agent/run pricing), or null when the book has no row for it. When given,
+   * the ceiling is checked against it, not the planner's own estimateCredits: a model's guess at a price is not a price.
+   */
+  priceOf?: (step: PlanStep) => number | null;
 }
 
 /** Levels that stop a step: the same three that turn CI red (lib/capabilities/lifecycle lifecycleBlockers). */
 const BLOCKING: ReadonlySet<LifecycleLevel> = new Set(['retired', 'urgent', 'block']);
 
+/** Every string anywhere in a value (params can nest), so a link cannot hide under a key VALIDATE does not know. */
+function stringsIn(v: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 6) return out;
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) for (const x of v) stringsIn(x, out, depth + 1);
+  else if (v && typeof v === 'object') for (const x of Object.values(v)) stringsIn(x, out, depth + 1);
+  return out;
+}
+
+const SCHEME = /^\s*[a-z][a-z0-9+.-]*:\/\//i;
+
+/**
+ * The hosts a research step would open: every link in its params (not only `urls`, since a planner may write `url` or
+ * nest it), each one https. 'invalid' when any link is not a well-formed https URL.
+ */
 function hostsOf(step: PlanStep): string[] | 'invalid' {
   const urls = step.params.urls;
-  if (urls === undefined) return [];
-  if (!Array.isArray(urls)) return 'invalid';
+  if (urls !== undefined && (!Array.isArray(urls) || urls.some((u) => typeof u !== 'string' || !SCHEME.test(u)))) return 'invalid';
   const hosts: string[] = [];
-  for (const u of urls) {
-    if (typeof u !== 'string') return 'invalid';
+  for (const u of stringsIn(step.params).filter((x) => SCHEME.test(x))) {
     try {
-      const url = new URL(u);
-      if (url.protocol !== 'https:') return 'invalid';
-      hosts.push(url.hostname.toLowerCase());
+      const url = new URL(u.trim());
+      if (url.protocol !== 'https:' || url.username || url.password) return 'invalid';
+      hosts.push(url.hostname.toLowerCase().replace(/\.$/, ''));
     } catch {
       return 'invalid';
     }
@@ -80,7 +98,7 @@ export function validateStep(step: PlanStep, ctx: ValidateContext): StepVerdict 
   if (!ctx.inAudience(step.tool)) return deny('policy_denied', `${step.tool} is not open to this account yet`);
   if (step.tool === 'research') {
     const hosts = hostsOf(step);
-    if (hosts === 'invalid') return deny('policy_denied', 'research urls must be https links');
+    if (hosts === 'invalid') return deny('policy_denied', 'research links must be plain https links');
     const blocked = hosts.find((h) => !ctx.domainAllowed(h));
     if (blocked) return deny('policy_denied', `${blocked} is not on the allow-list`);
   }
@@ -93,7 +111,12 @@ export function validateStep(step: PlanStep, ctx: ValidateContext): StepVerdict 
  */
 export function validatePlan(plan: Plan, ctx: ValidateContext): { ok: boolean; steps: StepVerdict[]; plan?: { code: ValidateCode; reason: string } } {
   const steps = plan.steps.map((s) => validateStep(s, ctx));
-  const estimate = plan.steps.reduce((a, s) => a + s.estimateCredits, 0);
+  const priced = plan.steps.map((s) => ({ s, p: ctx.priceOf ? ctx.priceOf(s) : s.estimateCredits }));
+  const unpriced = priced.find((x) => x.p === null || !Number.isFinite(x.p) || (x.p as number) < 0);
+  if (unpriced) {
+    return { ok: false, steps, plan: { code: 'policy_denied', reason: `step "${unpriced.s.id}" has no price in the price book` } };
+  }
+  const estimate = priced.reduce((a, x) => a + (x.p as number), 0);
   const over = estimate > ctx.runCeilingCredits ? { code: 'policy_denied' as const, reason: `estimate ✦${estimate} is over this account's ✦${ctx.runCeilingCredits} per run` } : undefined;
   return { ok: steps.every((v) => v.ok) && !over, steps, ...(over ? { plan: over } : {}) };
 }

@@ -11,20 +11,21 @@
  *     never holds back the others. Ready steps start in plan order, so the same inputs always give the same schedule.
  *   · A result counts only for the attempt in flight (a late answer from a stopped or retried attempt is ignored), and
  *     only after its VERIFY check passes.
- *   · A retryable failure is retried once (MAX_STEP_RETRIES); after that the step fails. A step whose input failed, was
+ *   · A retryable failure is retried once (MAX_STEP_RETRIES), RETRY_BACKOFF_MS later; after that the step fails. A step whose input failed, was
  *     skipped or was stopped is skipped: it can never run.
  *   · Pause stops new starts; running steps finish. Resume carries on. Cancel stops the running steps and ends the rest.
  *   · The deadline (default 10 min) cancels what is left; the run ends partially_completed when something was
  *     delivered, failed when nothing was.
  *   · With `replanOnFailure`, a run whose steps all ended with a failure (and replans left) waits for the user
- *     (awaiting_approval) instead of ending; `replan` swaps in a new tail, keeping every step already done.
+ *     (awaiting_approval) instead of ending; `replan` swaps in a new tail, keeping every step already done. The
+ *     deadline is held while it waits; after APPROVAL_TIMEOUT_MS with no yes it ends, still delivering what is done.
  *   · Checkpoints: a step records the hash of what it was made from. A run created with `reuse` from an earlier one
  *     takes a done step with the same hash as delivered, without running it or paying for it again.
  *   · Every run status change goes the legal way through lib/agent/contracts RUN_TRANSITIONS.
  */
 import { TERMINAL_RUN_STATUSES, transitionPath, type RunStatus } from '../contracts';
 import {
-  DEFAULT_RUN_DEADLINE_MS, MAX_REPLANS, MAX_SANDBOX_PER_USER, MAX_STEP_RETRIES, MAX_WORKERS, SANDBOX_TOOLS, TERMINAL_STEP,
+  APPROVAL_TIMEOUT_MS, DEFAULT_RUN_DEADLINE_MS, MAX_REPLANS, RETRY_BACKOFF_MS, MAX_SANDBOX_PER_USER, MAX_STEP_RETRIES, MAX_WORKERS, SANDBOX_TOOLS, TERMINAL_STEP,
   type EngineEffect, type EngineRun, type Plan, type PlanStep, type StepState, type TickInput, type TickOutput,
   type Checkpoint, type TimelineEvent, type TimelineType, type Verifier,
 } from './types';
@@ -157,7 +158,8 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
       s.attemptId = undefined;
       if (canRetry) {
         s.status = 'pending';
-        t.emit('step.retry', s.id, { error: s.error, attempt: s.attempts });
+        s.notBefore = t.now + RETRY_BACKOFF_MS;
+        t.emit('step.retry', s.id, { error: s.error, attempt: s.attempts, at: s.notBefore });
       } else {
         s.status = 'failed';
         s.endedAt = t.now;
@@ -166,10 +168,18 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
     }
   }
 
-  // 3. The deadline is a cancel the run gives itself.
-  if (!t.run.cancelRequested && t.now >= t.run.deadlineAt) {
-    t.run.cancelRequested = true;
-    t.run.error = 'deadline';
+  // 3. The deadline is a cancel the run gives itself. While the run waits for the user's yes it is held; the wait
+  //    has its own, longer limit.
+  if (!t.run.cancelRequested) {
+    if (t.run.status === 'awaiting_approval') {
+      if (t.now - (t.run.awaitingSince ?? t.now) >= APPROVAL_TIMEOUT_MS) {
+        t.run.cancelRequested = true;
+        t.run.error = 'approval_timeout';
+      }
+    } else if (t.now >= t.run.deadlineAt) {
+      t.run.cancelRequested = true;
+      t.run.error = 'deadline';
+    }
   }
 
   // 4. A stop ends everything that has not ended.
@@ -215,12 +225,14 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
         continue;
       }
       if (t.run.paused || t.run.cancelRequested || running >= MAX_WORKERS) continue;
+      if (s.notBefore !== undefined && t.now < s.notBefore) continue;
       const sandbox = SANDBOX_TOOLS.has(ps.tool);
       if (sandbox && sandboxRunning >= MAX_SANDBOX_PER_USER) continue;
       s.status = 'running';
       s.attempts += 1;
       s.attemptId = `${t.run.id}:${id}:${s.attempts}:r${t.run.replans}`;
       s.startedAt = t.now;
+      s.notBefore = undefined;
       s.inputsHash = hash;
       running += 1;
       if (sandbox) sandboxRunning += 1;
@@ -239,13 +251,18 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
 function finish(t: Tick, opts: EngineOptions) {
   const done = t.run.steps.filter((s) => s.status === 'done').length;
   if (t.run.status === 'awaiting_approval') {
-    // Waiting for the user's yes to a new plan: only a stop (theirs or the deadline's) ends it.
-    if (t.run.cancelRequested) t.moveTo('cancelled');
+    // Waiting for the user's yes to a new plan: only a stop (theirs, or the wait running out) ends it. What was
+    // already done is still delivered: those credits were spent and the files exist.
+    if (t.run.cancelRequested) {
+      t.moveTo('cancelled');
+      if (done > 0) t.emit('run.delivered', undefined, { steps: done, credits: creditsOf(t.run), reason: t.run.error ?? 'cancelled' });
+    }
     return;
   }
   const failed = t.run.steps.some((s) => s.status === 'failed');
   if (!t.run.cancelRequested && failed && opts.replanOnFailure && t.run.replans < MAX_REPLANS) {
     t.moveTo('awaiting_approval');
+    t.run.awaitingSince = t.now;
     t.emit('step.needs_approval', undefined, { needs: 'replan', replansLeft: MAX_REPLANS - t.run.replans });
     return;
   }
@@ -254,8 +271,12 @@ function finish(t: Tick, opts: EngineOptions) {
   // transitionPath walks the legal hops (queued → running → completed).
   t.moveTo(to);
   if (done > 0 && to !== 'cancelled') {
-    t.emit('run.delivered', undefined, { steps: done, credits: t.run.steps.reduce((a, s) => a + (s.credits ?? 0), 0) });
+    t.emit('run.delivered', undefined, { steps: done, credits: creditsOf(t.run) });
   }
+}
+
+function creditsOf(run: EngineRun): number {
+  return run.steps.reduce((a, s) => a + (s.credits ?? 0), 0);
 }
 
 /**
@@ -266,6 +287,10 @@ function finish(t: Tick, opts: EngineOptions) {
 export function replan(run: EngineRun, plan: Plan, now: number): ({ ok: true } & TickOutput) | { ok: false; error: string } {
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { ok: false, error: `run is ${run.status}` };
   if (run.replans >= MAX_REPLANS) return { ok: false, error: `at most ${MAX_REPLANS} replans` };
+  const ids = new Set(plan.steps.map((s) => s.id));
+  if (ids.size !== plan.steps.length) return { ok: false, error: 'the new plan repeats a step id' };
+  const dangling = plan.steps.find((s) => s.dependsOn.some((d) => !ids.has(d)));
+  if (dangling) return { ok: false, error: `step "${dangling.id}" needs a step that is not in the new plan` };
   if (!topoOrder(plan.steps)) return { ok: false, error: 'the new plan has a cycle' };
   const t = new Tick(run, now);
   const kept = t.run.steps.filter((s) => s.status === 'done' || s.status === 'running');
@@ -281,6 +306,11 @@ export function replan(run: EngineRun, plan: Plan, now: number): ({ ok: true } &
   t.run.plan = plan;
   t.run.steps = plan.steps.map((ps) => (keptIds.has(ps.id) ? kept.find((k) => k.id === ps.id)! : { id: ps.id, status: 'pending', attempts: 0 }));
   t.run.replans += 1;
+  if (t.run.awaitingSince !== undefined) {
+    // The time spent waiting for the user's yes is given back to the run.
+    t.run.deadlineAt += Math.max(0, now - t.run.awaitingSince);
+    t.run.awaitingSince = undefined;
+  }
   t.emit('run.replanned', undefined, { replans: t.run.replans, steps: plan.steps.length });
   if (t.run.status === 'awaiting_approval') t.moveTo('queued');
   return { ok: true, ...t.out() };

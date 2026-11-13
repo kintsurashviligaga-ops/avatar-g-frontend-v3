@@ -39,6 +39,13 @@ export const MAX_SANDBOX_PER_USER = 1;
 export const MAX_STEP_RETRIES = 1;
 export const MAX_REPLANS = 2;
 export const DEFAULT_RUN_DEADLINE_MS = 10 * 60_000;
+/** A retried attempt waits this long first: an instant retry of a rate limit or a busy model usually fails again. */
+export const RETRY_BACKOFF_MS = 5_000;
+/**
+ * How long a run waits in awaiting_approval for the user's yes to a replan. The run deadline does not run while it
+ * waits (the user is not the engine); after this the run ends with what it delivered.
+ */
+export const APPROVAL_TIMEOUT_MS = 24 * 60 * 60_000;
 
 export interface PlanStep {
   id: string;
@@ -82,6 +89,8 @@ export interface StepState {
   error?: string;
   /** Delivered by an earlier run and reused, never paid again. */
   reused?: boolean;
+  /** A retry does not start before this time (RETRY_BACKOFF_MS after the failure). */
+  notBefore?: number;
 }
 
 /** What a done step was made from and where its outputs are: enough to reuse it in a later run. */
@@ -105,6 +114,8 @@ export interface EngineRun {
   seq: number;
   /** Checkpoints of an earlier run this one carries on from: a step with the same inputs hash is reused, not re-run. */
   reuse?: Record<string, Checkpoint>;
+  /** When the run started waiting in awaiting_approval (the deadline is held while it waits). */
+  awaitingSince?: number;
 }
 
 /** The timeline vocabulary of 06 §4; the spinner / ✓ / fold card (#272, #275) renders these. */

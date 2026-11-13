@@ -4,7 +4,7 @@ import { RUN_TRANSITIONS, type RunStatus } from '../contracts';
 import { parsePlan } from './plan';
 import { checkpointsOf, createRun, fnv1a, inputsHashOf, replan, runSummary, stableJson, tick } from './scheduler';
 import { simulate } from './simulate';
-import { MAX_WORKERS, type Plan, type TimelineEvent } from './types';
+import { APPROVAL_TIMEOUT_MS, MAX_WORKERS, RETRY_BACKOFF_MS, type Plan, type TimelineEvent } from './types';
 
 function plan(steps: Array<[id: string, tool: string, deps?: string[]]>, title = 'test'): Plan {
   const r = parsePlan({ title, steps: steps.map(([id, tool, deps]) => ({ id, tool, title: id, dependsOn: deps ?? [] })) });
@@ -182,4 +182,53 @@ test('hash and summary helpers', () => {
   expect(inputsHashOf(s!, ['x'])).not.toBe(inputsHashOf(s!, ['y']));
   const r = simulate(plan([['a', 'research'], ['b', 'write', ['a']]], 'Brief'), { steps: { a: [{ ms: 500, fail: { error: 'blocked', retryable: false } }] } });
   expect(runSummary(r.run)).toBe('Brief [failed]\n✗ a [research] a (blocked)\n– b [write] b ← a (skipped)');
+});
+
+test('a retry waits RETRY_BACKOFF_MS before it starts again', () => {
+  const p = plan([['a', 'write']]);
+  const r = simulate(p, { steps: { a: [{ ms: 500, fail: { error: '429', retryable: true } }, { ms: 500 }] } });
+  expect(r.run.status).toBe('completed');
+  expect(r.spans.a![1]!.start - r.spans.a![0]!.end!).toBeGreaterThanOrEqual(RETRY_BACKOFF_MS);
+  expect(r.events.find((e) => e.type === 'step.retry')!.data!.at).toBe(r.spans.a![0]!.end! + RETRY_BACKOFF_MS);
+});
+
+test('the deadline is held while the run waits for a yes, and the wait is given back on replan', () => {
+  const p = plan([['a', 'write'], ['b', 'write', ['a']]]);
+  // b fails at ~1.5 s; the yes comes 20 min later, well past the 10 min run deadline.
+  const r = simulate(p, { steps: { b: [{ ms: 500, fail: { error: 'bad', retryable: false } }] } }, {
+    replanOnFailure: true,
+    tickMs: 60_000,
+    onAwaitingApproval: (run, now) => {
+      if (now < 20 * 60_000) return null;
+      const out = replan(run, plan([['a', 'write'], ['b2', 'write', ['a']]]), now);
+      return out.ok ? { run: out.run, events: out.events } : null;
+    },
+  });
+  expect(r.run.status).toBe('completed');
+  expect(r.run.error).toBeUndefined();
+  expect(r.run.steps.map((s) => `${s.id}:${s.status}`)).toEqual(['a:done', 'b2:done']);
+  expect(r.run.awaitingSince).toBeUndefined();
+});
+
+test('a yes that never comes ends the run after APPROVAL_TIMEOUT_MS, still delivering what was done', () => {
+  const p = plan([['a', 'write'], ['b', 'write', ['a']]]);
+  const r = simulate(p, { steps: { b: [{ ms: 500, fail: { error: 'bad', retryable: false } }] } }, {
+    replanOnFailure: true,
+    tickMs: 60_000,
+    onAwaitingApproval: () => null,
+  });
+  expect(r.run.status).toBe('cancelled');
+  expect(r.run.error).toBe('approval_timeout');
+  expect(r.events.find((e) => e.type === 'run.delivered')!.data).toMatchObject({ steps: 1, reason: 'approval_timeout' });
+  expectLegalStatuses(r.events);
+  expect(APPROVAL_TIMEOUT_MS).toBe(24 * 60 * 60_000);
+});
+
+test('replan refuses a plan that repeats an id or needs a step it does not have', () => {
+  const p = plan([['a', 'write'], ['b', 'write', ['a']]]);
+  const half = simulate(p, { steps: { b: [{ ms: 500, fail: { error: 'x', retryable: false } }] } }, { replanOnFailure: true });
+  const dup: Plan = { title: 't', steps: [half.run.plan.steps[0]!, { ...half.run.plan.steps[0]! }] };
+  expect(replan(half.run, dup, 9_000)).toMatchObject({ ok: false, error: 'the new plan repeats a step id' });
+  const dangling: Plan = { title: 't', steps: [half.run.plan.steps[0]!, { id: 'c', tool: 'write', title: 'c', dependsOn: ['zzz'], params: {}, estimateCredits: 0 }] };
+  expect(replan(half.run, dangling, 9_000)).toMatchObject({ ok: false, error: expect.stringContaining('"c" needs a step') });
 });
