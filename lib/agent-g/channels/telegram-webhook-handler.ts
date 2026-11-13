@@ -12,7 +12,7 @@ import {
 } from '@/lib/agentg/personality';
 import { detectTone, type AgentGTone } from '@/lib/agent-g/tone';
 import { getUserMemory, recordEvent, upsertUserMemory } from '@/lib/agent-g/memory';
-import { isAgentGVoiceEnabled, transcribeTelegramVoice } from '@/lib/agent-g/voice/stt';
+import { agentGVoiceMaxSeconds, isAgentGVoiceEnabled, transcribeTelegramVoice } from '@/lib/agent-g/voice/stt';
 import { synthesizeTelegramVoice } from '@/lib/agent-g/voice/tts';
 import { generateChannelReply } from '@/lib/ai/channelBridge';
 import { secretMatches } from '@/lib/security/secretMatch';
@@ -221,15 +221,6 @@ function detectLocaleFromText(text: string | null): AgentGLocale {
   if (/\b(hello|hi|help|thanks|please)\b/.test(normalized)) return 'en';
   if (/\b(привет|помоги|спасибо|пожалуйста)\b/.test(normalized)) return 'ru';
   return 'ka';
-}
-
-function getVoiceDurationLimitSeconds(): number {
-  const raw = Number(process.env.AGENT_G_VOICE_MAX_SECONDS || '45');
-  if (!Number.isFinite(raw) || raw <= 0) {
-    return 45;
-  }
-
-  return Math.floor(raw);
 }
 
 function redactSensitiveText(value: string): string {
@@ -476,7 +467,7 @@ export async function processTelegramUpdateInBackground(params: {
   if (shouldProcessVoice && voiceAttachment?.file_id) {
     const voiceDuration = Number(voiceAttachment.duration || 0);
     const voiceMimeType = 'mime_type' in voiceAttachment ? voiceAttachment.mime_type : undefined;
-    const maxSeconds = getVoiceDurationLimitSeconds();
+    const maxSeconds = agentGVoiceMaxSeconds();
 
     if (voiceDuration > maxSeconds) {
       await sendTelegramMessage({

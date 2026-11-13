@@ -1,47 +1,45 @@
 import 'server-only';
 
+import { transcribeWithChirp, CHIRP_SYNC_MAX_SECONDS } from '@/lib/voice-v2v/chirpStt';
+
+/**
+ * Agent G's Telegram voice notes → text, on Cloud Speech-to-Text Chirp 3 (lib/voice-v2v/chirpStt: the site mic's engine
+ * since GG's card of 2026-11-01, the same Vertex Workload Identity token, no API key). This replaced OpenAI's
+ * transcription API (v5.1 M-14 cleanup, GG 2026-11-13 16:20Z), so OpenAI is left only for the chat-memory embeddings
+ * until #306 lands.
+ *
+ * Telegram sends voice notes as OGG/Opus; Chirp's `autoDecodingConfig` reads OGG_OPUS, so the bytes go as they are.
+ * One sync request takes under CHIRP_SYNC_MAX_SECONDS (60 s): longer notes are turned away by the handler first
+ * (agentGVoiceMaxSeconds caps AGENT_G_VOICE_MAX_SECONDS at that).
+ */
+export type SttResult = {
+  transcript: string;
+  provider: 'chirp-3';
+  /** Seconds Google billed (both Chirp legs), for the owner's cost view. */
+  billedSeconds: number;
+};
+
+/**
+ * Off unless AGENT_G_VOICE=on. It was hard-off while the only engine was OpenAI (Google only, MASTER TASK v3.1); now
+ * that it is Chirp, turning it on is GG's call after a real voice note is tried. Merging this changes nothing.
+ */
+export function isAgentGVoiceEnabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return String(env.AGENT_G_VOICE || '').trim().toLowerCase() === 'on';
+}
+
+/** The longest note Agent G transcribes: AGENT_G_VOICE_MAX_SECONDS (default 45), never more than Chirp's sync limit. */
+export function agentGVoiceMaxSeconds(env: Readonly<Record<string, string | undefined>> = process.env): number {
+  const raw = Number(env.AGENT_G_VOICE_MAX_SECONDS || '45');
+  const n = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 45;
+  return Math.min(n, CHIRP_SYNC_MAX_SECONDS);
+}
+
 type TelegramFileResponse = {
   ok?: boolean;
   result?: {
     file_path?: string;
   };
 };
-
-type OpenAITranscriptionResponse = {
-  text?: string;
-  segments?: Array<{
-    start?: number;
-    end?: number;
-    text?: string;
-  }>;
-};
-
-export type SttResult = {
-  transcript: string;
-  provider: 'openai-stt';
-  segments?: Array<{
-    startSec: number;
-    endSec: number;
-    text: string;
-  }>;
-};
-
-/**
- * Always false: the Telegram voice STT below is OpenAI's, and chat, voice and agents run on Google only (MASTER TASK
- * v3.1), so AGENT_G_VOICE_ENABLED no longer turns it on. A voice note gets the text reply path's silence until a
- * Google STT backs this door.
- */
-export function isAgentGVoiceEnabled(): boolean {
-  return false;
-}
-
-function getSttModel(): string {
-  return String(process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe').trim();
-}
-
-function getOpenAIKey(): string {
-  return String(process.env.OPENAI_API_KEY || '').trim();
-}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -95,79 +93,19 @@ async function resolveTelegramFileUrl(botToken: string, fileId: string): Promise
   return `https://api.telegram.org/file/bot${botToken}/${filePath}`;
 }
 
-export async function transcribeAudioBuffer(input: {
-  audioBuffer: Uint8Array;
-  filename: string;
-  mimeType?: string;
-  language?: string;
-  withSegments?: boolean;
-}): Promise<SttResult> {
-  const openAIKey = getOpenAIKey();
-  if (!openAIKey) {
-    throw new Error('missing_openai_key');
-  }
-
-  const form = new FormData();
-  const mimeType = input.mimeType || 'audio/ogg';
-  const fileBuffer = Uint8Array.from(input.audioBuffer);
-  form.append('file', new Blob([fileBuffer], { type: mimeType }), input.filename);
-  form.append('model', getSttModel());
-  if (input.language?.trim()) {
-    form.append('language', input.language.trim());
-  }
-  if (input.withSegments) {
-    form.append('response_format', 'verbose_json');
-  }
-
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${openAIKey}`,
-    },
-    body: form,
-    cache: 'no-store',
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  const payload = (await response
-    .json()
-    .catch(() => null)) as OpenAITranscriptionResponse | null;
-  const transcript = String(payload?.text || '').trim();
-
-  if (!response.ok || !transcript) {
-    throw new Error('openai_transcription_failed');
-  }
-
-  const segments = Array.isArray(payload?.segments)
-    ? payload.segments
-        .map((segment) => {
-          const text = String(segment?.text || '').trim();
-          const startSec = Number(segment?.start ?? 0);
-          const endSec = Number(segment?.end ?? startSec);
-
-          if (!text || !Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) {
-            return null;
-          }
-
-          return {
-            startSec,
-            endSec,
-            text,
-          };
-        })
-        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-    : undefined;
-
-  return {
-    transcript,
-    provider: 'openai-stt',
-    ...(segments && segments.length > 0 ? { segments } : {}),
-  };
+/** One clip → text on Chirp 3, Georgian first (the site's three languages are listed; chirpStt picks the readable leg). */
+export async function transcribeAudioBuffer(input: { audioBuffer: Uint8Array; language?: string }): Promise<SttResult> {
+  if (!input.audioBuffer.length) throw new Error('empty_voice_file');
+  const r = await transcribeWithChirp(input.audioBuffer, input.language?.trim() || 'ka');
+  const transcript = r.text.trim();
+  if (!transcript) throw new Error('chirp_transcription_empty');
+  return { transcript, provider: 'chirp-3', billedSeconds: r.billedSeconds };
 }
 
 export async function transcribeTelegramVoice(input: {
   botToken: string;
   fileId: string;
+  /** Kept for the caller's signature; Chirp decodes OGG/Opus on its own. */
   mimeType?: string;
 }): Promise<SttResult> {
   return withRetries(2, async () => {
@@ -190,11 +128,6 @@ export async function transcribeTelegramVoice(input: {
       throw new Error('empty_voice_file');
     }
 
-    return transcribeAudioBuffer({
-      audioBuffer,
-      filename: 'telegram-voice.ogg',
-      mimeType: input.mimeType,
-      language: 'ka',
-    });
+    return transcribeAudioBuffer({ audioBuffer, language: 'ka' });
   });
 }
