@@ -26,10 +26,11 @@ export function VoiceSettingsPanel({ userId, locale = 'ka' }: { userId?: string 
   const { preferences: p, update, reset, saved } = useVoicePreferences(userId);
   const t = COPY[locale], ix = locale === 'ka' ? 0 : locale === 'en' ? 1 : 2;
   const change = (key: keyof VoicePreferences, value: string) => update({ ...p, [key]: value });
-  const field = 'min-h-[44px] w-full rounded-lg border border-white/15 bg-black p-2 text-base text-white';
-  return <section aria-label={VOICE_SETTINGS_LABEL[locale]} className="space-y-3 bg-black p-4 text-white">
-    <p className="text-sm text-slate-300">{t.note}</p>
-    <fieldset disabled={!userId} className="grid gap-3 sm:grid-cols-2">
+  // Phase 7.5: the app's own tokens (was white-on-black with its own borders), so the sheet reads as part of the studio.
+  const field = 'mt-1 block min-h-[44px] w-full rounded-xl bg-app-elevated px-3 text-base text-app-text ring-1 ring-app-border/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:opacity-40';
+  return <section aria-label={VOICE_SETTINGS_LABEL[locale]} className="space-y-3 bg-app-surface p-4 text-app-text">
+    <p className="text-[13px] leading-snug text-app-muted">{t.note}</p>
+    <fieldset disabled={!userId} className="grid gap-3 text-[13px] font-semibold sm:grid-cols-2">
       <label>{t.personality}<select className={field} value={p.personality} onChange={e => update(selectPersonality(p, e.target.value as Personality))}>
         {Object.entries(PERSONALITIES).map(([id,v]) => <option key={id} value={id}>{v[locale]}</option>)}
       </select></label>
@@ -43,7 +44,7 @@ export function VoiceSettingsPanel({ userId, locale = 'ka' }: { userId?: string 
         {values.map(v => <option key={v} value={v}>{WORDS[v]?.[ix] ?? v}</option>)}
       </select></label>)}
     </fieldset>
-    <p role="status" className="text-sm text-slate-300">{!userId ? t.signIn : saved ? t.saved : t.failed}</p>
-    <button type="button" disabled={!userId} className="min-h-[44px] rounded-lg border border-blue-400 px-3 text-blue-300" onClick={reset}>{t.reset}</button>
+    <p role="status" className="text-[13px] text-app-muted">{!userId ? t.signIn : saved ? t.saved : t.failed}</p>
+    <button type="button" disabled={!userId} className="min-h-[44px] rounded-full px-4 text-[13px] font-semibold text-app-accent ring-1 ring-app-accent/40 hover:bg-app-accent/10 disabled:opacity-40" onClick={reset}>{t.reset}</button>
   </section>;
 }
