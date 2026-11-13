@@ -156,7 +156,16 @@ export function planTickV2(
   }
 
   // ── 2. the engine decides ──────────────────────────────────────────────────────────────────────────────────────
-  const out = engineTick(eng, { now, results, holds, commands, sandboxBusyElsewhere: opts.sandboxBusyElsewhere ?? 0 }, { maxWorkers: MAX_PARALLEL });
+  let out = engineTick(eng, { now, results, holds, commands, sandboxBusyElsewhere: opts.sandboxBusyElsewhere ?? 0 }, { maxWorkers: MAX_PARALLEL });
+  // A yes that landed before any tick handed the engine its hold (quoted above approval and approved at once): the
+  // engine applies commands before holds, so it holds the quote only now. Release it in this same tick, not the next.
+  const lateYes: EngineCommand[] = run.steps
+    .filter((s) => s.approvedQuoteId && out.run.steps.some((e) => e.id === s.id && e.status === 'awaiting_approval' && e.heldQuote?.quoteId === s.approvedQuoteId))
+    .map((s) => ({ type: 'approve', stepId: s.id, quoteId: s.approvedQuoteId! }));
+  if (lateYes.length && !commands.some((c) => typeof c === 'object' && c.type === 'approve')) {
+    const again = engineTick(out.run, { now, results: [], holds: [], commands: lateYes, sandboxBusyElsewhere: opts.sandboxBusyElsewhere ?? 0 }, { maxWorkers: MAX_PARALLEL });
+    out = { ...again, events: [...out.events, ...again.events], effects: [...out.effects, ...again.effects] };
+  }
   run.engine = out.run;
   const retried = new Set(out.events.filter((e) => e.type === 'step.retry').map((e) => e.stepId));
   for (const e of out.events) {
