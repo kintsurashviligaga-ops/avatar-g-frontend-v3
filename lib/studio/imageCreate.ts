@@ -19,6 +19,7 @@
  *     attachment. So the real limit is ONE reference, not the 14 a competitor's screen shows.
  */
 import { quoteCredits } from '@/lib/credits/quote';
+import { IMG_EXTRA_ASPECTS, imageExtraRatiosUiOn, type ImgExtraAspect } from '@/lib/studio/imageExtras';
 import { DEFAULT_MODEL, catalogueEntry, type CatalogueEntry } from '@/lib/providers/catalogue';
 
 /**
@@ -31,7 +32,13 @@ import { DEFAULT_MODEL, catalogueEntry, type CatalogueEntry } from '@/lib/provid
  * Ordered by how often they are wanted, not numerically, because the picker shows the first row first.
  */
 export const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'] as const;
-export type ImgAspect = (typeof IMG_ASPECTS)[number];
+/** IMG_ASPECTS plus Phase 7.5's four tall/wide ratios (lib/studio/imageExtras, offered only with its flag on). */
+export type ImgAspect = (typeof IMG_ASPECTS)[number] | ImgExtraAspect;
+
+/** The ratios the picker offers: the ten, then the four extra ones when NEXT_PUBLIC_IMAGE_EXTRA_RATIOS is on. */
+export function imageAspectsOffered(extra: boolean = imageExtraRatiosUiOn()): readonly ImgAspect[] {
+  return extra ? [...IMG_ASPECTS, ...IMG_EXTRA_ASPECTS] : IMG_ASPECTS;
+}
 
 /**
  * The qualities a request may carry, with the size each once named. No screen offers them any more (the render takes no size);

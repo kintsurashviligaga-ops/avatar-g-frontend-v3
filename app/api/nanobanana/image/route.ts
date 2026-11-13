@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { generateGeminiImage, geminiFrameModel } from '@/lib/ai/geminiImage';
+import { IMAGE_MULTI_REF_MAX, extraReferences, imageMultiRefServerOn } from '@/lib/studio/imageExtras';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -144,6 +145,8 @@ export async function POST(req: NextRequest) {
       model?: unknown;
       /** Img2img / edit: a source image (data: upload OR an https URL to edit). */
       referenceImage?: string;
+      /** Phase 7.5 (IMAGE_MULTI_REF, off): more pictures after `referenceImage`, up to 14 in all (lib/studio/imageExtras). */
+      referenceImages?: unknown;
       /** P7 — what to AVOID in the image (folded into the prompt as a negative clause). */
       negativePrompt?: string;
       /** DURABLE PROGRESS — the composer's tray jobId. When present the completed row is
@@ -190,6 +193,8 @@ export async function POST(req: NextRequest) {
     // client claims. Null (no `studio`, or an unknown kind) leaves the render exactly as the image tool's controls say.
     const refGiven = typeof body.referenceImage === 'string' && body.referenceImage.trim() !== '';
     const shoot = resolveShootDirective(body.studio, { hasReference: refGiven });
+    // Extra references: read only with IMAGE_MULTI_REF on; off, the field is ignored and the request is exactly today's.
+    const extraRefs = imageMultiRefServerOn() ? extraReferences(body.referenceImages, (body.referenceImage ?? '').trim()) : [];
 
     // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
     // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
@@ -216,7 +221,7 @@ export async function POST(req: NextRequest) {
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: pick.endpoint, ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null, ...(shoot ? { sh: shoot.key } : {}) })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: pick.endpoint, ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null, ...(shoot ? { sh: shoot.key } : {}), ...(extraRefs.length ? { rx: extraRefs.map((x) => x.slice(0, 512)) } : {}) })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
@@ -303,7 +308,16 @@ export async function POST(req: NextRequest) {
     // ⚠️ A STUDIO PHOTO THAT COULD NOT BE HOSTED MUST NOT BECOME A TEXT-TO-IMAGE RENDER. For the image tool a lost reference
     // degrades to a fresh picture; for the Interior designer that is a different room, for the Photographer a different
     // subject — charged as if it were theirs. Refuse and refund before any provider is called.
-    if (shoot && ref && !referenceImageUrl) {
+    // Extra references are hosted like the first. One that cannot be read refuses the render (refunded) rather than
+    // quietly making a picture from fewer photos than the user gave.
+    const extraRefUrls: string[] = [];
+    for (const x of extraRefs) {
+      const url = x.startsWith('data:') ? await hostReferenceImage(x) : x;
+      if (!url) { extraRefUrls.length = 0; break; }
+      extraRefUrls.push(url);
+    }
+    const extraRefLost = extraRefs.length > 0 && extraRefUrls.length !== extraRefs.length;
+    if ((shoot && ref && !referenceImageUrl) || extraRefLost) {
       const refunded = await refundReserve();
       return NextResponse.json({
         success: false,
@@ -335,9 +349,10 @@ export async function POST(req: NextRequest) {
         { service: 'image', model: 'gemini-image', units: 1, userId: rUser?.id ?? null, promptSummary: prompt.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
         () => generateGeminiImage({
           prompt: finalPrompt,
-          referenceImages: referenceImageUrl ? [referenceImageUrl] : [],
+          referenceImages: [...(referenceImageUrl ? [referenceImageUrl] : []), ...extraRefUrls],
           requireReferences: true,
           aspectRatio: body.aspectRatio ?? '1:1',
+          maxReferences: extraRefUrls.length ? IMAGE_MULTI_REF_MAX : undefined,
         }).catch(() => null),
       );
     } catch (err) {
