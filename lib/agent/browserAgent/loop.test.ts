@@ -130,3 +130,24 @@ test('fail closed (GG 2026-11-13): anything ambiguous waits for the user', () =>
   expect(sensitiveReason({ op: 'click', selector: 'text=Opening hours' }, plain)).toBeNull();
   expect(sensitiveReason({ op: 'text' }, unknown)).toBeNull();
 });
+
+test('the wall-clock budget holds even when the decider or the browser never answers', async () => {
+  const w = world([{ kind: 'done', answer: 'x' }]);
+  w.deps.decider.decide = () => new Promise<Decision>(() => {});
+  const t0 = Date.now();
+  const r = await runBrowserAgent(w.deps, { ...go(), wallMs: 60 });
+  expect(r.stop).toBe('deadline');
+  expect(Date.now() - t0).toBeLessThan(2_000);
+
+  const w2 = world([{ kind: 'act', step: { op: 'goto', url: 'https://example.org/' }, why: '' }]);
+  w2.deps.session.act = () => new Promise(() => {});
+  expect((await runBrowserAgent(w2.deps, { ...go(), wallMs: 60 })).stop).toBe('deadline');
+
+  // the user's stop wins over a hung page as well, and is reported as a stop, not a timeout
+  const ctl = new AbortController();
+  const w3 = world([{ kind: 'done', answer: 'x' }]);
+  w3.deps.session.observe = () => new Promise(() => {});
+  const pending = runBrowserAgent(w3.deps, go(ctl.signal));
+  setTimeout(() => ctl.abort(), 20);
+  expect((await pending).stop).toBe('aborted');
+});

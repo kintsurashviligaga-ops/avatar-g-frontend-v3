@@ -50,3 +50,9 @@ test('two phases (GG 2026-11-13): registry egress only while installing; the run
   // A bad list refuses the whole run; it never falls back to running without the packages.
   expect(twoPhasePlan('npm', ['left-pad@1.3.0'], 60)).toMatchObject({ ok: false });
 });
+
+test('names that live on every object ("constructor", "tostring") are refused cleanly, never crash', () => {
+  expect(checkPackages('pip', ['constructor==1.0.0'])).toEqual({ ok: false, error: 'constructor: not on the allowed list' });
+  expect(checkPackages('npm', ['constructor@1.0.0'])).toEqual({ ok: false, error: 'constructor: not on the allowed list' });
+  expect(checkPackages('npm', ['hasownproperty@1.0.0'])).toMatchObject({ ok: false });
+});

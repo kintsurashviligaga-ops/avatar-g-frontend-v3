@@ -82,7 +82,9 @@ export function checkPackages(eco: PkgEcosystem, specs: unknown): PkgCheck {
     if (typeof raw !== 'string' || raw.length > 120) return { ok: false, error: 'packages: each one a short "name==version" (pip) or "name@version" (npm)' };
     const p = parsePkg(eco, raw);
     if (!p) return { ok: false, error: `${raw.slice(0, 60)}: pin an exact version (${eco === 'pip' ? 'name==1.2.3' : 'name@1.2.3'}); no ranges, URLs or paths` };
-    const allowed = PKG_ALLOW[eco][p.name];
+    // Own keys only: "constructor" or "toString" must read as not allowed, not as Object.prototype's members.
+    const list = PKG_ALLOW[eco];
+    const allowed = Object.prototype.hasOwnProperty.call(list, p.name) ? list[p.name] : undefined;
     if (!allowed) return { ok: false, error: `${p.name}: not on the allowed list` };
     if (!allowed.includes(p.version)) return { ok: false, error: `${p.name}: only ${allowed.join(', ')}` };
     if (seen.has(p.name)) continue;

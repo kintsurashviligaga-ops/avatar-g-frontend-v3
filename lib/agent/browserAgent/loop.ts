@@ -141,16 +141,39 @@ export async function runBrowserAgent(deps: LoopDeps, input: { goal: string; sig
   let actions = 0;
   let shots = 0;
   const end = (stop: StopReason, detail: string, extra: Partial<LoopResult> = {}): LoopResult => ({ stop, detail, trail, actions, ...extra });
+  const budget = () => `${Math.round((deadline - started) / 1000)} s budget used`;
+
+  // The wall-clock budget holds even when a decider, a page load or an observation never answers: one internal signal
+  // aborts at the deadline (or when the user stops), and every await below races it. The timer and the listener are
+  // always released, so a finished loop leaves nothing behind.
+  const ctl = new AbortController();
+  let timedOut = false;
+  const onUserAbort = () => ctl.abort();
+  if (input.signal.aborted) ctl.abort();
+  else input.signal.addEventListener('abort', onUserAbort, { once: true });
+  const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, Math.max(0, deadline - deps.now()));
+  const signal = ctl.signal;
+  const bounded = <T>(p: Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      if (signal.aborted) { reject(new Error('aborted')); return; }
+      const onAbort = () => reject(new Error('aborted'));
+      signal.addEventListener('abort', onAbort, { once: true });
+      p.then(
+        (v) => { signal.removeEventListener('abort', onAbort); resolve(v); },
+        (e) => { signal.removeEventListener('abort', onAbort); reject(e); },
+      );
+    });
+  const stopped = () => (timedOut ? end('deadline', budget()) : end('aborted', 'stopped by the user'));
 
   try {
-    let page = boundObservation(await deps.session.observe(input.signal));
+    let page = boundObservation(await bounded(deps.session.observe(signal)));
     for (;;) {
-      if (input.signal.aborted) return end('aborted', 'stopped by the user');
-      if (deps.now() >= deadline) return end('deadline', `${Math.round((deadline - started) / 1000)} s budget used`);
+      if (signal.aborted) return stopped();
+      if (deps.now() >= deadline) return end('deadline', budget());
       if (actions >= maxActions) return end('max_actions', `${maxActions} actions used`);
 
-      const decision = await deps.decider.decide({ goal: input.goal, observation: page, history: trail }, input.signal);
-      if (input.signal.aborted) return end('aborted', 'stopped by the user');
+      const decision = await bounded(deps.decider.decide({ goal: input.goal, observation: page, history: trail }, signal));
+      if (signal.aborted) return stopped();
       const entry: TrailEntry = { at: deps.now(), url: page.url, decision };
       trail.push(entry);
       if (decision.kind === 'done') return end('done', 'goal reached', { answer: decision.answer.slice(0, 4_000) });
@@ -185,13 +208,17 @@ export async function runBrowserAgent(deps: LoopDeps, input: { goal: string; sig
         return end('repeating', entry.held.detail);
       }
 
-      entry.result = await deps.session.act(step, input.signal);
+      entry.result = await bounded(deps.session.act(step, signal));
       actions += 1;
       if (step.op === 'screenshot' && entry.result.ok) shots += 1;
-      if (input.signal.aborted) return end('aborted', 'stopped by the user');
-      page = boundObservation(await deps.session.observe(input.signal));
+      if (signal.aborted) return stopped();
+      page = boundObservation(await bounded(deps.session.observe(signal)));
     }
   } catch (e) {
-    return end(input.signal.aborted ? 'aborted' : 'error', e instanceof Error ? e.message.slice(0, 300) : 'browser agent failed');
+    if (signal.aborted) return stopped();
+    return end('error', e instanceof Error ? e.message.slice(0, 300) : 'browser agent failed');
+  } finally {
+    clearTimeout(timer);
+    input.signal.removeEventListener('abort', onUserAbort);
   }
 }
