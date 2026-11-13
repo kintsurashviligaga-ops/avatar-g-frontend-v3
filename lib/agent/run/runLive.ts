@@ -22,7 +22,7 @@ import { kickDelivery } from '@/lib/notifications/outboxLive';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
 import { disabledServices } from '@/lib/server/serviceSwitches';
 import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
-import { agentValidateOn } from './engineFlags';
+import { agentEngineMedia, agentValidateOn, engineMediaFor } from './engineFlags';
 import { MAX_RUN_STEPS, type RunSpec, type RunTool } from './runSpec';
 import { checkRunSpec, defaultRunCeiling, type RunValidateOutcome } from './runValidate';
 import type { RunExecDeps, StepAdapter } from './runExec';
@@ -84,5 +84,7 @@ export function liveRunDeps(): RunExecDeps {
     finished: kickDelivery,
     // Off unless AGENT_VALIDATE=on: absent, planRun / startRun / resumeRun behave exactly as before.
     ...(agentValidateOn() ? { validate: liveValidate(adapters) } : {}),
+    // Off unless AGENT_ENGINE_MEDIA is admins / everyone: absent, every new run is v1 as today (Phase 3.5b).
+    ...(agentEngineMedia() !== 'off' ? { engineFor: async (userId: string) => engineMediaFor(await isAdminById(userId)) } : {}),
   };
 }

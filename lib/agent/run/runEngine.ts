@@ -18,6 +18,7 @@
  *     a new run that reuses the delivered steps (./runExec resumeRun).
  *   · Every status change goes the legal way through lib/agent/contracts RUN_TRANSITIONS, and is an event.
  */
+import type { EngineRun } from '@/lib/agent/engine/types';
 import { TERMINAL_RUN_STATUSES, transitionPath, type AgentApproval, type CapabilityId, type RunStatus } from '../contracts';
 import type { TransitionSummary } from '@/lib/services/montage/transitionPlan';
 import { refsOf, TOOL_CAPABILITY, type RunSpec, type RunTool } from './runSpec';
@@ -84,12 +85,20 @@ export interface RunStepState {
   approval?: AgentApproval;
   /** Delivered by the run this one resumes: reused, never run again. */
   reused?: boolean;
+  /** v2 (lib/agent/run/engineBridge): the engine attempt this step's quote and job belong to. */
+  attemptId?: string;
+  /** v2: the attempt ended before a job existed (its quote or its enqueue was refused); the next tick tells the engine. */
+  attemptError?: string;
+  /** v2: the user's yes to the held quote with this id (approveStep); the engine releases the step on the next tick. */
+  approvedQuoteId?: string;
 }
 
 export type RunEventType =
   | 'run.created' | 'run.resumed' | 'run.status' | 'run.cancel_requested' | 'run.invariant'
   | 'step.quoted' | 'step.awaiting_approval' | 'step.approved' | 'step.queued' | 'step.running' | 'step.completed'
-  | 'step.failed' | 'step.cancelled' | 'step.skipped' | 'step.reused' | 'step.requote';
+  | 'step.failed' | 'step.cancelled' | 'step.skipped' | 'step.reused' | 'step.requote'
+  // v2 runs only (the engine's retry and pause, lib/agent/run/engineBridge).
+  | 'step.retry' | 'run.paused' | 'run.unpaused';
 
 export interface RunEvent {
   seq: number;
@@ -100,7 +109,8 @@ export interface RunEvent {
 }
 
 export interface RunState {
-  v: 1;
+  /** 1: planTick decides. 2: lib/agent/engine decides (./engineBridge), the steps below are its projection. */
+  v: 1 | 2;
   status: RunStatus;
   spec: RunSpec;
   steps: RunStepState[];
@@ -116,6 +126,10 @@ export interface RunState {
   /** The last event number (events keep their numbers when the oldest are dropped). */
   seq: number;
   events: RunEvent[];
+  /** v2 only: the engine's own run (plan, attempts, retries, deadline). */
+  engine?: EngineRun;
+  /** v2 only: the owner paused it (running jobs finish; nothing new starts). */
+  paused?: boolean;
 }
 
 /** What a step's job says now. */
@@ -348,7 +362,11 @@ export const stepOf = (run: RunState, id: string): RunStepState | undefined => r
 export function runOf(params: unknown): RunState | null {
   const p = params && typeof params === 'object' && !Array.isArray(params) ? (params as Record<string, unknown>) : null;
   const r = p?._run as RunState | undefined;
-  if (!r || typeof r !== 'object' || r.v !== 1 || !Array.isArray(r.steps) || !Array.isArray(r.events) || !r.spec || !Array.isArray(r.spec.steps)) return null;
+  if (!r || typeof r !== 'object' || (r.v !== 1 && r.v !== 2) || !Array.isArray(r.steps) || !Array.isArray(r.events) || !r.spec || !Array.isArray(r.spec.steps)) return null;
   if (r.steps.length !== r.spec.steps.length || r.steps.some((s, i) => s.id !== r.spec.steps[i]!.id)) return null;
+  if (r.v === 2) {
+    const e = r.engine;
+    if (!e || typeof e !== 'object' || !Array.isArray(e.steps) || e.steps.length !== r.steps.length || e.steps.some((s, i) => s.id !== r.steps[i]!.id)) return null;
+  }
   return r;
 }

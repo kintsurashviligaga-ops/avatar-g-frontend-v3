@@ -20,7 +20,7 @@ import { RUN_TRANSITIONS, type RunStatus } from '../contracts';
 import { RUN_KIND, TICK_LEASE_MS, stepOf, type RunState } from './runEngine';
 import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
 import {
-  approveStep, cancelRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
+  approveStep, cancelRun, pauseRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
 } from './runExec';
 import type { RunSpec } from './runSpec';
 import { checkRunSpec } from './runValidate';
@@ -83,6 +83,8 @@ function world(opts: { render?: Parameters<typeof fake>[0]['render']; adapters?:
     key: () => 'k',
     now: () => m.clock.now,
     newId: () => `run-${(rid += 1)}`,
+    // runExec.v2.test.ts runs this whole file again with every run on the Phase 3 engine (_run.v=2, engineBridge).
+    ...(process.env.RUN_EXEC_SUITE_V2 === '1' ? { engineFor: async () => true } : {}),
   };
   return { deps, m, a, e, store: m.store, clock: m.clock, audits, workers };
 }
@@ -125,6 +127,19 @@ async function drive(w: World, id: string, rounds = 6): Promise<RunState> {
 }
 
 describe('plan and start: only a tapped, signed plan creates a run, once', () => {
+  test('the run is of the version this suite runs (v1 here, v2 in runExec.v2.test.ts)', async () => {
+    const w = world();
+    const id = await started(w);
+    const run = runAt(w, id);
+    if (process.env.RUN_EXEC_SUITE_V2 === '1') {
+      expect(run.v).toBe(2);
+      expect(run.engine?.steps.map((s) => s.id)).toEqual(run.steps.map((s) => s.id));
+    } else {
+      expect(run.v).toBe(1);
+      expect(run.engine).toBeUndefined();
+    }
+  });
+
   test('plan → start → the same tap again replays the same run; nothing runs before the first tick', async () => {
     const w = world();
     const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
@@ -579,6 +594,32 @@ describe('races', () => {
     expect(now.steps[0]!.taskId).not.toBe(old.taskId);
     expect(jobsOf(w, AUDIO_KIND).map((r) => r.id)).toEqual([now.steps[0]!.taskId]);
     expectLegal(now);
+  });
+});
+
+describe('pause (v2 runs only)', () => {
+  test('a v1 run cannot be paused; a v2 run finishes what runs, starts nothing new until un-paused', async () => {
+    const w = world();
+    const id = await started(w);
+    await tick(w, id);
+    if (process.env.RUN_EXEC_SUITE_V2 !== '1') {
+      expect(await pauseRun(w.deps, { userId: USER, id, paused: true, startWorkers: true })).toMatchObject({ ok: false, error: 'not_pausable' });
+      return;
+    }
+    expect(await pauseRun(w.deps, { userId: 'someone-else', id, paused: true, startWorkers: true })).toMatchObject({ ok: false, error: 'not_found' });
+    expect(await pauseRun(w.deps, { userId: USER, id, paused: true, startWorkers: true })).toEqual({ ok: true });
+    await work(w);
+    await tick(w, id);
+    await tick(w, id);
+    let run = runAt(w, id);
+    expect(run).toMatchObject({ status: 'running', paused: true, steps: [{ status: 'completed' }, { status: 'planned' }] });
+    expect(jobsOf(w, MONTAGE_KIND)).toHaveLength(0);
+    expect(await pauseRun(w.deps, { userId: USER, id, paused: false, startWorkers: true })).toEqual({ ok: true });
+    expect(jobsOf(w, MONTAGE_KIND)).toHaveLength(1);
+    run = await drive(w, id);
+    expect(run.status).toBe('completed');
+    expect(run.events.map((e) => e.type)).toEqual(expect.arrayContaining(['run.paused', 'run.unpaused']));
+    expectLegal(run);
   });
 });
 
