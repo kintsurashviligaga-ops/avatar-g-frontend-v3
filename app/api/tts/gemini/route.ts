@@ -103,9 +103,23 @@ function normalizeVoice(raw: unknown): LiveVoice | null {
   return (PERSONA_VOICES as readonly string[]).includes(cap) ? (cap as LiveVoice) : null;
 }
 
+/**
+ * The plain read-aloud voice GG picked from the five Georgian samples (2026-11-13, gemini-3.8-flash-tts): Algieba, a calm
+ * male narrator. It is used ONLY behind READ_ALOUD_VOICE_V2 (off by default) and ONLY for a request that names no voice,
+ * no gender and no persona, i.e. the chat read-aloud button; every persona, call and explicit voice keeps today's rule.
+ * Flag off = Aoede, exactly as before. Algieba is a TTS voice only: it is not offered to Live.
+ */
+const READ_ALOUD_V2_VOICE = 'Algieba';
+function readAloudVoiceV2On(): boolean {
+  return /^(1|true|yes|on)$/i.test((process.env.READ_ALOUD_VOICE_V2 ?? '').trim());
+}
+
 /** See the header for the precedence. The default profile's voice is Aoede, so no persona + no params = Aoede. */
-function pickVoice(profile: AgentProfile, voice: unknown, gender: unknown, locale: TtsLocale): LiveVoice {
+function pickVoice(profile: AgentProfile, voice: unknown, gender: unknown, locale: TtsLocale): LiveVoice | typeof READ_ALOUD_V2_VOICE {
   const explicit = normalizeVoice(voice);
+  if (!explicit && gender !== 'male' && gender !== 'female' && profile.id === 'default' && readAloudVoiceV2On()) {
+    return READ_ALOUD_V2_VOICE;
+  }
   let v: LiveVoice = explicit ?? profile.voice;
   if (!explicit && (gender === 'male' || gender === 'female') && (gender === 'male') !== MALE_VOICES.has(v)) {
     v = gender === 'male' ? 'Charon' : 'Aoede';
