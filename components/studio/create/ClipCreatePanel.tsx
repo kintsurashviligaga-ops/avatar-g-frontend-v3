@@ -14,14 +14,16 @@
  *
  * ⚠️ EVERY PRICE HERE IS lib/video/directClip.directClipCredits, the function POST /api/video/clip charges by.
  */
-import { ImagePlus, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Dices, ImagePlus, X } from 'lucide-react';
+import { useId, type ReactNode } from 'react';
+import { Disclosure } from '@/components/studio/ui/controls';
+import { CLIP_AVOID_MAX, CLIP_SEED_MAX, randomClipSeed } from '@/lib/video/clipAdvanced';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import {
   DIRECT_CLIP_MAX_PHOTOS, directClipCredits, directClipEngine, directClipQualityLabel, directClipTierAllowed,
   type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech,
 } from '@/lib/video/directClip';
-import { clipEngineLabel, clipLengthsFor, clipPhotoNote, clipResolutionBlurb, clipTierBlurb } from '@/components/studio/clip/clipOrder';
+import { clipEngineLabel, clipLengthsFor, clipPhotoNote, clipResolutionBlurb, clipSpecLine, clipTierBlurb } from '@/components/studio/clip/clipOrder';
 import { CARD, VideoCreateHeader } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -47,6 +49,12 @@ export interface ClipCreatePanelProps {
   photos: { images: readonly string[]; onAdd?: () => void; onRemove?: (index: number) => void };
   /** The Veo tiers this deployment cannot render (GET /api/video/engine): shown as unavailable, never picked. */
   closedTiers?: readonly VideoQuality[];
+  /**
+   * The "Advanced" fold: what to avoid and a seed (Veo's negativePrompt and seed, lib/video/clipAdvanced). Passed only while
+   * NEXT_PUBLIC_CLIP_ADVANCED is on; without it the panel is exactly as before. Read-only on a waiting card's own values
+   * when the setters are missing.
+   */
+  advanced?: { avoid: string; seed: number | null; onAvoid?: (v: string) => void; onSeed?: (v: number | null) => void };
 }
 
 const TIERS: readonly VideoQuality[] = ['lite', 'fast', 'standard'];
@@ -64,6 +72,26 @@ function words(locale: string) {
     refsOnly8: en ? 'With 2–3 photos the clip is 8 s.' : ru ? 'С 2–3 фото клип длится 8 с.' : '2–3 ფოტოთი კლიპი 8 წამიანია.',
     remove: en ? 'Remove photo' : ru ? 'Удалить фото' : 'ფოტოს წაშლა',
     add: en ? 'Add a photo' : ru ? 'Добавить фото' : 'ფოტოს დამატება',
+    firstFrame: en ? 'First frame' : ru ? 'Первый кадр' : 'პირველი კადრი',
+    reference: (n: number) => (en ? `Ref ${n}` : ru ? `Реф. ${n}` : `რეფ. ${n}`),
+    rolesHint: en ? 'One photo opens the clip as its first frame. Two or three guide the look of people and things.'
+      : ru ? 'Одно фото — первый кадр клипа. Два-три задают внешность людей и предметов.'
+        : 'ერთი ფოტო კლიპის პირველი კადრია. ორი-სამი ფოტო ადამიანებისა და საგნების იერს განსაზღვრავს.',
+    willMake: en ? 'You will get' : ru ? 'Получится' : 'შეიქმნება',
+    advanced: en ? 'Advanced' : ru ? 'Дополнительно' : 'დამატებითი',
+    avoid: en ? 'What to avoid' : ru ? 'Чего избегать' : 'რა არ უნდა იყოს',
+    avoidPh: en ? 'e.g. text on screen, blur, extra people' : ru ? 'напр. текст на экране, размытие, лишние люди' : 'მაგ. ეკრანზე ტექსტი, ბუნდოვნება, ზედმეტი ადამიანები',
+    seed: en ? 'Seed' : ru ? 'Seed' : 'Seed',
+    seedHint: en ? 'The same seed with the same settings gives a similar take. Empty is a new one each time.'
+      : ru ? 'Тот же seed с теми же настройками даёт похожий дубль. Пусто — каждый раз новый.'
+        : 'იგივე seed იგივე პარამეტრებით მსგავს დუბლს იძლევა. ცარიელი ყოველ ჯერზე ახალს.',
+    seedPh: en ? 'Random' : ru ? 'Случайно' : 'შემთხვევითი',
+    dice: en ? 'Pick a random seed' : ru ? 'Случайный seed' : 'შემთხვევითი seed',
+    clearSeed: en ? 'Clear' : ru ? 'Очистить' : 'გასუფთავება',
+    omniNoAdvanced: en ? 'Gemini Omni Flash (10 s, or a Georgian line) takes neither. They apply to 4, 6 and 8 s clips.'
+      : ru ? 'Gemini Omni Flash (10 с или грузинская реплика) их не принимает. Они работают для клипов 4, 6 и 8 с.'
+        : 'Gemini Omni Flash (10 წმ ან ქართული რეპლიკა) არცერთს არ იღებს. ისინი 4, 6 და 8 წამიან კლიპებზე მოქმედებს.',
+    changed: (n: number) => (en ? `${n} set` : ru ? `задано: ${n}` : `მითითებულია: ${n}`),
   };
 }
 
@@ -110,10 +138,18 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
   const lengths = clipLengthsFor(photos);
   const note = clipPhotoNote(photos, locale);
   const full = photos >= DIRECT_CLIP_MAX_PHOTOS;
+  const omni = directClipEngine(seconds, p.speech) === 'omni';
+  const price = directClipCredits({ seconds, tier, photos, resolution, speech: p.speech });
+  const summary = clipSpecLine({ prompt: '', photos: p.photos.images.slice(), seconds: photos >= 2 ? 8 : seconds, aspect, tier, resolution, speech: p.speech ?? null }, locale);
 
   return (
     <div data-testid="clip-create-panel" className="space-y-3">
       <VideoCreateHeader locale={locale} title={p.toolName} onSwitchTool={p.onSwitchTool} onClose={p.onClose} />
+
+      <p data-testid="clip-panel-summary" className="flex items-baseline justify-between gap-3 px-1 text-[12.5px] leading-snug text-app-muted">
+        <span className="min-w-0"><span className="font-medium text-app-text">{w.willMake}:</span> <span className="tabular-nums">{summary}</span></span>
+        <span className="shrink-0 font-semibold tabular-nums text-app-text">✦ {price}</span>
+      </p>
 
       <div className={`${CARD} divide-y divide-app-border/10 py-1`}>
         <Chips label={w.length}>
@@ -151,9 +187,12 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
           </p>
           <ul className="mt-2 flex flex-wrap items-center gap-2">
             {p.photos.images.map((src, i) => (
-              <li key={`${i}-${src.slice(-12)}`} className="relative h-11 w-11 shrink-0">
+              <li key={`${i}-${src.slice(-12)}`} className="relative h-11 w-11 shrink-0" data-testid={`clip-panel-photo-${i}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL the user just picked */}
                 <img src={src} alt="" className="h-full w-full rounded-xl object-cover ring-1 ring-app-border/20" />
+                <span data-testid={`clip-panel-photo-role-${i}`} className="pointer-events-none absolute inset-x-0 bottom-0 truncate rounded-b-xl bg-app-bg/80 px-0.5 text-center text-[9px] font-medium leading-[14px] text-app-text">
+                  {photos === 1 ? w.firstFrame : w.reference(i + 1)}
+                </span>
                 {p.photos.onRemove && <button type="button" onClick={() => p.photos.onRemove?.(i)} aria-label={`${w.remove} ${i + 1}`}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/20 hover:text-app-text before:absolute before:-inset-3 before:content-['']">
                   <X size={11} aria-hidden="true" />
@@ -167,9 +206,13 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
               </button>
             </li>}
           </ul>
-          {note && <p className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{note}{photos >= 2 ? ` ${w.refsOnly8}` : ''}</p>}
+          {note
+            ? <p className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{note}{photos >= 2 ? ` ${w.refsOnly8}` : ''}</p>
+            : photos === 0 && <p data-testid="clip-panel-photo-roles" className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{w.rolesHint}</p>}
         </div>
       </div>
+
+      {p.advanced && <ClipAdvancedFold locale={locale} omni={omni} {...p.advanced} />}
 
       <p className="px-1 text-[12px] leading-snug text-app-muted">{w.sound}</p>
       <p data-testid="video-prompt-hint" className="px-1 text-[12.5px] leading-snug text-app-muted">{vc(VIDEO_COPY.promptInChat, locale)}</p>
@@ -179,6 +222,58 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
           {vc(VIDEO_COPY.done, locale)}
         </button>
       )}
+    </div>
+  );
+}
+
+/** "Advanced": what to avoid and a seed, Veo only (lib/video/clipAdvanced; shown only while NEXT_PUBLIC_CLIP_ADVANCED is on). */
+function ClipAdvancedFold({ locale, omni, avoid, seed, onAvoid, onSeed }: {
+  locale: string; omni: boolean; avoid: string; seed: number | null; onAvoid?: (v: string) => void; onSeed?: (v: number | null) => void;
+}) {
+  const w = words(locale);
+  const uid = useId();
+  const set = (avoid.trim() ? 1 : 0) + (seed !== null ? 1 : 0);
+  const readOnly = !onAvoid || !onSeed;
+  const disabled = omni || readOnly;
+  return (
+    <div data-testid="clip-panel-advanced">
+      <Disclosure label={w.advanced} badge={set || undefined} summary={set ? w.changed(set) : undefined}>
+        <div className="space-y-3">
+          {omni && <p data-testid="clip-advanced-omni" className="text-[11.5px] leading-snug text-app-muted">{w.omniNoAdvanced}</p>}
+          <div>
+            <label htmlFor={`${uid}-avoid`} className="mb-1.5 flex items-baseline justify-between text-[12.5px] font-semibold text-app-text">
+              {w.avoid}<span className="text-[11px] font-normal tabular-nums text-app-muted">{avoid.length}/{CLIP_AVOID_MAX}</span>
+            </label>
+            <textarea id={`${uid}-avoid`} rows={2} value={avoid} maxLength={CLIP_AVOID_MAX} disabled={disabled} placeholder={w.avoidPh}
+              onChange={(e) => onAvoid?.(e.target.value)} data-testid="clip-advanced-avoid"
+              className="w-full resize-none rounded-xl border border-app-border/20 bg-app-bg/60 px-3 py-2 text-[14px] text-app-text placeholder:text-app-muted focus:border-app-accent/60 focus:outline-none disabled:opacity-50" />
+          </div>
+          <div>
+            <label htmlFor={`${uid}-seed`} className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{w.seed}</label>
+            <div className="flex items-center gap-2">
+              <input id={`${uid}-seed`} inputMode="numeric" pattern="[0-9]*" disabled={disabled} placeholder={w.seedPh}
+                value={seed === null ? '' : String(seed)} data-testid="clip-advanced-seed"
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D+/g, '').slice(0, 10);
+                  const n = digits === '' ? null : Number(digits);
+                  onSeed?.(n === null || n <= CLIP_SEED_MAX ? n : seed);
+                }}
+                className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-app-border/20 bg-app-bg/60 px-3 text-[14px] tabular-nums text-app-text placeholder:text-app-muted focus:border-app-accent/60 focus:outline-none disabled:opacity-50" />
+              <button type="button" onClick={() => onSeed?.(randomClipSeed())} disabled={disabled} aria-label={w.dice} title={w.dice} data-testid="clip-advanced-dice"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-app-border/20 text-app-text transition-colors hover:bg-app-bg/60 disabled:opacity-40">
+                <Dices size={18} aria-hidden="true" />
+              </button>
+              {seed !== null && (
+                <button type="button" onClick={() => onSeed?.(null)} disabled={disabled} data-testid="clip-advanced-seed-clear"
+                  className="min-h-[44px] shrink-0 rounded-xl px-3 text-[13px] font-medium text-app-accent hover:underline disabled:opacity-40">
+                  {w.clearSeed}
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{w.seedHint}</p>
+          </div>
+        </div>
+      </Disclosure>
     </div>
   );
 }

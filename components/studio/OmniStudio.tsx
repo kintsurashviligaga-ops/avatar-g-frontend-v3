@@ -81,6 +81,7 @@ import { withoutMadeUpResults } from '@/lib/chat/madeUpResults';
 import { DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_PROMPT_MAX, OMNI_DEFAULT_RESOLUTION, OMNI_SPEECH_DEFAULT_RESOLUTION, directClipCredits, snapDirectClipSeconds, type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech } from '@/lib/video/directClip';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import { promptSpeaksGeorgian } from '@/lib/video/clipPrompt';
+import { clipAdvancedUiOn } from '@/lib/video/clipAdvanced';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
@@ -2454,6 +2455,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // An Omni clip's resolution (Gemini Omni Flash, GG's cards 2026-10-25 16:51Z and 2026-10-26 10:55Z), null until one is
   // picked: then a clip whose characters speak Georgian is 1080p, a 10 s clip without words and an edit 720p.
   const [clipResolution, setClipResolution] = useState<DirectClipResolution | null>(null);
+  // The clip panel's Advanced fold (Phase 7.5, lib/video/clipAdvanced): what to avoid and a seed, Veo only. Flag off = unused.
+  const clipAdvancedShown = clipAdvancedUiOn();
+  const [clipAvoid, setClipAvoid] = useState('');
+  const [clipSeed, setClipSeed] = useState<number | null>(null);
   // Video Core v1.0 §4 — the length the user ASKED for, as said („29.7 წამი", „ერთი წუთი"), when it is off the grid:
   // videoDuration holds what is RENDERED (the grid), this holds what is DELIVERED (lib/video/durationContract). Null when
   // the request is on the grid or the user picked a length on the panel. The render sends it as finalDurationSec.
@@ -6190,6 +6195,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       seconds: input.seconds ?? snapDirectClipSeconds(videoDuration),
       aspect: input.aspect ?? (videoOrientation === 'landscape' ? '16:9' : '9:16'),
       tier: openClipTier(veoPlan.tier, clipClosedTiers, photos.length), resolution: clipResolution,
+      ...(clipAdvancedShown ? { avoid: clipAvoid, seed: clipSeed } : {}),
     });
     const id = `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const text = [clipAskText(locale), ...(input.note ? [input.note] : []), ...(photos.length < wanted.length ? [clipPhotoLostText(locale)] : [])].join('\n\n');
@@ -6201,7 +6207,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     ]);
     persistChatTurn('user', input.userText, input.medias);
     closeSettingsLayer();
-  }, [videoDuration, videoOrientation, veoPlan.tier, clipClosedTiers, clipResolution, locale, persistChatTurn, closeSettingsLayer]);
+  }, [videoDuration, videoOrientation, veoPlan.tier, clipClosedTiers, clipResolution, clipAdvancedShown, clipAvoid, clipSeed, locale, persistChatTurn, closeSettingsLayer]);
   const changeClipAsk = useCallback((bubbleId: string, next: ClipAskState) => {
     patchMsgById(bubbleId, (m) => (m.clipAsk?.phase === 'ask' ? { ...m, clipAsk: { ...next, phase: 'ask' } } : m));
   }, [patchMsgById]);
@@ -8653,6 +8659,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     onResolution: (r: DirectClipResolution) => { setClipResolution(r); toAskingClip({ resolution: r }); },
     speech: askingClip ? askingClip.ask.speech : composerSpeech,
     closedTiers: clipClosedTiers,
+    ...(clipAdvancedShown ? {
+      advanced: {
+        avoid: askingClip ? askingClip.ask.avoid ?? '' : clipAvoid,
+        seed: askingClip ? askingClip.ask.seed ?? null : clipSeed,
+        onAvoid: (v: string) => { setClipAvoid(v); toAskingClip({ avoid: v }); },
+        onSeed: (v: number | null) => { setClipSeed(v); toAskingClip({ seed: v }); },
+      },
+    } : {}),
   };
   const composerVideos = attachments.filter((a) => isVideo(a.mimeType));
   const composerEditVideo = composerVideos.length === 1 ? composerVideos[0]! : null;

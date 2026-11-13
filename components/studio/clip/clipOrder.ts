@@ -23,6 +23,7 @@ import {
   directClipQualityLabel, directClipSeconds, directClipTierAllowed,
   type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech,
 } from '@/lib/video/directClip';
+import { CLIP_AVOID_MAX, clipAdvancedBody, normalizeClipAvoid, normalizeClipSeed } from '@/lib/video/clipAdvanced';
 
 type Lang = 'ka' | 'en' | 'ru';
 const lang = (locale: string): Lang => (locale === 'en' || locale === 'ru' ? locale : 'ka');
@@ -41,6 +42,10 @@ export interface ClipOrder {
   resolution: DirectClipResolution;
   /** 'ka' when a character says a Georgian line: the clip is Gemini Omni Flash's at every length (lib/video/directClip). */
   speech: DirectClipSpeech;
+  /** "What to avoid" (Veo's negative prompt), from the panel's Advanced fold (lib/video/clipAdvanced, flag off). */
+  avoid?: string;
+  /** Veo's seed, to repeat a take (lib/video/clipAdvanced, flag off). */
+  seed?: number | null;
 }
 
 /** Where the card is: asking, sending, the clip being made, or cancelled. A delivered or failed clip replaces the card. */
@@ -65,6 +70,9 @@ export function clipOrder(input: {
   resolution?: DirectClipResolution | null;
   /** What the route read (409 price_changed + speech); otherwise the card reads the prompt itself. */
   speech?: DirectClipSpeech;
+  /** The Advanced fold's two fields; neither changes the price. Kept only when set. */
+  avoid?: string;
+  seed?: number | null;
 }): ClipAskState {
   const photos = input.photos.filter(Boolean).slice(0, DIRECT_CLIP_MAX_PHOTOS);
   const seconds = directClipSeconds(input.seconds, photos.length);
@@ -77,11 +85,21 @@ export function clipOrder(input: {
   return {
     prompt: input.prompt, photos, seconds, aspect: input.aspect, tier, resolution, speech, phase: 'ask',
     credits: directClipCredits({ seconds, tier, photos: photos.length, resolution, speech }),
+    ...clipAdvancedOf(input),
   };
 }
 
+/** The Advanced fields an order keeps: only the ones set, so an order without them is exactly today's. */
+function clipAdvancedOf(input: { avoid?: string; seed?: number | null }): Pick<ClipOrder, 'avoid' | 'seed'> {
+  const avoid = normalizeClipAvoid(input.avoid).slice(0, CLIP_AVOID_MAX);
+  const seed = normalizeClipSeed(input.seed);
+  return { ...(avoid ? { avoid } : {}), ...(seed !== null ? { seed } : {}) };
+}
+
 /** One pick on the card, or on the composer's chips while the card waits for Create (the tier only from those). */
-export type ClipChange = { seconds: DirectClipSeconds } | { aspect: DirectClipAspect } | { resolution: DirectClipResolution } | { tier: VideoQuality };
+export type ClipChange =
+  | { seconds: DirectClipSeconds } | { aspect: DirectClipAspect } | { resolution: DirectClipResolution } | { tier: VideoQuality }
+  | { avoid: string } | { seed: number | null };
 
 /** The clip's engine: Gemini Omni Flash at 10 s or with a Georgian line, else Veo. */
 export const clipIsOmni = (state: Pick<ClipOrder, 'seconds' | 'speech'>): boolean => directClipEngine(state.seconds, state.speech) === 'omni';
@@ -162,7 +180,19 @@ export function clipRequestBody(state: ClipAskState): Record<string, unknown> {
   return {
     prompt: state.prompt, photos: state.photos, seconds: state.seconds, aspect: state.aspect, tier: state.tier,
     resolution: state.resolution, ...(state.speech ? { speech: state.speech } : {}), expectedCredits: state.credits,
+    // Veo only: an Omni clip has no negative prompt or seed, so they are not sent for one.
+    ...(clipIsOmni(state) ? {} : clipAdvancedBody({ avoid: state.avoid, seed: state.seed ?? null })),
   };
+}
+
+/** Under the spec line of a Veo clip: what it avoids and its seed, or null when neither is set (or it is Omni's). */
+export function clipAdvancedLine(state: Pick<ClipOrder, 'seconds' | 'speech' | 'avoid' | 'seed'>, locale: string): string | null {
+  if (clipIsOmni(state)) return null;
+  const parts = [
+    ...(state.avoid ? [tr(locale, `თავიდან აიცილე: ${state.avoid}`, `Avoid: ${state.avoid}`, `Избегать: ${state.avoid}`)] : []),
+    ...(typeof state.seed === 'number' ? [tr(locale, `seed ${state.seed}`, `seed ${state.seed}`, `seed ${state.seed}`)] : []),
+  ];
+  return parts.length ? parts.join(' · ') : null;
 }
 
 /** The engine by its product name: Gemini Omni Flash for 10 s or a Georgian line, else Veo 3.1 at its tier. */
