@@ -206,3 +206,26 @@ describe('what a quality pick changes (GG 2026-10-26 08:46Z: the three rows read
     expect(clipTierBlurb('lite', 'ka')).toContain('2–3 ფოტოს არ იღებს');
   });
 });
+
+describe('refineClipSettings (Phase 7.6: chips after an Omni clip)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { refineClipSettings, clipEngineLabel } = require('./clipOrder') as typeof import('./clipOrder');
+  const omniSpec = { prompt: 'ბიჭი ეუბნება დედას: „გამარჯობა, დედა!"', photos: ['data:image/png;base64,AAA'], seconds: 6, aspect: '16:9' as const };
+
+  it('a refine of a Georgian-line clip keeps it Omni, with its own length, frame and photos', () => {
+    const s = refineClipSettings(omniSpec, 'უკეთესად გააკეთე');
+    expect(s).toEqual({ seconds: 6, aspect: '16:9', photos: 1, speech: 'ka' });
+    expect(clipEngineLabel({ seconds: s!.seconds, tier: 'fast', speech: s!.speech })).toBe('Gemini Omni Flash');
+  });
+
+  it('a refine of a Veo clip stays Veo', () => {
+    const s = refineClipSettings({ prompt: 'a cat on a roof at sunset', photos: [], seconds: 8, aspect: '9:16' }, 'make it better');
+    expect(s).toEqual({ seconds: 8, aspect: '9:16', photos: 0, speech: null });
+  });
+
+  it('other words, an empty box or no delivered clip are not a refine', () => {
+    expect(refineClipSettings(omniSpec, 'a dog running on the beach')).toBeNull();
+    expect(refineClipSettings(omniSpec, '   ')).toBeNull();
+    expect(refineClipSettings(undefined, 'უკეთესად გააკეთე')).toBeNull();
+  });
+});
