@@ -48,8 +48,8 @@ const WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativel
 
 /** Keep in step with lib/ai/google/models.ts LIVE_MODELS (that file cannot load here: `@/` imports). */
 export const PROBE_LIVE_MODELS = Object.freeze([
-  'gemini-2.5-flash-native-audio-latest',
   'gemini-3.8-live',
+  'gemini-2.5-flash-native-audio-latest', // former default, rollback only until 2026-12-13
   'gemini-3.1-flash-live-preview',
   'gemini-2.5-flash-native-audio-preview-12-2025',
 ]);

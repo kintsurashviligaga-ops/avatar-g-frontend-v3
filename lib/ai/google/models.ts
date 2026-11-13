@@ -88,12 +88,19 @@ export const DEFAULT_CHAT_MODELS: Readonly<Record<'standard' | 'pro' | 'lite', r
  * with the `models/`-prefixed resource name. Wrap with `toModelResource()` when writing it to the wire; whether the
  * bare id is accepted there is UNVERIFIED.
  */
-export const DEFAULT_LIVE_MODEL = 'gemini-2.5-flash-native-audio-latest';
+export const DEFAULT_LIVE_MODEL = 'gemini-3.8-live';
 
-/** Live models present on the key. Only DEFAULT_LIVE_MODEL is verified in Georgian. */
+/**
+ * The previous Live default, kept ONLY as the GEMINI_LIVE_MODEL rollback. Vertex retires its target
+ * `gemini-live-2.5-flash-native-audio` on 2026-12-13 (model-versions page, read 2026-11-12; v5.1 B-07 / M-2, owner
+ * decision D-12). After that date the rollback no longer works and this id should be removed.
+ */
+export const LEGACY_LIVE_MODEL = 'gemini-2.5-flash-native-audio-latest';
+
+/** Live models present on the key. gemini-3.8-live: Georgian heard in GG's talking-avatar calls (2026-10-26). */
 export const LIVE_MODELS: readonly string[] = [
   DEFAULT_LIVE_MODEL,
-  'gemini-3.8-live',
+  LEGACY_LIVE_MODEL,
   'gemini-3.1-flash-live-preview',
   'gemini-2.5-flash-native-audio-preview-12-2025',
 ];

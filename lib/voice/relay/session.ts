@@ -47,7 +47,15 @@ export const RELAY_DEFAULTS = {
 
 /** The Vertex AI Live WebSocket for a region (`global` has no region prefix). */
 export function vertexLiveUrl(location: string): string {
-  const host = location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+  // `us` / `eu` are Vertex MULTI-REGIONS (gemini-3.8-live lists both, model page read 2026-11-12); their host is
+  // aiplatform.<mr>.rep.googleapis.com (locations page, read 2026-11-12). The Live websocket answers there for gemini-3.8-live
+  // (probe 2026-11-12: eu and us setupComplete); the relay dials it only when LIVE_RELAY_MODEL_LOCATIONS names `eu` or `us`.
+  const host =
+    location === 'global'
+      ? 'aiplatform.googleapis.com'
+      : location === 'us' || location === 'eu'
+        ? `aiplatform.${location}.rep.googleapis.com`
+        : `${location}-aiplatform.googleapis.com`;
   return `wss://${host}/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
 }
 

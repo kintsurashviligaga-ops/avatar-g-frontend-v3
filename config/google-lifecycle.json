@@ -116,7 +116,7 @@
       "retirementDate": "2027-09-25",
       "source": "P1",
       "served": [
-        "Live voice + talking avatar (after #292)"
+        "Live voice + talking avatar (default since #292, M-2)"
       ]
     },
     {
@@ -130,7 +130,7 @@
       "replacement": "gemini-3.8-live",
       "source": "P1",
       "served": [
-        "Live default until #292 (M-2)"
+        "rollback only (LIVE env override); default moved to gemini-3.8-live in #292"
       ]
     },
     {
