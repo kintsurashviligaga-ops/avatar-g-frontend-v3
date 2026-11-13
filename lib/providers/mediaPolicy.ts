@@ -50,7 +50,6 @@ export function refuseOutsideEngine(req?: Request | null): NextResponse {
 export const GATED_ENTRIES: ReadonlyArray<{ file: string; when: string }> = [
   { file: 'app/api/ai/edit/route.ts', when: 'object removal (Replicate inpaint) → refused; ffmpeg ops run' },
   { file: 'app/api/generate/route.ts', when: 'studio models (Higgsfield) → refused; the job list stays open' },
-  { file: 'app/api/genjutsu/generate/route.ts', when: 'motion / swap (Higgsfield) → refused; scene (Veo) runs' },
   { file: 'app/api/pipeline/route.ts', when: 'legacy wizard media legs (Nano Banana, HeyGen, World Labs, Udio, lip-sync) → refused; its text services run' },
   // app/api/ai/music/route.ts and lib/ai/musicEnginesStatus.ts are not listed: since Music Studio v1 (Phase 2) they refuse /
   // show off every non-Google music engine with their own answer (lib/music/studio/boundary).
