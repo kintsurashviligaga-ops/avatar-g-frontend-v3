@@ -13,8 +13,8 @@ const film = src.slice(src.indexOf('const renderFilm = useCallback(async'), src.
 test('a queued film completes its durable row with the master the moment it is delivered', () => {
   const delivered = film.indexOf('if (jobCtx) { deliveredUrl = res.masterUrl; trackJobComplete(jobCtx.jobId, res.masterUrl); }');
   expect(delivered).toBeGreaterThan(0);
-  // before any post-delivery step (lip-sync health check, graphics agent) can hold the job open
-  expect(delivered).toBeLessThan(film.indexOf("fetch('/api/video/lipsync?health=heygen'"));
+  // before any post-delivery step (the graphics agent; the lip-sync pass was removed in v5.1 M-14) can hold the job open
+  expect(film).not.toContain("fetch('/api/video/lipsync");
   expect(delivered).toBeLessThan(film.indexOf("fetch('/api/video/graphics'"));
   // only on a delivered master, never on a failure
   expect(film.slice(film.lastIndexOf('if (mine() && res.ok && res.masterUrl) {', delivered), delivered)).toMatch(/finalUrl = res\.masterUrl;/);

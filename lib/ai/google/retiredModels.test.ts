@@ -180,11 +180,11 @@ describe('no default is a Gemini 2.5 text model', () => {
 
 /** A 2.5 TEXT model as a whole string literal, optionally `models/`-prefixed. */
 const NEW_PROJECT_404_LITERAL = /(['"`])(?:models\/)?gemini-2\.5-(?:flash-lite|flash|pro)\1/g;
-/** Display names only: chatModes maps the model id a reply header reports to its label — it never calls the model. */
-const NEW_PROJECT_404_ALLOWED = new Set(['lib/chat/chatModes.ts']);
+/** No exceptions: chatModes' label map no longer names them either (v5.1 M-14); its prettifier still labels old replies. */
+const NEW_PROJECT_404_ALLOWED = new Set<string>();
 
 describe('no 2.5 text model is called by name in source', () => {
-  it('no source file (outside the label map) names one in a string literal', () => {
+  it('no source file names one in a string literal', () => {
     const files: string[] = [];
     for (const d of SOURCE_DIRS) walk(path.join(ROOT, d), files);
     expect(files.length).toBeGreaterThan(500);

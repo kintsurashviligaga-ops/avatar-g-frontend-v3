@@ -48,11 +48,11 @@ describe('ClipCreatePanel', () => {
     expect(calls.onTier).toHaveBeenCalledWith('standard');
   });
 
-  test('10 s is Gemini Omni Flash at 720p ✦69 or 1080p ✦102 (GG\'s card 16:51Z)', () => {
+  test('10 s is Gemini Omni Flash at 720p ✦47 or 1080p ✦71 (GG\'s card 16:51Z)', () => {
     const { calls } = panel({ seconds: 10 });
     expect(screen.queryByTestId('clip-panel-tier-fast')).toBeNull();
-    expect(screen.getByTestId('clip-panel-res-720p').getAttribute('data-price')).toBe('69');
-    expect(screen.getByTestId('clip-panel-res-1080p').getAttribute('data-price')).toBe('102');
+    expect(screen.getByTestId('clip-panel-res-720p').getAttribute('data-price')).toBe('47');
+    expect(screen.getByTestId('clip-panel-res-1080p').getAttribute('data-price')).toBe('71');
     expect(screen.getByTestId('clip-panel-res-1080p').textContent).toContain('1080p · 1080×1920');
     expect(screen.getByTestId('clip-panel-res-1080p').textContent).toContain('Gemini Omni Flash');
     fireEvent.click(screen.getByTestId('clip-panel-res-1080p'));
@@ -134,7 +134,7 @@ describe('ClipQuickChips', () => {
     fireEvent.click(screen.getByTestId('quick-video-length'));
     const sheet = screen.getByTestId('video-length-picker');
     for (const s of [4, 6, 8]) expect(sheet.textContent).toContain(`✦ ${directClipCredits({ seconds: s, tier: 'fast', photos: 0 })}`);
-    expect(sheet.textContent).toContain('✦ 69');
+    expect(sheet.textContent).toContain('✦ 47');
     expect(sheet.textContent).toContain('Gemini Omni Flash');
     fireEvent.click(within(sheet).getByRole('radio', { name: /10 s/ }));
     expect(calls.onSeconds).toHaveBeenCalledWith(10);
@@ -145,7 +145,7 @@ describe('ClipQuickChips', () => {
     expect(screen.getByTestId('quick-video-tier').textContent).toContain('720p');
     fireEvent.click(screen.getByTestId('quick-video-tier'));
     const sheet = screen.getByTestId('video-tier-picker');
-    expect(sheet.textContent).toContain('✦ 102');
+    expect(sheet.textContent).toContain('✦ 71');
     fireEvent.click(within(sheet).getByRole('radio', { name: /1080p/ }));
     expect(calls.onResolution).toHaveBeenCalledWith('1080p');
   });

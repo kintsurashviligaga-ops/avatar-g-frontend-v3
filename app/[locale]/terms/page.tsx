@@ -43,7 +43,7 @@ const copy: Record<Lang, {
       },
       {
         title: '5. გენერაციის ჩავარდნა',
-        body: 'AI გენერაცია გადახდილია ფიქსირებული კრედიტებიდან. თუ მესამე-მხარის სერვისი (HeyGen, Replicate და ა.შ.) ჩაიშლება გენერაციის შუა გზაზე და ეს ჩვენი ბრალი არ არის — კრედიტი ავტომატურად დაგიბრუნდებათ.',
+        body: 'AI გენერაცია გადახდილია ფიქსირებული კრედიტებიდან. თუ მესამე-მხარის სერვისი (Google Vertex AI) ჩაიშლება გენერაციის შუა გზაზე და ეს ჩვენი ბრალი არ არის — კრედიტი ავტომატურად დაგიბრუნდებათ.',
       },
       {
         title: '6. დაშვებული გამოყენება',
@@ -91,7 +91,7 @@ const copy: Record<Lang, {
       },
       {
         title: '5. Generation Failures',
-        body: 'AI generation is billed in fixed credits. If a third-party provider (HeyGen, Replicate, etc.) fails mid-generation through no fault of ours, the credit is refunded automatically.',
+        body: 'AI generation is billed in fixed credits. If the third-party provider (Google Vertex AI) fails mid-generation through no fault of ours, the credit is refunded automatically.',
       },
       {
         title: '6. Acceptable Use',
@@ -139,7 +139,7 @@ const copy: Record<Lang, {
       },
       {
         title: '5. Сбои генерации',
-        body: 'AI-генерация оплачивается фиксированными кредитами. Если сторонний сервис (HeyGen, Replicate и пр.) откажет в процессе не по нашей вине — кредит возвращается автоматически.',
+        body: 'AI-генерация оплачивается фиксированными кредитами. Если сторонний сервис (Google Vertex AI) откажет в процессе не по нашей вине — кредит возвращается автоматически.',
       },
       {
         title: '6. Допустимое использование',

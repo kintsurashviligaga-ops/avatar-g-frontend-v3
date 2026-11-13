@@ -75,7 +75,7 @@ test('UNPOLLED_SETTLE=0 switches the settle leg off', async () => {
 test('with the reaper ON, a stale `_settle` row is neither failed nor refunded by it — the settle leg owns it', async () => {
   process.env.RENDER_DRAINER_ENABLED = '1';
   reapRows = [
-    { id: 'lipsync:heygen:v1', status: 'processing', updated_at: STALE, user_id: 'user-1', params: settleParams({ kind: 'lipsync', job: 'heygen:v1', ref: 'avatar:lipsync:x:user-1', credits: 20 }) },
+    { id: 'm3d_1', status: 'processing', updated_at: STALE, user_id: 'user-1', params: settleParams({ kind: 'model3d', job: 'pred1', ref: 'model3d:charge:m3d_1', credits: 20 }) },
     { id: 'img_1', status: 'processing', updated_at: STALE, user_id: 'user-1', params: { _reserve: { ref: 'image:img_1:fp', credits: 2 } } },
   ];
   const j = await (await GET(tick())).json();

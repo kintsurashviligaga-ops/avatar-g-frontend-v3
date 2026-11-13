@@ -41,7 +41,7 @@ import { pollScene, type SceneProgress } from '@/lib/genjutsu/veoScene';
 import { deliverVoicedAvatar } from '@/lib/avatar/voicedClip';
 import { deliverVoicedClip } from '@/lib/video/voicedClip';
 import { clipOmniPath, type DirectClipResolution } from '@/lib/video/directClip';
-import { OMNI_INPUT_VIDEO_USD_PER_SEC, OMNI_USD_PER_SEC, pollOmniClip, type OmniProgress } from '@/lib/video/omniClip';
+import { OMNI_INPUT_VIDEO_USD_PER_SEC, omniModelOfJob, omniUsdPerSec, pollOmniClip, type OmniModel, type OmniProgress } from '@/lib/video/omniClip';
 import { reportError } from '@/lib/observability/report-error';
 import { failJob, jobSnapshot, recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { refundDebitByRef } from '@/lib/orchestrator/ledger';
@@ -120,7 +120,7 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
         const outputSec = edited && typeof snap?.params?.outputSec === 'number' ? snap.params.outputSec : job.clipSec;
         // The seconds Omni rendered: an edit, the video's own length; an extend, the new seconds (the input is not re-billed).
         const renderedSec = job.omniOp === 'edit' ? outputSec : job.clipSec;
-        const omni = job.engine === 'omni' ? omniRecord(snap?.params?.resolution, renderedSec, progress, inputSec) : null;
+        const omni = job.engine === 'omni' ? omniRecord(snap?.params?.resolution, renderedSec, progress, inputSec, omniModelOfJob(job.omni12)) : null;
         await recordCompletedFilm({
           id: rowId, userId, url, prompt, orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
           result: {
@@ -157,12 +157,12 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
  * What a delivered Omni clip files for admins: the engine, its resolution, Vertex's token counts and the list cost — the
  * seconds it rendered, and an edited / extended video's own input tokens.
  */
-function omniRecord(resolution: unknown, seconds: number, progress: OmniProgress | SceneProgress, inputSec = 0) {
+function omniRecord(resolution: unknown, seconds: number, progress: OmniProgress | SceneProgress, inputSec: number, model: OmniModel) {
   const res: DirectClipResolution = resolution === '1080p' ? '1080p' : '720p';
   const usage = 'usage' in progress && progress.usage ? progress.usage : null;
-  const usd = seconds * OMNI_USD_PER_SEC[res] + Math.max(0, inputSec) * OMNI_INPUT_VIDEO_USD_PER_SEC;
+  const usd = seconds * omniUsdPerSec(res, model) + Math.max(0, inputSec) * OMNI_INPUT_VIDEO_USD_PER_SEC;
   return {
-    result: { engine: 'gemini-omni-flash', resolution: res, ...(usage ? { usage } : {}) },
+    result: { engine: 'gemini-omni-flash', model, resolution: res, ...(usage ? { usage } : {}) },
     costUsd: Math.round(usd * 10_000) / 10_000,
   };
 }

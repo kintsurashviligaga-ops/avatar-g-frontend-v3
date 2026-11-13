@@ -1,7 +1,6 @@
 import {
   resolveUdioApiKey, hasUdioApiKey, UDIO_API_KEY_ALIASES,
   resolveElevenLabsApiKey, hasElevenLabsApiKey, ELEVENLABS_API_KEY_ALIASES,
-  resolveNanoBananaApiKey, hasNanoBananaApiKey, NANOBANANA_API_KEY_ALIASES,
   resolveAliasName,
 } from './mediaKeys';
 
@@ -43,23 +42,6 @@ describe('resolveElevenLabsApiKey — alias-tolerant ElevenLabs credential resol
 
   it('exposes its alias precedence list', () => {
     expect(ELEVENLABS_API_KEY_ALIASES).toEqual(['ELEVENLABS_API_KEY', 'ELEVEN_API_KEY', 'ELEVENLABS_KEY', 'XI_API_KEY']);
-  });
-});
-
-describe('resolveNanoBananaApiKey — alias-tolerant storyboard credential resolution', () => {
-  it('prefers the dedicated key, then falls back to GEMINI_API_KEY (Nano Banana is Gemini)', () => {
-    expect(resolveNanoBananaApiKey({ NANOBANANA_API_KEY: 'dedicated', GEMINI_API_KEY: 'g' })).toBe('dedicated');
-    expect(resolveNanoBananaApiKey({ GEMINI_API_KEY: 'gemini-fallback' })).toBe('gemini-fallback');
-  });
-
-  it('returns null and hasNanoBananaApiKey=false when unprovisioned', () => {
-    expect(resolveNanoBananaApiKey({})).toBeNull();
-    expect(hasNanoBananaApiKey({})).toBe(false);
-    expect(hasNanoBananaApiKey({ NANO_BANANA_API_KEY: 'x' })).toBe(true);
-  });
-
-  it('exposes its alias precedence list', () => {
-    expect(NANOBANANA_API_KEY_ALIASES).toEqual(['NANOBANANA_API_KEY', 'NANO_BANANA_API_KEY', 'NANOBANANA_KEY', 'GEMINI_API_KEY']);
   });
 });
 

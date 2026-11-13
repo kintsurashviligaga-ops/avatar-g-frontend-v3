@@ -2,7 +2,7 @@
  * lib/services/presentation/deckPipeline.ts — outline → visuals → rasterised slides.
  *
  *   1 outline  Gemini via llmText, with a deterministic fallback (never fails the job)
- *   2 visuals  optional Imagen 4 per slide, gated on the provider actually being configured
+ *   2 visuals  optional picture per slide: Google's image model (gemini-3.1-flash-image)
  *   3 render   SVG → PNG via resvg with the bundled FiraGO fonts → hosted
  *
  * WHY PNG AND NOT SERVER-SIDE PDF: pdfkit is not in `serverComponentsExternalPackages` and has no file
@@ -11,12 +11,13 @@
  * drops Mkhedruli entirely. So the server produces PNG slides (guaranteed Georgian, portable, zippable)
  * and the browser handles PDF via print, where the user's own renderer does the work.
  *
- * DEGRADATION IS THE DESIGN: no Imagen key → a text-only typographic deck, which is a perfectly good
+ * DEGRADATION IS THE DESIGN: no image engine → a text-only typographic deck, which is a perfectly good
  * deliverable. No LLM → the deterministic skeleton. Only a failure to rasterise ANY slide fails the job.
  */
 import 'server-only';
 import { Resvg } from '@resvg/resvg-js';
-import { generateImagenImages, mapImagenAspect, hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
+import { generateGeminiImage } from '@/lib/ai/geminiImage';
+import { googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { overlayFontFiles } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -25,6 +26,24 @@ import { reportError } from '@/lib/observability/report-error';
 import { generateOutline } from './deckOutline';
 import { buildSlideSvg, buildCoverSvg } from './slideSvg';
 import { SLIDE_W, SLIDE_H, type Deck, type DeckRequest, type Slide } from './deckPlan';
+
+export type DeckImageEngine = 'gemini-image';
+
+/** Which engine draws the slide pictures: Google's image model, else none (Imagen 4 is retired, v5.1 M-14). */
+export function deckImageEngine(): DeckImageEngine | null {
+  if (!googleImageTransportBlocker()) return 'gemini-image';
+  return null;
+}
+
+/** One 16:9 slide picture as bytes, or null on any miss. Never throws. */
+async function deckVisual(engine: DeckImageEngine | null, prompt: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  if (engine === 'gemini-image') {
+    const img = await generateGeminiImage({ prompt, aspectRatio: '16:9' }).catch(() => null);
+    if (!img?.base64) return null;
+    return { buffer: Buffer.from(img.base64, 'base64'), mimeType: img.mimeType || 'image/png' };
+  }
+  return null;
+}
 
 const WEEK_SEC = 604_800;
 
@@ -103,7 +122,11 @@ export async function runDeckBuild(
     stepsRun.push('outline');
 
     // ── LEG 2 · visuals ────────────────────────────────────────────────────────────────────────────
-    const wantImages = req.withImages && hasGeminiImagenProvider();
+    // ⚠️ A DECK WOULD HAVE COME OUT TEXT-ONLY IN PRODUCTION. Imagen 4 was opt-in and never switched on, so the visuals
+    // leg never ran even though the deck is priced as illustrated. The picture engine is Google's image model — the same
+    // gemini-3.1-flash-image the Image service runs on Vertex. The Imagen 4 option is gone (retired model, v5.1 M-14).
+    const imageEngine = deckImageEngine();
+    const wantImages = req.withImages && imageEngine !== null;
     let imagesMissing = 0;
     /** Per-slide data URIs of the generated visuals, indexed like `slides`. */
     const imageData: (string | undefined)[] = [];
@@ -118,7 +141,7 @@ export async function runDeckBuild(
       // Nothing here is sequential by nature: a slide's visual depends only on its own prompt, and the
       // results are written back by index. Running them in fixed batches keeps slide order, the
       // `imagesMissing` tally and the per-slide degradation bit-for-bit identical, while collapsing the
-      // leg to ~a third. The width is deliberately small — Imagen is metered per request and this is a
+      // leg to ~a third. The width is deliberately small — the image model is metered per request and this is a
       // fan-out, not a flood; the per-slide `.catch(() => null)` still absorbs every individual miss.
       const VISUAL_CONCURRENCY = 3;
       const buildVisual = async (i: number): Promise<void> => {
@@ -139,12 +162,7 @@ export async function runDeckBuild(
         // The deck's title, bullets and speaker notes are the deliverable the user paid for and stay in their
         // language, untouched — they are rendered from `slide.*` further down and never pass through here.
         const promptEn = await promptToEnglish(prompt, 'image');
-        const images = await generateImagenImages({
-          prompt: `${promptEn}. Clean editorial illustration, no text, no words, no letters.`,
-          aspectRatio: mapImagenAspect('16:9'),
-          numberOfImages: 1,
-        }).catch(() => null);
-        const first = images?.[0];
+        const first = await deckVisual(imageEngine, `${promptEn}. Clean editorial illustration, no text, no words, no letters.`);
         if (!first) { imagesMissing += 1; return; }
         const url = await hostPng(first.buffer, `img-${i}`).catch(() => null);
         if (url) slide.imageUrl = url; else imagesMissing += 1;
@@ -159,7 +177,7 @@ export async function runDeckBuild(
       }
       stepsRun.push('visuals');
     } else if (req.withImages) {
-      // Asked for, but the provider is not configured — count them all so the caller can say so.
+      // Asked for, but no image engine can serve — count them all so the caller can say so.
       imagesMissing = slides.length;
     }
 

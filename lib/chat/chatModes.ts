@@ -117,7 +117,10 @@ export function resolveChatMode(mode: unknown, legacyTier?: unknown): ChatModeId
   return chatModeOption(wanted).enabled ? wanted : DEFAULT_CHAT_MODE;
 }
 
-/** ListModels displayName for the ids this product uses (verified 2026-09-30). */
+/**
+ * ListModels displayName for the ids this product uses (verified 2026-09-30). The retired 2.5 text ids are gone (v5.1
+ * M-14): an old reply that reports one still reads "2.5 Flash" etc. through the prettifier below.
+ */
 const DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'gemini-3.8-flash': '3.8 Flash',
   'gemini-3.7-flash': '3.7 Flash',
@@ -129,9 +132,6 @@ const DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'gemini-pro-latest': 'Pro',
   'gemini-flash-latest': 'Flash',
   'gemini-flash-lite-latest': 'Flash-Lite',
-  'gemini-2.5-pro': '2.5 Pro',
-  'gemini-2.5-flash': '2.5 Flash',
-  'gemini-2.5-flash-lite': '2.5 Flash-Lite',
 };
 
 /**
