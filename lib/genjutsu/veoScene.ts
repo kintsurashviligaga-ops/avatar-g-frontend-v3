@@ -66,6 +66,8 @@ export interface SceneSubmitInput {
   resizeMode?: VeoResizeMode;
   /** Replaces the VFX scene's negative prompt (the avatar's own). */
   negativePrompt?: string;
+  /** Veo's seed (uint32), to repeat a take. Only the video service's clip sends one, and only with CLIP_ADVANCED on. */
+  seed?: number;
   /**
    * Veo's own sound; a silent clip is priced at Veo's silent rate. Default on — the voiced avatar keeps it too since
    * 2026-10-17 10:22Z: Veo says the line so its mouth matches, and its voice is replaced on delivery (lib/avatar/speechMatch).
@@ -108,6 +110,7 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             durationSec: seconds,
             generateAudio: audio,
             negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
+            ...(input.seed !== undefined ? { seed: input.seed } : {}),
             ...(input.startImage && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
             ...(input.startImage
               ? { startImage: input.startImage }
