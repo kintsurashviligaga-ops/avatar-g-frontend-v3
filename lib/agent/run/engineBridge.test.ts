@@ -336,6 +336,15 @@ describe('edge cases around a held quote', () => {
     expect(stepOf(t.next, 'clip')!.status).toBe('awaiting_approval');
   });
 
+  test('a yes that lands before any tick saw the hold is applied in that same tick (no extra wait)', () => {
+    let t = planTickV2(fresh(), {}, T0);
+    t = planTickV2(quote(t.next, 'sound', 0), { sound: AUDIO }, T0 + 1);
+    const run = yes(quote(t.next, 'clip', 14, T0 + 2), 'clip'); // quoted above approval and said yes to at once
+    t = planTickV2(run, { sound: AUDIO }, T0 + 3);
+    expect(t.actions).toEqual([{ type: 'enqueue', step: 'clip' }]);
+    expect(stepOf(t.next, 'clip')).toMatchObject({ status: 'queued', approvedCredits: 14 });
+  });
+
   test('a yes naming another quote is ignored', () => {
     const run = held();
     stepOf(run, 'clip')!.approvedQuoteId = 'q-someone-else';
