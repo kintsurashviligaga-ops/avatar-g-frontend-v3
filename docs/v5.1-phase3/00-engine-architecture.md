@@ -52,3 +52,5 @@ Timeline events follow the 06 §4 names (`run.planned`, `step.started`, `step.ch
 3. **Move work-mode tasks onto the engine** behind an admin flag. taskGraph stays the evidence trail. The engine drives the order and parallelism.
 4. **Approval center** (M-7): `step.needs_approval` and replan approvals write the one `approvals` record.
 5. **Paid E2E**: two parallel steps plus a cancel on a Production build, within a GG-approved budget.
+
+The detailed wiring plan (stages 3.5a to 3.5f, the mapping, the money rules and three decisions for GG) is `01-wiring-plan.md`.
