@@ -17,7 +17,7 @@ jest.mock('./inbound-events', () => ({ storeInboundTelegramEvent: jest.fn(async 
 jest.mock('../../agentg/personality', () => ({ generateAgentGPersonalityReply: jest.fn(), getFallbackReply: jest.fn(() => '') }));
 jest.mock('../tone', () => ({ detectTone: jest.fn(() => ({ tone: 'neutral', confidence: 1 })) }));
 jest.mock('../memory', () => ({ getUserMemory: jest.fn(), recordEvent: jest.fn(), upsertUserMemory: jest.fn() }));
-jest.mock('../voice/stt', () => ({ isAgentGVoiceEnabled: jest.fn(() => false), transcribeTelegramVoice: jest.fn() }));
+jest.mock('../voice/stt', () => ({ isAgentGVoiceEnabled: jest.fn(() => false), agentGVoiceMaxSeconds: jest.fn(() => 45), transcribeTelegramVoice: jest.fn() }));
 jest.mock('../voice/tts', () => ({ synthesizeTelegramVoice: jest.fn() }));
 jest.mock('../../ai/channelBridge', () => ({ generateChannelReply: jest.fn() }));
 jest.mock('../../api/rate-limit', () => ({ checkRateLimitByKey: jest.fn(async () => null) }));
