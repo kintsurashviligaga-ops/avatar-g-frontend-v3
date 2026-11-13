@@ -92,3 +92,7 @@ describe('deterministic router against the corpus labels', () => {
     else expect(got).toBe(want);
   });
 });
+
+test('no "never" pattern is global or sticky (RegExp.test would carry lastIndex from one answer to the next)', () => {
+  for (const c of KA_QA_CORPUS) for (const n of c.never ?? []) expect(`${c.id}:${n.pattern.flags}`).not.toMatch(/[gy]/);
+});
