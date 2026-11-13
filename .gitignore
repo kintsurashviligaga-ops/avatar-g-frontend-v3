@@ -74,3 +74,4 @@ vercel-project-inspect.txt
 # Editor and hand-made backups: git history is the backup. (_graveyard/ keeps its one tracked .bak on purpose.)
 *.bak
 scripts/certify/probe3/
+omni-checks-out/
