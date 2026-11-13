@@ -9,12 +9,20 @@ describe('routeAgentIntent — chat requests for a panel tool open that tool', (
   it.each([
     ['swap the character in this video', 'video.character-swap', 'swap'],
     ['ამ ბიჭით იგივე ვიდეო გააკეთე', 'video.character-swap', 'swap'],
-    ['add vfx explosion to my photo', 'video.vfx', 'vfx'],
     ['redesign my living room in scandinavian style', 'image.interior', 'interior'],
     ['ჩემი ოთახის ინტერიერი გადააკეთე', 'image.interior', 'interior'],
     ['сделай фотосессию из моих фото', 'image.photoshoot', 'photoshoot'],
   ])('%s → %s', (text, id, tool) => {
     expect(open(text)).toEqual([id, tool]);
+  });
+});
+
+describe('routeAgentIntent — VFX is removed (GG 2026-11-13)', () => {
+  it('a VFX request opens no panel', () => {
+    for (const t of ['add vfx explosion to my photo', 'სპეცეფექტი დაამატე ფოტოს', 'добавь спецэффект на фото']) {
+      const r = routeAgentIntent(t);
+      expect(r?.kind === 'open' ? r.tool : null).not.toBe('vfx');
+    }
   });
 });
 

@@ -86,15 +86,6 @@
     "app/api/generate/route.ts": [
       "higgsfield"
     ],
-    "app/api/genjutsu/capabilities/route.ts": [
-      "higgsfield"
-    ],
-    "app/api/genjutsu/generate/route.ts": [
-      "higgsfield"
-    ],
-    "app/api/genjutsu/quote/route.ts": [
-      "higgsfield"
-    ],
     "app/api/genjutsu/status/route.ts": [
       "higgsfield"
     ],
