@@ -129,8 +129,16 @@ All code is in `lib/billing/v5/`. It is pure, apart from injected ports.
 7. **M-10, legacy ledger.** Blocked on GG's `01_introspect.sql` output (B-02). The plan stays as in `docs/ledger-unification/` and 08 §7. No code here touches `public.credits` or `enforce.ts`.
 8. **M-12, Argon and Carbon.** Only after the book has their rows (the Argon promo ends 2026-11-30) and GG lifts D-06.
 
-## 4. Questions for GG (none block this preparation)
+## 4. GG answers (2026-11-13 13:06Z) and where they live
 
-- **Price rows:** should Claude draft the seed rows from Google's official pricing pages (each with its source link and fetch date) for you to approve one by one?
-- **Shadow week:** OK to run `AGENT_PRICE_BOOK=shadow` for 7 days after the DB is back? It only logs differences and charges today's prices.
-- **BOG sandbox:** have the sandbox credentials arrived from the bank? The certification run needs them, and runs on a local machine only.
+| Answer | Done in this PR |
+|---|---|
+| **Draft all price rows from Google's official pages; GG approves one by one.** | `lib/billing/v5/priceDrafts.ts`: 42 drafts from the Vertex AI pricing page (read 2026-11-13 13:15Z), every one with `approvedBy: null`, so none prices anything. Review list: [`price-drafts.md`](price-drafts.md). Seed SQL: `seed/20261113b_price_drafts.sql` (drafts only, re-runnable; the local SQL check loads it twice and approves one). Both files are generated from the `.ts` and a test keeps them equal. **Policy for GG to confirm:** the drafts use the full billed price, not the "50 % credits back" promo price (3.8 Flash, 3.8 Flash TTS, Argon, Carbon), so no price jumps when a promo ends. Not drafted: embeddings, Chirp / Cloud TTS (other pricing pages), sandbox minutes. |
+| **Shadow mode for 7 days, log the differences.** | `lib/billing/v5/shadow.ts`: `shadowPrice(AGENT_PRICE_BOOK, estimate, codeCredits, ports)` prices the same call from the approved rows and logs `{codeCredits, bookCredits, diff, diffPct, versionIds, error}`. It returns nothing chargeable, never throws, and gives up after 800 ms. `off` (default) reads and logs nothing. `shadowSummary` turns a week of records into a per-capability table. Wiring it into the routes is the next PR, after the DB is back; the flag stays `off` until GG sets `shadow`. |
+| **BOG sandbox credentials.** The answer arrived as both template options (A: not available now, mark BLOCKED; B: GG adds them to GitHub CI secrets later), so this PR covers both. | `lib/billing/v5/bogScorecard.ts`: the 13-check scorecard. Today it reads **12 BLOCKED, 1 not required** (saved-card renewal, until automatic payments are on). Option B already works: `.github/workflows/bog-e2e.yml` runs S1–S7 against BOG's real sandbox as soon as the Actions secrets `BOG_SANDBOX_CLIENT_ID` / `BOG_SANDBOX_SECRET_KEY` exist (GitHub only, never Vercel). Until then that job **skips and still shows green**, so the scorecard never counts a green check, only a run's evidence. The signed callback and its replay need one run with a public callback URL; a CI runner has none. |
+
+## 5. Questions for GG (none block this preparation)
+
+- **Price rows:** approve the drafts in `price-drafts.md` one by one, and confirm the full-price policy (or ask for promo rows).
+- **Shadow week:** approved 13:06Z; starts when the DB is back and the wiring PR is merged.
+- **BOG sandbox:** add the pair as GitHub Actions secrets when ready; the scorecard stays BLOCKED until a real run.

@@ -87,6 +87,27 @@ do $$ begin
      or has_table_privilege('authenticated', 'public.reconcile_reports', 'select') then raise exception 'FAIL client can read'; end if;
 end $$;
 
+-- 8b. the draft price seed loads as drafts only, twice without error, and one draft approves at "now"
+\i docs/v5.1-phase5/seed/20261113b_price_drafts.sql
+\i docs/v5.1-phase5/seed/20261113b_price_drafts.sql
+set role service_role;
+do $$
+declare n int; a int;
+begin
+  select count(*), count(approved_by) into n, a from public.price_versions where id like 'pv\_%' and source_url = 'https://cloud.google.com/vertex-ai/generative-ai/pricing' and fetched_at = '2026-11-13T13:15:00Z';
+  if n < 30 then raise exception 'FAIL seed loaded % rows', n; end if;
+  if a <> 0 then raise exception 'FAIL seed approved % rows', a; end if;
+  update public.price_versions set valid_from = now(), approved_by = 'GG', approved_at = now() where id = 'pv_tts_38flash_out' and approved_by is null;
+  if not found then raise exception 'FAIL approving a draft'; end if;
+  begin
+    update public.price_versions set credits_per_unit = 1 where id = 'pv_tts_38flash_out';
+    raise exception 'FAIL approved seed row edited';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+reset role;
+
 -- 9. rollback drops exactly what the migration made, and the migration applies again after it
 \i docs/v5.1-phase5/migrations/20261114a_phase5_money.rollback.sql
 do $$ begin
