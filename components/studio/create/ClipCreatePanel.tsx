@@ -55,6 +55,11 @@ export interface ClipCreatePanelProps {
    * when the setters are missing.
    */
   advanced?: { avoid: string; seed: number | null; onAvoid?: (v: string) => void; onSeed?: (v: number | null) => void };
+  /**
+   * First → last frame for exactly two photos (lib/video/clipLastFrame). Passed only while NEXT_PUBLIC_CLIP_LAST_FRAME is on;
+   * without it two photos are references, as before. Read-only on a waiting card when the setter is missing.
+   */
+  lastFrame?: { on: boolean; onChange?: (on: boolean) => void };
 }
 
 const TIERS: readonly VideoQuality[] = ['lite', 'fast', 'standard'];
@@ -78,6 +83,10 @@ function words(locale: string) {
       : ru ? 'Одно фото — первый кадр клипа. Два-три задают внешность людей и предметов.'
         : 'ერთი ფოტო კლიპის პირველი კადრია. ორი-სამი ფოტო ადამიანებისა და საგნების იერს განსაზღვრავს.',
     willMake: en ? 'You will get' : ru ? 'Получится' : 'შეიქმნება',
+    twoPhotos: en ? 'Use the two photos as' : ru ? 'Два фото —' : 'ორი ფოტო:',
+    asRefs: en ? 'References' : ru ? 'Референсы' : 'რეფერენსები',
+    asFrames: en ? 'First → last frame' : ru ? 'Первый → последний кадр' : 'პირველი → ბოლო კადრი',
+    lastFrame: en ? 'Last frame' : ru ? 'Последний кадр' : 'ბოლო კადრი',
     advanced: en ? 'Advanced' : ru ? 'Дополнительно' : 'დამატებითი',
     avoid: en ? 'What to avoid' : ru ? 'Чего избегать' : 'რა არ უნდა იყოს',
     avoidPh: en ? 'e.g. text on screen, blur, extra people' : ru ? 'напр. текст на экране, размытие, лишние люди' : 'მაგ. ეკრანზე ტექსტი, ბუნდოვნება, ზედმეტი ადამიანები',
@@ -136,7 +145,10 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
   const w = words(locale);
   const photos = p.photos.images.length;
   const lengths = clipLengthsFor(photos);
-  const note = clipPhotoNote(photos, locale);
+  // First → last only fits two photos on a Veo clip (Omni has no last frame).
+  const framesOffered = !!p.lastFrame && photos === 2 && directClipEngine(seconds, p.speech) === 'veo';
+  const frames = framesOffered && !!p.lastFrame?.on;
+  const note = clipPhotoNote(photos, locale, frames);
   const full = photos >= DIRECT_CLIP_MAX_PHOTOS;
   const omni = directClipEngine(seconds, p.speech) === 'omni';
   const price = directClipCredits({ seconds, tier, photos, resolution, speech: p.speech });
@@ -191,7 +203,7 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
                 {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL the user just picked */}
                 <img src={src} alt="" className="h-full w-full rounded-xl object-cover ring-1 ring-app-border/20" />
                 <span data-testid={`clip-panel-photo-role-${i}`} className="pointer-events-none absolute inset-x-0 bottom-0 truncate rounded-b-xl bg-app-bg/80 px-0.5 text-center text-[9px] font-medium leading-[14px] text-app-text">
-                  {photos === 1 ? w.firstFrame : w.reference(i + 1)}
+                  {photos === 1 || (frames && i === 0) ? w.firstFrame : frames ? w.lastFrame : w.reference(i + 1)}
                 </span>
                 {p.photos.onRemove && <button type="button" onClick={() => p.photos.onRemove?.(i)} aria-label={`${w.remove} ${i + 1}`}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/20 hover:text-app-text before:absolute before:-inset-3 before:content-['']">
@@ -206,6 +218,13 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
               </button>
             </li>}
           </ul>
+          {framesOffered && (
+            <div role="group" aria-label={w.twoPhotos} data-testid="clip-panel-two-photos" className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[12px] text-app-muted">{w.twoPhotos}</span>
+              <Chip on={!frames} disabled={!p.lastFrame?.onChange} onClick={() => p.lastFrame?.onChange?.(false)} testId="clip-panel-as-refs">{w.asRefs}</Chip>
+              <Chip on={frames} disabled={!p.lastFrame?.onChange} onClick={() => p.lastFrame?.onChange?.(true)} testId="clip-panel-as-frames">{w.asFrames}</Chip>
+            </div>
+          )}
           {note
             ? <p className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{note}{photos >= 2 ? ` ${w.refsOnly8}` : ''}</p>
             : photos === 0 && <p data-testid="clip-panel-photo-roles" className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{w.rolesHint}</p>}

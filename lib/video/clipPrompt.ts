@@ -172,8 +172,11 @@ export function clipNegativePrompt(userPrompt: string): string {
 
 export interface ComposeClipPrompt {
   reading: ClipReading;
-  /** 'frame' = one photo is the first frame; 'refs' = two or three photos are reference images; 'none' = text only. */
-  photos: 'none' | 'frame' | 'refs';
+  /**
+   * 'frame' = one photo is the first frame; 'frames' = two photos are the first and the last frame (lib/video/clipLastFrame);
+   * 'refs' = two or three photos are reference images; 'none' = text only.
+   */
+  photos: 'none' | 'frame' | 'frames' | 'refs';
   /** The engine: Veo (default) or Gemini Omni Flash, which speaks every language itself and takes no negative prompt. */
   engine?: 'veo' | 'omni';
   /** Omni only: the user asked for words on screen (asksForSubtitles), so the prompt does not forbid them. */
@@ -240,12 +243,13 @@ export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles =
       ? 'Start exactly from the first frame and keep one continuous shot with no cuts: the same people, faces, hair, clothes and setting as in the first frame throughout.'
       : 'Start exactly from the first frame: keep its people, faces, clothes and setting as they are.');
   }
+  if (photos === 'frames') parts.push('Start exactly from the first frame and end exactly on the last frame, moving naturally and continuously from one to the other.');
   if (photos === 'refs') parts.push('Keep the people and things from the reference images exactly as they look.');
   parts.push(body);
   const rule = speechRule(reading, oneShot);
   if (rule) parts.push(rule);
   else if (reading.silent) parts.push('No dialogue, no voices.');
-  if (oneShot && photos !== 'frame' && (rule || photos === 'refs')) parts.push('One continuous shot with no cuts.');
+  if (oneShot && photos !== 'frame' && photos !== 'frames' && (rule || photos === 'refs')) parts.push('One continuous shot with no cuts.');
   // ⚠️ GG's clip 2026-10-26 13:53Z (Omni 10 s 1080p): an upbeat track nobody asked for ran under the two voices, and a
   // bare „No background music." did not stop it (three clips at 15:07–15:14Z still had one). Omni picks its own audio
   // unless told what to play: a „Sound design:" line that names what is heard, with „no music, just room tone".

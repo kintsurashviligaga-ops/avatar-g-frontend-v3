@@ -41,6 +41,7 @@ import { readClipPrompt } from '@/lib/video/clipSpeech';
 import { DIRECT_CLIP_BODY_MAX_BYTES, directClipCredits, directClipEngine, directClipResolution, parseDirectClipRequest, type DirectClipRequest, type DirectClipSpeech } from '@/lib/video/directClip';
 import { OMNI_MODEL, submitOmniClip } from '@/lib/video/omniClip';
 import { clipAdvancedServerOn, mergeClipNegative, parseClipAdvanced, type ClipAdvanced } from '@/lib/video/clipAdvanced';
+import { clipLastFrameServerOn, parseClipLastFrame } from '@/lib/video/clipLastFrame';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 export const dynamic = 'force-dynamic';
@@ -84,6 +85,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!adv.ok) return fail(400, 'invalid_request', { issues: [{ path: adv.field, code: adv.code }] });
     advanced = adv.value;
   }
+  // Phase 7.5: two photos as Veo's first and last frame, read only while CLIP_LAST_FRAME is on (lib/video/clipLastFrame).
+  // Off, the field is ignored and two photos are references, as before. Same 8 s, same price either way.
+  let lastFrame = false;
+  if (clipLastFrameServerOn()) {
+    const lf = parseClipLastFrame(body, r.photos.length);
+    if (!lf.ok) return fail(400, 'invalid_request', { issues: [{ path: lf.field, code: lf.code }] });
+    lastFrame = lf.value;
+  }
 
   const limited = await checkRateLimitByKey(userId, GENJUTSU_RATE);
   if (limited) return limited;
@@ -91,7 +100,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const release = await claimInflight(userId, r);
   if (!release) return fail(409, 'duplicate_request');
   try {
-    return await startClip(userId, r, locale, advanced);
+    return await startClip(userId, r, locale, advanced, lastFrame);
   } finally {
     await release();
   }
@@ -106,7 +115,7 @@ function pricedFor(r: DirectClipRequest, speech: DirectClipSpeech) {
   };
 }
 
-async function startClip(userId: string, r: DirectClipRequest, locale: ReturnType<typeof billingLocale>, advanced: ClipAdvanced): Promise<NextResponse> {
+async function startClip(userId: string, r: DirectClipRequest, locale: ReturnType<typeof billingLocale>, advanced: ClipAdvanced, lastFrame = false): Promise<NextResponse> {
   // What the card priced: Veo, or Omni when it read a Georgian line (or at 10 s).
   let priced = pricedFor(r, r.speech);
   if (r.expectedCredits !== null && r.expectedCredits !== priced.credits) return fail(409, 'price_changed', { credits: priced.credits });
@@ -145,12 +154,14 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
   const rowId = genjutsuJobId(uuid);
   const createdMs = Date.now();
   const photoMode = r.photos.length === 0 ? 'none' : r.photos.length === 1 ? 'frame' : 'refs';
+  // First → last is Veo's only (Omni has no last frame); with Omni the photos are what they always were.
+  const frames = lastFrame && engine === 'veo' && r.photos.length === 2;
 
   const filed = await createJob({
     id: rowId, userId, serviceType: 'film', status: 'processing',
     params: {
       subtype: 'video', op: 'clip', engine, prompt: r.prompt.slice(0, 200), aspect: r.aspect, seconds: r.seconds, tier: r.tier,
-      resolution, photos: r.photos.length, ...(speech ? { speech } : {}), _reserve: { ref, credits },
+      resolution, photos: r.photos.length, ...(speech ? { speech } : {}), ...(frames ? { lastFrame: true } : {}), _reserve: { ref, credits },
     },
   });
   if (!filed) reportError(new Error('video clip job row not filed'), { route: ROUTE, ref });
@@ -178,14 +189,15 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
       ...(r.photos[0] ? { firstFrame: r.photos[0] } : {}),
     }).then((o) => (o.ok ? { ok: true as const, operation: o.id, aspect: r.aspect, omni12: o.model === OMNI_MODEL } : o))
     : await submitScene({
-      prompt: composeClipPrompt({ reading, photos: photoMode, cuts: asksForCuts(r.prompt) }),
+      prompt: composeClipPrompt({ reading, photos: frames ? 'frames' : photoMode, cuts: asksForCuts(r.prompt) }),
       aspect: r.aspect, quality: 'fast', tier: r.tier, durationSec: r.seconds, userId, sessionId: `clip-${uuid}`,
       negativePrompt: mergeClipNegative(clipNegativePrompt(r.prompt), avoidEn),
       ...(advanced.seed !== null ? { seed: advanced.seed } : {}),
       referenceUrls: [],
       // One photo is the first frame, cropped to fill the frame (Veo's default letterboxes a photo of another shape).
       ...(photoMode === 'frame' ? { startImage: photos[0]!, resizeMode: 'crop' as const } : {}),
-      ...(photoMode === 'refs' ? { referenceImages: photos } : {}),
+      ...(frames ? { startImage: photos[0]!, lastFrame: photos[1]!, resizeMode: 'crop' as const } : {}),
+      ...(photoMode === 'refs' && !frames ? { referenceImages: photos } : {}),
     });
   if (!sub.ok) {
     const refunded = await refund(`${engine} ${sub.reason}`);

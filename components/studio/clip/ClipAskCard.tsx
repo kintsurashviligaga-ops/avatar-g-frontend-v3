@@ -76,7 +76,7 @@ export function ClipAskCard({
   const lengths = clipLengthsFor(ask.photos.length);
   const hold = ask.phase === 'ask' ? clipHold(ask) : null;
   // A speaking clip with two or three photos is the hold below, not the reference photos' note.
-  const note = hold?.kind === 'photos' ? null : clipPhotoNote(ask.photos.length, locale);
+  const note = hold?.kind === 'photos' ? null : clipPhotoNote(ask.photos.length, locale, !!ask.lastFrame);
   const speechNote = clipSpeechNote(ask, locale);
   const resPrice = (r: DirectClipResolution) => changeClip(ask, { resolution: r }).credits;
 
