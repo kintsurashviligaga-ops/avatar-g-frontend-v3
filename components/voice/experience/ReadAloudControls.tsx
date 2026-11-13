@@ -4,7 +4,7 @@ import { useSpeechState } from '@/lib/speech/useSpeech';
 import { Loader2, Pause, Play, RotateCcw, Square, TextSelect, Volume2 } from 'lucide-react';
 import { createReadAloud, readerSnapshot, type ReaderSnapshot } from '@/lib/voice/experience/readAloud';
 const COPY = {
- ka: { title:'წაკითხვა',all:'სრულად წაკითხვა',selected:'მონიშნულის წაკითხვა',pause:'პაუზა',resume:'გაგრძელება',stop:'გაჩერება',retry:'თავიდან სცადე',speed:'წაკითხვის სიჩქარე',error:'წაკითხვა ვერ დაიწყო. დაასრულეთ ხმოვანი ზარი ან სცადეთ ხელახლა.',idle:'მზადაა',loading:'მზადდება',playing:'იკითხება',paused:'შეჩერებულია',completed:'დასრულდა' },
+ ka: { title:'წაკითხვა',all:'სრულად წაკითხვა',selected:'მონიშნულის წაკითხვა',pause:'პაუზა',resume:'გაგრძელება',stop:'გაჩერება',retry:'თავიდან სცადე',speed:'წაკითხვის სიჩქარე',error:'წაკითხვა ვერ დაიწყო. დაასრულე ხმოვანი ზარი ან სცადე ხელახლა.',idle:'მზადაა',loading:'მზადდება',playing:'იკითხება',paused:'შეჩერებულია',completed:'დასრულდა' },
  en: { title:'Read aloud',all:'Read complete response',selected:'Read selection',pause:'Pause',resume:'Resume',stop:'Stop',retry:'Try again',speed:'Reading speed',error:'Reading could not start. End the voice call or try again.',idle:'Ready',loading:'Preparing',playing:'Reading',paused:'Paused',completed:'Completed' },
  ru: { title:'Чтение вслух',all:'Прочитать полностью',selected:'Прочитать выделенное',pause:'Пауза',resume:'Продолжить',stop:'Остановить',retry:'Повторить',speed:'Скорость чтения',error:'Не удалось начать. Завершите голосовой звонок или повторите.',idle:'Готово',loading:'Подготовка',playing:'Чтение',paused:'Пауза',completed:'Завершено' },
 };
