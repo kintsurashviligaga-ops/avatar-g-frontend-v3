@@ -30,8 +30,9 @@ export function checkRunSpec(spec: RunSpec, facts: ValidateFacts, price: (tool: 
   const v = validatePlan(planOfSpec(spec, price), buildValidateContext(facts));
   if (v.ok) return { ok: true };
   const bad = v.steps.find((s) => !s.ok);
-  if (bad) return { ok: false, error: bad.code!, message: bad.reason ?? 'This step cannot run.', step: bad.stepId };
-  return { ok: false, error: v.plan!.code, message: v.plan!.reason };
+  // A refusal with no code is still a refusal (fail closed), never an unmapped error.
+  if (bad) return { ok: false, error: bad.code ?? 'policy_denied', message: bad.reason ?? 'This step cannot run.', step: bad.stepId };
+  return { ok: false, error: v.plan?.code ?? 'policy_denied', message: v.plan?.reason ?? 'This plan cannot run.' };
 }
 
 /** The default per-run ceiling: every step at the dearest list price. A real run never reaches it; a bug does. */
