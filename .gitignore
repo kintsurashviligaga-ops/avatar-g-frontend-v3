@@ -21,6 +21,7 @@ tsconfig.tsbuildinfo
 .env*.local
 test-results/
 playwright-report/
+playwright-report-phase9/
 perf-results/
 
 # Debug/temp files

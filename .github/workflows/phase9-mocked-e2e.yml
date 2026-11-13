@@ -1,0 +1,54 @@
+name: Phase 9 - mocked Agent G E2E
+
+# v5.1 Phase 9: Agent G run engine end to end against fakes (jest lib/agent/e2e) and the Live Workspace preview UI
+# (Playwright, e2e-phase9/). MOCKED: no network calls to Google, no database, no money. Runs on any PR that touches
+# the run engine, its executors or the workspace UI (the Phase 9 PR is stacked on a non-main branch).
+on:
+  pull_request:
+    paths:
+      - 'lib/agent/**'
+      - 'components/studio/liveWorkspace/**'
+      - 'app/**/agent-workspace/**'
+      - 'e2e-phase9/**'
+      - 'playwright.phase9.config.ts'
+      - '.github/workflows/phase9-mocked-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  agent-execution:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Agent G execution matrix AG-01…AG-12 + invariants I-1…I-6
+        run: npx jest lib/agent/e2e lib/agent/run
+
+  workspace-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25 # `playwright install --with-deps` alone can take 10-12 minutes on a slow runner
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-e2e
+      SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Live Workspace UI-01…UI-08 (mock replay)
+        run: npx playwright test -c playwright.phase9.config.ts
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-phase9
+          path: playwright-report-phase9/
+          retention-days: 7
