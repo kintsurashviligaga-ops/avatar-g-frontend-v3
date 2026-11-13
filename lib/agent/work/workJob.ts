@@ -22,9 +22,14 @@
 import {
   HEARTBEAT_MS, cancel as cancelLease, claim, complete, enqueue, fail, heartbeat, mustStop, type Beat, type LeaseRow, type LeaseStore,
 } from '@/lib/orchestrator/jobLease';
-import type { ProduceKind } from '@/lib/orchestrator/produceCost';
 
 export const WORK_KIND = 'agent-work';
+/**
+ * Work rows are filed as 'document': the kind Agent G's PDFs and code-run reports already use in production (migration
+ * 20261031a, DB-verified 2026-11-06). The row carries no signed URL, so it is never a Library item by itself, and the job
+ * tray (app/api/orchestrator/jobs) already leaves 'document' rows out: the run's own row is what the user sees.
+ */
+export const WORK_SERVICE_TYPE = 'document' as const;
 export const WORK_TOOLS = ['browser', 'code', 'pdf', 'export'] as const;
 export type WorkTool = (typeof WORK_TOOLS)[number];
 export const isWorkTool = (v: unknown): v is WorkTool => typeof v === 'string' && (WORK_TOOLS as readonly string[]).includes(v);
@@ -37,8 +42,6 @@ export type WorkRunOutcome =
 export interface WorkJobDeps {
   store: LeaseStore;
   now(): number;
-  /** generation_jobs.service_type for these rows (open question in docs/v5.1-phase3/02-workmode-prep.md). */
-  serviceType: ProduceKind;
   /** Run the tool exactly as its own route does, with the signed request and token, until done or `signal` aborts. */
   run(tool: WorkTool, input: { userId: string; request: unknown; token: string }, signal: AbortSignal): Promise<WorkRunOutcome>;
   /** Repeat `fn` every `ms` until the returned stop is called (setInterval in production, a manual clock in tests). */
@@ -59,12 +62,12 @@ const runOf = (row: Pick<LeaseRow, 'params'>): { runId?: string } => {
 
 /** Queue one signed work step as job `jobId` of run `parent`. A second enqueue of the same quote answers 'exists' (ok). */
 export async function enqueueWorkJob(
-  deps: Pick<WorkJobDeps, 'store' | 'serviceType'>,
+  deps: Pick<WorkJobDeps, 'store'>,
   input: { jobId: string; userId: string; tool: WorkTool; request: unknown; token: string; parent: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!isWorkTool(input.tool) || !input.token) return { ok: false, error: 'bad_input' };
   const r = await enqueue(deps.store, {
-    id: input.jobId, userId: input.userId, serviceType: deps.serviceType, kind: WORK_KIND,
+    id: input.jobId, userId: input.userId, serviceType: WORK_SERVICE_TYPE, kind: WORK_KIND,
     params: { _work: { tool: input.tool, request: input.request, token: input.token }, _parent: input.parent },
   });
   return r === 'error' ? { ok: false, error: 'store_unavailable' } : { ok: true };

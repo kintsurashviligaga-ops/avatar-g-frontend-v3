@@ -16,7 +16,7 @@ function world(run: (signal: AbortSignal) => Promise<WorkRunOutcome>) {
   const audits: Array<{ outcome: string; detail?: string }> = [];
   const calls: unknown[] = [];
   const deps: WorkJobDeps = {
-    store, now: () => clock.now, serviceType: 'image',
+    store, now: () => clock.now,
     async run(tool, input, signal) { calls.push({ tool, ...input }); return run(signal); },
     every(_ms, fn) { beats.push(fn); return () => { beats.splice(beats.indexOf(fn), 1); }; },
     async audit(ev) { audits.push(ev); },
@@ -29,11 +29,15 @@ const queue = (w: ReturnType<typeof world>, jobId = 'job-1') =>
 
 test('enqueue is once per quote; the worker runs it with the signed request and delivers workspace paths', async () => {
   const w = world(async () => ({ ok: true, outputs: ['browser/job1/steps.json', 'browser/job1/1.png'], summary: { hosts: ['example.com'] } }));
+  const inserted: string[] = [];
+  const insert = w.store.insert.bind(w.store);
+  w.store.insert = async (r) => { inserted.push(r.serviceType); return insert(r); };
   expect(await queue(w)).toEqual({ ok: true });
   expect(await queue(w)).toEqual({ ok: true });
   expect(w.store.rows.size).toBe(1);
   const row = w.store.rows.get('job-1')!;
   expect(row.exec?.kind).toBe(WORK_KIND);
+  expect(inserted).toEqual(['document', 'document']); // the kind production already accepts (migration 20261031a)
   expect(workViewOf(row)).toEqual({ status: 'queued', stage: 'queued', pct: 0 });
 
   const r = await workWorkJob(w.deps, { jobId: 'job-1', worker: 'w1' });

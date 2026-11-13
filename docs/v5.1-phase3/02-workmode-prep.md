@@ -48,8 +48,8 @@ The task graph (`tasks/<id>.json`) already records each node's start, inputs, ou
    - a node refused by VALIDATE before the plan is quoted;
    - a cancel mid-run that stops the browser task and the sandbox.
 
-## 4. Questions for GG (none block preparation)
+## 4. Decisions and remaining questions
 
-- **`service_type` of the work rows.** `generation_jobs.service_type` only allows `film, avatar, interior, image, music, voice`, plus `document` from migration `20261031a_generation_jobs_document_kind.sql`. Is `document` applied in production? If it is, work rows use `document`. If not, it needs that migration first, after Supabase is back. Until then the type is a dependency (`WorkJobDeps.serviceType`), not a guess.
+- **`service_type` of the work rows: decided (GG 2026-11-13, "use your best judgment based on the code").** Work rows are `document`. Migration `20261031a` is applied in production and was DB-verified on 2026-11-06 (`docs/production-truth/PRODUCT_TRUTH_MATRIX.md`). Code-run PDFs and Agent G documents already write `document` rows in production, and the job tray already leaves them out. A work row has no signed URL, so it never shows in the Library by itself. `LeaseStore.insert` now accepts `ProduceKind | 'document'` (`LeaseServiceType`).
 - **"One tap per plan, each step held to its share" (decision 2).** For work steps this is automatic: every browser, code, pdf and export quote is 0 credits, so no step can go above its share and none waits for a second yes. The real limit is the server's $20 sandbox ledger, which already refuses a run that would go over. Nothing to decide unless work steps get a credit price later.
 - **Quote expiry.** Signed tokens live 30 min. The engine quotes each step only when it starts, so a long plan is fine. A step waiting behind the 2-at-a-time cap gets a fresh quote when its turn comes.
