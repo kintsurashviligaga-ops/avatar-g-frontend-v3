@@ -26,6 +26,8 @@ import type { ShootKind } from '@/lib/studio/shootWire';
 import { SHOOT_COPY, shootLang, type ShootCopy } from './copy';
 import { type PlanState, type ShootRun, type ShootTile } from './shootRuns';
 import { PlanView } from './PlanView';
+import { BeforeAfter } from './BeforeAfter';
+import { interiorUxV2Copy, interiorUxV2On } from './interiorUxV2';
 
 export interface ShootPaneProps {
   tool: ShootKind;
@@ -92,6 +94,11 @@ function Tile({ run, tile, copy, locale, p }: { run: ShootRun; tile: ShootTile; 
         onDismiss={() => p.onDismissTile(run.id, tile.id)}
         {...(tile.url ? { onOpen: () => p.onOpenImage(tile.url!), onUseAsRef: () => p.onUseAsReference(run.tool, tile.url!, tile.aspect) } : {})}
       />
+      {/* Phase 7.6 I3 (NEXT_PUBLIC_INTERIOR_UX_V2, off): the room as uploaded against its redesign, on a drag divider. */}
+      {run.tool === 'interior' && tile.status === 'ready' && tile.url && hasSource && interiorUxV2On() && (() => {
+        const v = interiorUxV2Copy(lang);
+        return <BeforeAfter before={run.photos[tile.photoIndex]!.src} after={tile.url} labels={{ before: v.before, after: v.after, compare: v.compare }} testId="tile-before-after" />;
+      })()}
       {tile.status === 'ready' && tile.url && (
         <div className="space-y-2">
           <ResultActions url={tile.url} kind="image" locale={lang} prompt={run.prompt} />

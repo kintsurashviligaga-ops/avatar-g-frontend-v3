@@ -16,7 +16,8 @@ import { Armchair } from 'lucide-react';
 import { INTERIOR_TEMPLATES, ROOM_TYPES, interiorAddsLine, interiorTemplate } from '@/lib/studio/templates.interior';
 import { templateLang } from '@/lib/studio/templates';
 import { toolName } from '@/lib/studio/tools';
-import { SHOOT_MAX_PHOTOS } from '@/lib/studio/shootQuote';
+import { SHOOT_BRIEF_MAX, SHOOT_MAX_PHOTOS, nearestAspect } from '@/lib/studio/shootQuote';
+import { ROOM_EDITS, addRoomEdit, interiorSummaryLine, interiorUxV2Copy, interiorUxV2On } from './newtools/interiorUxV2';
 import { PanelHeader, PromptCard, ChipScroller, ProSettings, UploadCard } from './newtools/PanelParts';
 import { ShootFooter } from './newtools/shared';
 import { TemplateCarousel } from './newtools/TemplateCarousel';
@@ -47,10 +48,29 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
   const c = copy.interior;
   const tl = templateLang(p.locale);
   const picked = interiorTemplate(p.form.template);
+  // Phase 7.6 I1 · I4 (NEXT_PUBLIC_INTERIOR_UX_V2, off): a room photo is REDESIGNED, said so; a "You will get" line.
+  const v2 = interiorUxV2On();
+  const v2c = interiorUxV2Copy(lang);
+  const editing = v2 && p.form.photos.length > 0;
+  const first = p.form.photos[0];
+  const aspectShown = p.form.aspect !== 'auto' ? p.form.aspect : first && first.w > 0 && first.h > 0 ? `${copy.auto} · ${nearestAspect(first.w, first.h)}` : copy.auto;
+  const summary = v2 ? `${v2c.youGet} ${interiorSummaryLine({ tilesLine: copy.tilesLine(p.form.photos.length, p.form.count, p.tiles), aspect: aspectShown, credits: p.credits })}` : undefined;
   return (
     <div data-testid="interior-panel" className="space-y-4 pb-1">
       <PanelHeader Icon={Armchair} title={toolName('interior', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="interior" />
-      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} testId="interior" />
+      {editing && <p data-testid="interior-edit-banner" role="note" className="rounded-2xl bg-app-accent/10 px-4 py-2.5 text-[13px] leading-snug text-app-text ring-1 ring-app-accent/25">{v2c.banner}</p>}
+      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={editing ? v2c.placeholder : c.prompt} testId="interior" />
+      {editing && (
+        <div data-testid="interior-quick-edits" role="group" aria-label={v2c.quickEdits} className="flex flex-wrap gap-1.5">
+          {ROOM_EDITS.map((e) => (
+            <button key={e} type="button" data-testid={`interior-edit-${e}`}
+              onClick={() => p.onPatch({ brief: addRoomEdit(p.form.brief, e, lang, SHOOT_BRIEF_MAX) })}
+              className="min-h-[36px] rounded-full bg-app-elevated/55 px-3 text-[12.5px] text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+              {v2c.edit[e].label}
+            </button>
+          ))}
+        </div>
+      )}
       <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="interior" />
       <ChipScroller label={copy.roomType} testId="interior-room"
@@ -65,6 +85,7 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
       <ProSettings copy={copy} summary={copy.modelValue} testId="interior" />
       <ShootFooter service="image.interior" copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
         canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="interior"
+        {...(editing ? { generateLabel: v2c.redesign } : {})} {...(summary ? { summary } : {})}
         onAspect={(aspect) => p.onPatch({ aspect })} onCount={(count) => p.onPatch({ count })} />
     </div>
   );
