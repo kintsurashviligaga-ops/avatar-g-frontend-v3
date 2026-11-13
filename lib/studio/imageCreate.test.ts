@@ -73,11 +73,13 @@ describe('the engine', () => {
 });
 
 describe('the reference picture', () => {
-  test('the route reads ONE referenceImage (a string), so the limit is one — never an array', () => {
+  test('the route reads ONE referenceImage (a string), so the screen\'s limit is one; more only behind IMAGE_MULTI_REF', () => {
     expect(IMAGE_MAX_REFERENCES).toBe(1);
     expect(route).toMatch(/referenceImage\?: string;/);
-    // (`referenceImages: [referenceImageUrl]` is the Google image call under MEDIA_GOOGLE_ONLY: still the one picture.)
-    expect(route).not.toMatch(/body\.referenceImages|referenceImages\?: |referenceImage\?: string\[\]/);
+    expect(route).not.toMatch(/referenceImage\?: string\[\]/);
+    // Phase 7.5 (GG decision 4): `referenceImages` is read only through the flag (app/api/nanobanana/image/multiRef.test.ts).
+    expect(route.match(/body\.referenceImages/g)).toHaveLength(1);
+    expect(route).toMatch(/imageMultiRefServerOn\(\) \? extraReferences\(body\.referenceImages/);
   });
 });
 

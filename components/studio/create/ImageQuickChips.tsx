@@ -16,7 +16,7 @@ import { imageCreateCopy } from './imageCreateCopy';
 import { OptionPicker, type PickerOption } from './OptionPicker';
 import { ServiceQuickSettings, type QuickChip } from '@/components/chat/composer/ServiceQuickSettings';
 import { creditsLabel } from '@/lib/credits/quote';
-import { IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageStyleSwatch, type ImgAspect, type ImgCount } from '@/lib/studio/imageCreate';
+import { IMG_COUNTS, IMG_STYLES, imageAspectsOffered, imageCredits, imageStyleSwatch, type ImgAspect, type ImgCount } from '@/lib/studio/imageCreate';
 
 type Sheet = 'aspect' | 'count' | 'style' | null;
 
@@ -42,7 +42,7 @@ export function ImageQuickChips(p: {
   const toggle = (s: Exclude<Sheet, null>) => () => setSheet((cur) => (cur === s ? null : s));
   const close = () => setSheet(null);
 
-  const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => IMG_ASPECTS.map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
+  const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => imageAspectsOffered().map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
   const countOptions = useMemo<PickerOption<ImgCount>[]>(() => IMG_COUNTS.map((n) => ({
     value: n, label: c.countOption(n), glyph: <Layers size={20} />, trailing: creditsLabel(imageCredits(n), p.locale),
   })), [c, p.locale]);
