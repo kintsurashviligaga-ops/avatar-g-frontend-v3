@@ -11,8 +11,8 @@ import { googleAiConfigured } from '@/lib/ai/google/transport';
 export const PROBE_DEADLINE_MS = 8_000;
 
 // HeyGen, World Labs and LTX were removed (v5.1 M-14, GG 2026-11-12), and Udio and Anthropic are refused in production
-// (Google only, MASTER TASK v3.1): no route reaches them, so they are not probed. OpenAI stays only for the chat-memory
-// embeddings until those move to gemini-embedding-001.
+// (Google only, MASTER TASK v3.1): no route reaches them, so they are not probed. Chat-memory embeddings run on
+// gemini-embedding-001 (v5.1 M-14); OpenAI stays only for Agent G dictation (lib/agent-g/voice/stt) until it moves to Google.
 type ProviderName = 'openai' | 'gemini';
 
 export type ProviderAuditEntry = {
@@ -25,7 +25,7 @@ export type ProviderAuditEntry = {
 };
 
 export type ServiceRoutingAudit = {
-  category: 'text' | 'memory';
+  category: 'text' | 'memory' | 'dictation';
   provider: ProviderName;
   envKey: string;
   configured: boolean;
@@ -39,7 +39,8 @@ const PROVIDER_ENV: Record<ProviderName, string> = {
 
 const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provider: ProviderName }> = [
   { category: 'text', provider: 'gemini' },
-  { category: 'memory', provider: 'openai' },
+  { category: 'memory', provider: 'gemini' },
+  { category: 'dictation', provider: 'openai' },
 ];
 
 function hasKey(provider: ProviderName): boolean {
