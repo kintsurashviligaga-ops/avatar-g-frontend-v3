@@ -92,25 +92,41 @@ const COMMIT_CLICK = /(buy|purchase|pay\b|order|checkout|delete|remove account|s
 /** Cut what the decider sees: the page is data, never instructions, and it is kept short. */
 export function boundObservation(o: Observation): Observation {
   return {
-    url: o.url.slice(0, 2_000),
-    title: o.title.slice(0, 300),
-    text: o.text.slice(0, OBS_TEXT_MAX),
-    links: o.links.slice(0, OBS_LINKS_MAX).map((l) => ({ text: l.text.slice(0, 120), href: l.href.slice(0, 500) })),
-    secretFields: o.secretFields.slice(0, 20),
+    url: String(o.url ?? '').slice(0, 2_000),
+    title: String(o.title ?? '').slice(0, 300),
+    text: String(o.text ?? '').slice(0, OBS_TEXT_MAX),
+    links: (Array.isArray(o.links) ? o.links : []).slice(0, OBS_LINKS_MAX).map((l) => ({ text: l.text.slice(0, 120), href: l.href.slice(0, 500) })),
+    // Not a list → kept as unknown, so sensitiveReason fails closed.
+    secretFields: Array.isArray(o.secretFields) ? o.secretFields.slice(0, 20) : (undefined as unknown as string[]),
   };
 }
 
-/** Why an action must wait for the user (null: it may run). */
+/** Selectors that name a secret field even when the page did not report it (a password, card, CVV or one-time code). */
+const SECRET_SELECTOR = /(pass(word|wd)?|pwd|card|cc-?num|cvv|cvc|otp|one-?time|pin\b|iban|security.?code)/i;
+/** A click that submits a form without saying what it does (`button[type=submit]`, `input[type="submit"]`, `form button`). */
+const OPAQUE_SUBMIT = /(type\s*=\s*["']?submit|\bform\b[^,]*\bbutton\b)/i;
+
+/**
+ * Why an action must wait for the user (null: it may run). GG 2026-11-13: every sensitive action needs an explicit tap,
+ * and anything ambiguous fails closed (it waits for the user rather than running).
+ */
 export function sensitiveReason(step: BrowserStep, page: Observation): string | null {
-  if (step.op === 'type' && page.secretFields.includes(step.selector)) return 'typing into a password or payment field';
+  // An observation we cannot read is ambiguous: nothing that touches the page runs without the user.
+  const secrets = Array.isArray(page.secretFields) ? page.secretFields : null;
+  const touches = step.op === 'click' || step.op === 'press' || step.op === 'type';
+  if (touches && secrets === null) return 'the page did not say which fields are secret';
+  if (step.op === 'type' && (secrets!.includes(step.selector) || SECRET_SELECTOR.test(step.selector))) return 'typing into a password or payment field';
   if (step.op === 'goto') {
     try {
       const u = new URL(step.url);
       if (SENSITIVE_URL.test(u.pathname + u.search)) return 'opening a sign-in or payment page';
-    } catch { /* the policy check refuses it */ }
+    } catch { return 'an address that cannot be read'; }
   }
-  if ((step.op === 'click' || step.op === 'press' || step.op === 'type') && SENSITIVE_URL.test(page.url)) return 'acting on a sign-in or payment page';
+  if (touches && SENSITIVE_URL.test(page.url)) return 'acting on a sign-in or payment page';
+  // A form holding a secret field: a click or a key press could submit it, and we cannot tell which.
+  if ((step.op === 'click' || step.op === 'press') && secrets!.length > 0) return 'a page with a password or payment field';
   if (step.op === 'click' && COMMIT_CLICK.test(step.selector)) return 'a click that buys, sends or deletes something';
+  if (step.op === 'click' && OPAQUE_SUBMIT.test(step.selector)) return 'a submit button that does not say what it does';
   return null;
 }
 

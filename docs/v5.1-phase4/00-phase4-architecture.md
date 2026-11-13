@@ -64,8 +64,12 @@ The agent decides **one step at a time** from what the page shows now. Today's b
 6. **Flags, all off by default:** `AGENT_BROWSER_AGENT` (off / admins), `AGENT_SANDBOX_PACKAGES` (off / admins), `AGENT_APP_BUILDER` (off / admins).
 7. **Engine.** Each of these becomes a work-mode step kind in 3.5c (#311): a lease job, VALIDATE (admin-only under D-08), and a plan-level approval.
 
-## 4. Questions for GG (none block this preparation)
+## 4. GG decisions (2026-11-13 12:34Z) and where they live in code
 
-- **Package installs:** may the install phase reach the package registries? Only the registries, only for the install, and only allowlisted packages.
-- **App previews:** where should they be served? I recommend a separate preview domain, so a generated app can never run on myavatar.ge's own origin.
-- **Browser Agent:** keep it admin-only like today's browser? And do you agree a "needs the user" stop is a single tap per action, never a blanket "allow everything"?
+| Decision | Code |
+|---|---|
+| **Package installs: YES, strictly limited.** npm and PyPI are reachable only during the explicit install step, only for the pinned allowlisted packages. The Python or Node run step stays deny-all. | `twoPhasePlan` in `lib/agent/sandbox/packages.ts`: an `install` phase with registry egress, then a `run` phase with `egress: []`. A bad package list refuses the whole run and never falls back to running without the packages. |
+| **App previews: a separate, isolated domain.** | `lib/agent/appBuilder/preview.ts`. `checkPreviewDomain` refuses myavatar.ge **and every subdomain of it**, including `sandbox.myavatar.ge`. A subdomain is "same-site": it receives cookies scoped to `.myavatar.ge`, SameSite doesn't protect against it, and it can set cookies for the parent domain. The preview domain must be a different registrable domain (for example `myavatar-apps.ge`). Each app gets its own origin (`app-xxx.<domain>`). Responses carry a strict CSP: no framing, `connect-src 'self'`, no forms, no cookies. Unset → previews stay off. |
+| **Browser Agent: admin-only (D-08), an explicit tap for every sensitive action, fail closed.** | `lib/agent/phase4/flags.ts`: only the exact value `admins` turns a flag on, and only for admins. There is no `everyone`. `sensitiveReason` in `loop.ts` now also holds: a field whose name looks secret (card, CVV, OTP, PIN, IBAN) even when the page didn't report it; any click or Enter on a page with a secret field; a submit button that doesn't say what it does; and any page that doesn't report its secret fields at all. |
+
+All three flags (`AGENT_BROWSER_AGENT`, `AGENT_SANDBOX_PACKAGES`, `AGENT_APP_BUILDER`) are off by default and stay off.

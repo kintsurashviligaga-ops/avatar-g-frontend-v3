@@ -1,5 +1,6 @@
 /** @jest-environment node */
 /** Package installs for code runs (Phase 4 prep, not wired): allowlisted, exact pins, argv only, registries only. */
+import { twoPhasePlan } from './packages';
 import { INSTALL_EGRESS, PKG_MAX, checkPackages, parsePkg } from './packages';
 
 test('exact pins on the list pass and give an argv install with no scripts, and only the registry hosts', () => {
@@ -36,4 +37,16 @@ test('names off the list, versions off the list, too many, or not a list are ref
 test('parsePkg normalizes case and pip underscores; scoped npm names parse', () => {
   expect(parsePkg('pip', 'Python_Docx==1.2.0')).toEqual({ name: 'python-docx', version: '1.2.0' });
   expect(parsePkg('npm', '@scope/pkg@1.0.0')).toEqual({ name: '@scope/pkg', version: '1.0.0' });
+});
+
+test('two phases (GG 2026-11-13): registry egress only while installing; the run is always deny-all', () => {
+  const p = twoPhasePlan('pip', ['pandas==2.3.3'], 60);
+  if (!p.ok) throw new Error(p.error);
+  expect(p.phases.map((x) => x.phase)).toEqual(['install', 'run']);
+  expect(p.phases[0]).toMatchObject({ egress: ['pypi.org', 'files.pythonhosted.org'] });
+  expect(p.phases[1]).toEqual({ phase: 'run', egress: [], wallSec: 60 });
+  const none = twoPhasePlan('npm', undefined, 60);
+  expect(none).toEqual({ ok: true, phases: [{ phase: 'run', egress: [], wallSec: 60 }] });
+  // A bad list refuses the whole run; it never falls back to running without the packages.
+  expect(twoPhasePlan('npm', ['left-pad@1.3.0'], 60)).toMatchObject({ ok: false });
 });

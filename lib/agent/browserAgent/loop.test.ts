@@ -111,3 +111,22 @@ test('the decider only ever sees a bounded page', async () => {
   expect(w.seen[0]!.links).toHaveLength(40);
   expect(boundObservation(huge).title).toBe('Page');
 });
+
+test('fail closed (GG 2026-11-13): anything ambiguous waits for the user', () => {
+  const plain = page('https://example.com/');
+  // a field that looks secret even though the page did not report it
+  expect(sensitiveReason({ op: 'type', selector: '#card-number', text: '4' }, plain)).not.toBeNull();
+  expect(sensitiveReason({ op: 'type', selector: 'input[name=otp]', text: '1' }, plain)).not.toBeNull();
+  // a page with a secret field: any click or Enter could submit it
+  const form = page('https://example.com/', { secretFields: ['#pw'] });
+  expect(sensitiveReason({ op: 'click', selector: 'text=Next' }, form)).not.toBeNull();
+  expect(sensitiveReason({ op: 'press', key: 'Enter' } as BrowserStep, form)).not.toBeNull();
+  // a submit button that does not say what it does
+  expect(sensitiveReason({ op: 'click', selector: 'button[type=submit]' }, plain)).not.toBeNull();
+  // an observation that does not list secret fields at all
+  const unknown = { ...plain, secretFields: undefined } as unknown as Observation;
+  expect(sensitiveReason({ op: 'click', selector: 'text=More' }, unknown)).not.toBeNull();
+  // ordinary reading actions still run
+  expect(sensitiveReason({ op: 'click', selector: 'text=Opening hours' }, plain)).toBeNull();
+  expect(sensitiveReason({ op: 'text' }, unknown)).toBeNull();
+});

@@ -95,3 +95,23 @@ export function checkPackages(eco: PkgEcosystem, specs: unknown): PkgCheck {
     : ['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', '/vercel/sandbox/.pkgs', ...pins];
   return { ok: true, ecosystem: eco, packages, command, egress: INSTALL_EGRESS[eco] };
 }
+
+/**
+ * GG 2026-11-13 12:34Z (approved): network to npm / PyPI ONLY during the explicit install step, ONLY for the pinned
+ * allowlisted packages; the Python / Node run step stays deny-all. This is the whole run as two phases. A run with no
+ * packages is a single deny-all phase, exactly as today. The plan is refused (never "run without the packages") if
+ * the package list does not pass checkPackages.
+ */
+export type SandboxPhase =
+  | { phase: 'install'; argv: string[]; egress: readonly string[]; wallSec: number }
+  | { phase: 'run'; egress: readonly []; wallSec: number };
+
+export const INSTALL_WALL_SEC = 90;
+
+export function twoPhasePlan(eco: PkgEcosystem, specs: unknown, runWallSec: number): { ok: true; phases: SandboxPhase[] } | { ok: false; error: string } {
+  const pk = checkPackages(eco, specs ?? []);
+  if (!pk.ok) return pk;
+  const run: SandboxPhase = { phase: 'run', egress: [], wallSec: runWallSec };
+  if (pk.packages.length === 0) return { ok: true, phases: [run] };
+  return { ok: true, phases: [{ phase: 'install', argv: pk.command, egress: pk.egress, wallSec: INSTALL_WALL_SEC }, run] };
+}
