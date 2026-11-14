@@ -80,7 +80,20 @@ function stepsOf(raw: unknown): BrowserStepResult[] {
   });
 }
 
-export function hostBrowserRunner(host: BrowserHost, spend: SandboxSpendStore, opts: { cap?: number; now?: () => number } = {}): BrowserRunner {
+/** The first address a plan opens: a saved login is used only for that site. */
+export function firstUrl(plan: Pick<BrowserPlan, 'steps'>): string | null {
+  const g = plan.steps.find((s) => s.op === 'goto') as { url?: string } | undefined;
+  return typeof g?.url === 'string' ? g.url : null;
+}
+
+export interface BrowserRunnerOpts {
+  cap?: number;
+  now?: () => number;
+  /** The person's saved login for the site `url` is on (./sessionStore forUrl), or null. */
+  loadState?: (url: string) => Promise<{ site: string; state: unknown } | null>;
+}
+
+export function hostBrowserRunner(host: BrowserHost, spend: SandboxSpendStore, opts: BrowserRunnerOpts = {}): BrowserRunner {
   const cap = opts.cap ?? SANDBOX_CAP_USD;
   const now = opts.now ?? Date.now;
   return {
@@ -98,8 +111,13 @@ export function hostBrowserRunner(host: BrowserHost, spend: SandboxSpendStore, o
       signal.addEventListener('abort', onAbort, { once: true });
       try {
         handle = await host.create({ vcpus: BROWSER_LIMITS.cpus, timeoutMs: (wallSec + 30) * 1000, denySubnets: BROWSER_DENY_SUBNETS });
+        const start = firstUrl(plan);
+        // A vault that cannot be read means "no saved login", never a failed task.
+        const saved = start && opts.loadState ? await opts.loadState(start).catch(() => null) : null;
+        if (saved) await handle.writeFile('state.json', JSON.stringify(saved.state));
         const task = {
           steps: plan.steps,
+          useState: !!saved,
           limits: { textMax: BROWSER_TEXT_MAX, stepMs: BROWSER_STEP_MS, locale: 'ka-GE', userAgent: UA },
         };
         await handle.writeFile('task.json', JSON.stringify(task));
@@ -161,6 +179,7 @@ export function hostBrowserRunner(host: BrowserHost, spend: SandboxSpendStore, o
           shots,
           finalUrl: typeof parsed.finalUrl === 'string' ? parsed.finalUrl.slice(0, 2000) : '',
           wallMs: now() - started,
+          ...(saved ? { session: saved.site } : {}),
         };
       } catch (err) {
         if (signal.aborted) return { ok: false, error: 'cancelled', message: 'Cancelled.' };

@@ -61,6 +61,8 @@ export type BrowserRunResult =
     steps: BrowserStepResult[];
     finalUrl: string;
     wallMs: number;
+    /** The site whose saved login this task used. */
+    session?: string;
     workspace: { id: string; folder: string; written: WsFile[]; error?: string };
   }
   | { ok: false; error: BrowserErrorCode; message: string };
@@ -196,6 +198,7 @@ export async function runBrowserQuote(
     steps: shown,
     finalUrl: r.finalUrl,
     wallMs: r.wallMs,
+    ...(r.session ? { session: r.session } : {}),
     workspace: saved.ok
       ? { id: req.workspaceId, folder, written: saved.written }
       : { id: req.workspaceId, folder, written: [], error: saved.message },

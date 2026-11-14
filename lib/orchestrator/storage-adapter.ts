@@ -11,6 +11,7 @@
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { WORKSPACE_BUCKET } from '@/lib/agent/workspace/paths';
+import { SESSION_BUCKET } from '@/lib/agent/browser/sessionStore';
 import { isTwinBucket } from '@/lib/avatar/twinStorage';
 import { storageContentType } from '@/lib/uploads/policy';
 
@@ -105,6 +106,8 @@ function refuseTwin(bucket: string): boolean {
   // The workspace bucket (Agent G's Execution Workspace) is the same: a user's files, signed only by its own store,
   // which builds every path from the caller's own uid (lib/agent/workspace/live.ts).
   if (bucket === WORKSPACE_BUCKET) return true;
+  // Agent G's saved site logins (sealed cookies, lib/agent/browser/sessionStore): never signed, by anyone.
+  if (bucket === SESSION_BUCKET) return true;
   if (!isTwinBucket(bucket)) return false;
   // eslint-disable-next-line no-console
   console.warn('[storage] refused to sign an object in the private twin bucket via the generic signer');
