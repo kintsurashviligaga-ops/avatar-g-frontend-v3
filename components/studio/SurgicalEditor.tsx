@@ -13,8 +13,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Crop, Volume2, VolumeX, Play, Pause, Upload, X, Download, Loader2, Trash2, ChevronLeft, ChevronRight,
-  SunMedium, Contrast as ContrastIcon, Droplet, Thermometer, RotateCcw, Sparkles, Film, Clapperboard, Brush,
-  Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2, CornerUpLeft,
+  SunMedium, Contrast as ContrastIcon, Droplet, Thermometer, RotateCcw, Sparkles, Film, Clapperboard,
+  Share2, Check, Music2, Gauge, Wand2, CornerUpLeft,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
@@ -37,7 +37,6 @@ const MAX_CLIPS = 35;
 // sequence still references. Raised from 5: that ceiling was invisible until you had already added a
 // sixth clip and got a toast, which is exactly the "hidden limitation" complaint.
 const MAX_SEQ_CLIPS = 12;
-const MASK_CAP = 1536;
 
 // The short label beside the export's percent. The edit routes report no progress, so the percent stays at 0% until
 // the asset exists, and the label says only that the work is running (§3.3: no step walked by the clock, never "ready").
@@ -46,28 +45,26 @@ const EDITOR_WAIT = { ka: 'მუშავდება…', en: 'Working…', ru
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
-  tabClips: string; tabRetouch: string; tabTrim: string; tabAi: string; cropWholeSeq: string; clipsUsed: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
+  tabClips: string; tabTrim: string; cropWholeSeq: string; clipsUsed: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   fullClip: string; someDropped: string; uploadFailed: string; play: string; pause: string;
   signInToUpload: string; tooFast: string;
   transition: string; tCut: string; tCross: string; tFade: string;
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
-  aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
+  photoProcessing: string; insufficient: string; notConfig: string;
   exportSuccess: string; share: string; linkCopied: string;
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string; applyChanges: string; editHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
-  aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
-  audioStudio: string; vocalIso: string; vocalSplit: string; pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string; instrumental: string; vocals: string;
-  selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
+    pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string;   selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
   returnChat: string;
   agentTitle: string; agentPhPhoto: string; agentPhVideo: string; agentPhAudio: string; agentSend: string; agentNoOp: string;
-  detach: string; undetach: string; aspect: string; aspectOrig: string; bgReplace: string; bgReplacePh: string; volume: string;
+  detach: string; undetach: string; aspect: string; aspectOrig: string; volume: string;
 }
 
 const T: Record<Lang, Copy> = {
   ka: {
-    title: 'ქირურგიული მონტაჟი', subtitle: 'არა-ლინეარული რედაქტორი — გადააბი სხვადასხვა კლიპი',
+    title: 'ფოტოს და აუდიოს რედაქტორი', subtitle: 'ფოტოს ფერი და ჩარჩო · აუდიოს მოჭრა და ტონი',
     drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 ფაილი', dropHintAudio: 'MP3 · WAV · M4A', pick: 'ფაილის არჩევა',
     crop: 'ჩამოჭრა', color: 'ფერის გრადაცია', fade: 'მილევა', split: 'გაჭრა', mute: 'დადუმება', unmute: 'ხმის ჩართვა', reset: 'გადატვირთვა',
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
@@ -77,22 +74,20 @@ const T: Record<Lang, Copy> = {
     signInToUpload: 'ატვირთვამდე გაიარე ავტორიზაცია.', tooFast: 'ძალიან ბევრი ატვირთვა — დაელოდე წამებს და სცადე თავიდან.',
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
-    aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო დროებით მიუწვდომელია',
+    photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო დროებით მიუწვდომელია',
     exportSuccess: 'ექსპორტი წარმატებულია', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა',
     exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი', applyChanges: 'ცვლილებების შენახვა', editHint: 'შეიტანე ცვლილება გასააქტიურებლად',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
-    aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება დროებით მიუწვდომელია', aiPromptPh: 'აღწერა (არჩევითი)…',
-    audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
-    selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ატვირთეთ აუდიო ფაილი ან მუსიკალური ტრეკი დასამუშავებლად', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
+        pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…',     selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'ფოტოს რედაქტირება', wsAudio: 'აუდიოს რედაქტირება', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ატვირთეთ აუდიო ფაილი ან მუსიკალური ტრეკი დასამუშავებლად', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
     returnChat: 'ჩატში დაბრუნება ფაილით',
-    agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
-    tabRetouch: 'რეტუში', tabTrim: 'მოჭრა', tabAi: 'AI', tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
+    agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'გაანათე, მეტი კონტრასტი, გაათბე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'შეანელე, ხმა დააწიე, დაადუმე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
+    tabTrim: 'მოჭრა', tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
     cropSingleOnly: 'ჩარჩო მუშაობს ერთ კლიპზე — თანმიმდევრობაში დარჩება მთლიანი კადრი.',
     cropWholeSeq: 'ჩარჩო მოქმედებს მთელ თანმიმდევრობაზე.', clipsUsed: 'კადრი',
-    detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
+    detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', volume: 'ხმის სიმაღლე',
   },
   en: {
-    title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
+    title: 'Photo & audio editor', subtitle: 'Colour and crop a photo · trim and tune audio',
     drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 files', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Choose file',
     crop: 'Crop', color: 'Color grade', fade: 'Fade', split: 'Split', mute: 'Mute', unmute: 'Unmute', reset: 'Reset',
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
@@ -102,22 +97,20 @@ const T: Record<Lang, Copy> = {
     signInToUpload: 'Sign in before uploading.', tooFast: 'Too many uploads — wait a few seconds and try again.',
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
-    aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is temporarily unavailable',
+    photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is temporarily unavailable',
     exportSuccess: 'Export Successful', share: 'Share', linkCopied: 'Link copied',
     exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip', applyChanges: 'Apply Changes', editHint: 'Make an edit to apply',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
-    aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is temporarily unavailable', aiPromptPh: 'Description (optional)…',
-    audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
-    selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Upload an audio file or music track to process', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
+        pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…',     selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'Edit a photo', wsAudio: 'Edit audio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Upload an audio file or music track to process', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
     returnChat: 'Return to chat with asset',
-    agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
-    tabRetouch: 'Retouch', tabTrim: 'Trim', tabAi: 'AI', tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
+    agentTitle: 'Agent G — command by text', agentPhPhoto: 'brighter, more contrast, warmer…', agentPhVideo: 'split, mute…', agentPhAudio: 'slower, quieter, fade in 2s…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
+    tabTrim: 'Trim', tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
     cropSingleOnly: 'Crop works on a single clip — a multi-clip sequence keeps the full frame.',
     cropWholeSeq: 'The crop frames the whole sequence.', clipsUsed: 'clips',
-    detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
+    detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', volume: 'Volume',
   },
   ru: {
-    title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
+    title: 'Редактор фото и аудио', subtitle: 'Цвет и кадр фото · обрезка и тон аудио',
     drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 файлов', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Выбрать файл',
     crop: 'Обрезка', color: 'Цветокоррекция', fade: 'Затухание', split: 'Разрез', mute: 'Заглушить', unmute: 'Включить звук', reset: 'Сброс',
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
@@ -127,19 +120,17 @@ const T: Record<Lang, Copy> = {
     signInToUpload: 'Войдите, чтобы загружать файлы.', tooFast: 'Слишком много загрузок — подождите несколько секунд.',
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
-    aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент временно недоступен',
+    photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент временно недоступен',
     exportSuccess: 'Экспорт успешен', share: 'Поделиться', linkCopied: 'Ссылка скопирована',
     exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип', applyChanges: 'Применить изменения', editHint: 'Внесите правку',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
-    aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов временно недоступно', aiPromptPh: 'Описание (необязательно)…',
-    audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
-    selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Загрузите аудиофайл или музыкальный трек для обработки', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
+        pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…',     selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'Редактировать фото', wsAudio: 'Редактировать аудио', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Загрузите аудиофайл или музыкальный трек для обработки', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
     returnChat: 'Вернуться в чат с файлом',
-    agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
-    tabRetouch: 'Ретушь', tabTrim: 'Обрезка', tabAi: 'AI', tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
+    agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'ярче, контрастнее, теплее…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'медленнее, тише, нарастание 2 с…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
+    tabTrim: 'Обрезка', tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
     cropSingleOnly: 'Кадрирование работает с одним клипом — в последовательности кадр остаётся целиком.',
     cropWholeSeq: 'Кадрирование применяется ко всей последовательности.', clipsUsed: 'кадров',
-    detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
+    detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', volume: 'Громкость',
   },
 };
 
@@ -152,7 +143,7 @@ interface TextOverlay { text: string; position: OverlayPosition; fontSize: numbe
 /** One block in the export sequence — points at its OWN source clip; `transition` = blend FROM the previous block. */
 interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 
-type VideoTab = 'clips' | 'retouch' | 'trim' | 'ai' | 'adjust' | 'filters' | 'crop';
+type VideoTab = 'clips' | 'trim' | 'adjust' | 'filters' | 'crop';
 
 const NEUTRAL: Grade = { saturation: 100, contrast: 100, brightness: 100, temperature: 0 };
 
@@ -338,10 +329,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [photoDim, setPhotoDim] = useState<{ w: number; h: number } | null>(null);
-  // Photo AI chaining: `originalPath` caches the uploaded source; `chainPath` is the latest AI result's storage
-  // path — when set, the NEXT action runs on the result (transparent PNG → upscale → colorize…), not the original.
+  // `originalPath` caches the uploaded audio source so a second „apply" does not upload it again.
   const [originalPath, setOriginalPath] = useState<string | null>(null);
-  const [chainPath, setChainPath] = useState<string | null>(null);
 
   const [grade, setGrade] = useState<Grade>(NEUTRAL);
   const [fade, setFade] = useState<{ inSec: number; outSec: number }>({ inSec: 0, outSec: 0 });
@@ -350,7 +339,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const [detached, setDetached] = useState(false);
   const [aspectCrop, setAspectCrop] = useState<Rect | null>(null);
   const [audioVol, setAudioVol] = useState(1);
-  const [bgPrompt, setBgPrompt] = useState('');
   const [crop, setCrop] = useState<Rect | null>(null);
   const [cropOn, setCropOn] = useState(false);
   // iOS-style workspace tabs for the VIDEO lane. The controls used to be one long scroll; grouping them
@@ -359,16 +347,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const [segments, setSegments] = useState<Segment[]>([]); // the export SEQUENCE (across clips)
   const [selectedSeg, setSelectedSeg] = useState(0);
 
-  const [maskMode, setMaskMode] = useState(false);
-  const [brush, setBrush] = useState(48);
-  const [maskPainted, setMaskPainted] = useState(false);
-  const [prompt, setPrompt] = useState('');
-
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [result, setResult] = useState<{ url: string; kind: 'video' | 'image' | 'audio' } | null>(null);
   const [successAsset, setSuccessAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio' } | null>(null);
-  const [secondaryAudio, setSecondaryAudio] = useState<string | null>(null); // splitter's instrumental stem
   const [toast, setToast] = useState<string | null>(null);
 
   // ── Audio Studio state ──
@@ -383,12 +365,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   // MOBILE UPLOAD FIX: `display:none` inputs nested in a <label> often refuse to open the picker on iOS
   // Safari — which is why "drag a video or photo" looked dead on a phone, where dragging is impossible
   // anyway. A ref + explicit .click() inside the tap handler works on every browser.
   const emptyPickRef = useRef<HTMLInputElement>(null);
-  const painting = useRef(false);
   const clipsRef = useRef<Clip[]>([]);
 
   const clip = clips[active];
@@ -443,13 +423,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
   // are the GLOBAL draft and persist across clips.
   useEffect(() => {
-    // Land on the lane's own first tab — 'clips' does not exist for a photo, 'retouch' does not for video.
+    // Land on the lane's own first tab — 'clips' does not exist for a photo or an audio file.
     const k = clipsRef.current[active]?.kind;
-    setVtab(k === 'image' ? 'retouch' : k === 'audio' ? 'trim' : 'clips');
-    setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null);
-    setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 }); setSecondaryAudio(null);
+    setVtab(k === 'image' ? 'adjust' : k === 'audio' ? 'trim' : 'clips');
+    setCrop(null); setCropOn(false); setCurrent(0); setPhotoDim(null); setOriginalPath(null);
+    setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 });
     setResult(null); setSuccessAsset(null); // the last result belongs to the PREVIOUS clip — never bleed it into the new one
-    setVideoSpeed(1); setDetached(false); setAspectCrop(null); setAudioVol(1); setBgPrompt('');
+    setVideoSpeed(1); setDetached(false); setAspectCrop(null); setAudioVol(1);
   }, [active]);
 
   /**
@@ -529,7 +509,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
 
   const resetDraft = useCallback(() => {
     setGrade(NEUTRAL); setFade({ inSec: 0, outSec: 0 }); setCrop(null); setCropOn(false); setResult(null);
-    setMaskMode(false); setMaskPainted(false); setPrompt(''); setChainPath(null); // revert photo chaining to the original
     // Rebuild the sequence to one full segment per video clip, in upload order.
     setSegments(clipsRef.current.filter((c) => c.kind === 'video').slice(0, MAX_SEQ_CLIPS).map((c) => ({ id: `seg-${c.id}`, clipId: c.id, start: 0, end: c.dur || 0, muted: false })));
     setSelectedSeg(0);
@@ -721,32 +700,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     return { x, y, w: Math.min(crop.w * sx, nw - x), h: Math.min(crop.h * sy, nh - y) };
   }, [crop, isPhoto]);
 
-  // ── Mask canvas (photo inpaint) ──
-  useEffect(() => {
-    if (!maskMode || !photoDim) return;
-    const c = maskCanvasRef.current; if (!c) return;
-    const scale = Math.min(1, MASK_CAP / Math.max(photoDim.w, photoDim.h));
-    c.width = Math.max(2, Math.round(photoDim.w * scale));
-    c.height = Math.max(2, Math.round(photoDim.h * scale));
-    const ctx = c.getContext('2d'); if (ctx) { ctx.fillStyle = 'black'; ctx.fillRect(0, 0, c.width, c.height); }
-    setMaskPainted(false);
-  }, [maskMode, photoDim]);
-  const paintAt = useCallback((clientX: number, clientY: number) => {
-    const c = maskCanvasRef.current; if (!c) return;
-    const r = c.getBoundingClientRect(); if (!r.width || !r.height) return;
-    const x = (clientX - r.left) / r.width * c.width;
-    const y = (clientY - r.top) / r.height * c.height;
-    const ctx = c.getContext('2d'); if (!ctx) return;
-    ctx.fillStyle = 'white'; ctx.beginPath();
-    ctx.arc(x, y, (brush / 100) * c.width * 0.08 + 4, 0, Math.PI * 2); ctx.fill();
-    if (!maskPainted) setMaskPainted(true);
-  }, [brush, maskPainted]);
-  const clearMask = useCallback(() => {
-    const c = maskCanvasRef.current; if (!c) return;
-    const ctx = c.getContext('2d'); if (ctx) { ctx.fillStyle = 'black'; ctx.fillRect(0, 0, c.width, c.height); }
-    setMaskPainted(false);
-  }, []);
-
   const seqDuration = useMemo(() => segments.reduce((a, s) => a + Math.max(0, s.end - s.start), 0), [segments]);
   const hasMutations = useMemo(() => {
     // A TRIM counts as an edit. It did not: with one clip on the timeline `segments.length > 1` is false
@@ -867,79 +820,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     }
   }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, videoSpeed, detached, aspectCrop, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done, t.timedOut, t.someDropped, uploadReason]);
 
-  // ── AI object removal (photo) ──
-  const runInpaint = useCallback(async () => {
-    if (!clip || exporting) return;
-    const c = maskCanvasRef.current;
-    // MASK SAFETY GUARD (V3) — never POST without a painted mask; the Remove button is also disabled until then.
-    if (!maskPainted || !c) { flash(t.paintFirst); return; }
-    setExporting(true); setExportPct(0); setResult(null); setSuccessAsset(null);
-    try {
-      const maskUrl = c.toDataURL('image/png');
-      const path = pathOf(await uploadClip(clip.file));
-      if (!path) { flash(t.failed); return; }
-      const { status, ok, body } = await postJson('/api/ai/edit', { action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() });
-      const j = body as { url?: string | null } | null;
-      if (status === 402) flash(t.insufficient);
-      else if (status === 503) flash(t.inpaintOff);
-      else if (ok && j?.url) { setExportPct(100); try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ } onAssetReady(j.url, 'image'); flash(t.done); }
-      else flash(describeOpFailure(body, t.failed));
-    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, maskPainted, prompt, onAssetReady, flash, t.paintFirst, t.failed, t.done, t.inpaintOff, t.insufficient, t.timedOut]);
-
-  // ── AI Photo Studio — remove_bg / upscale / face_restore / colorize via Replicate (billed server-side) ──
-  const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
-    if (!clip || exporting) return;
-    setExporting(true); setExportPct(0); setSuccessAsset(null);
-    try {
-      // CHAIN: run on the last AI result if present, else the cached original (upload once, then reuse).
-      let src = chainPath;
-      if (!src) {
-        src = originalPath ?? pathOf(await uploadClip(clip.file));
-        if (src && !originalPath) setOriginalPath(src);
-      }
-      if (!src) { flash(t.failed); return; }
-      const { status, ok, body } = await postJson('/api/ai/edit-photo', { action, mediaUrl: src });
-      const j = body as { url?: string | null; path?: string | null } | null;
-      if (status === 402) flash(t.insufficient);
-      else if (status === 503) flash(t.notConfig);
-      else if (ok && j?.url) {
-        setExportPct(100);
-        if (j.path) setChainPath(j.path); // subsequent actions run on THIS result
-        // Persist appears server-side; nudge any open Library panel to refetch immediately.
-        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
-        onAssetReady(j.url, 'image');
-        flash(t.done);
-      } else flash(describeOpFailure(body, t.failed));
-    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
-
-  // Agent G multi-action CHAIN (photo): the server runs each op in sequence (rehosting each intermediary) and bills
-  // the whole chain atomically — one request, one final URL, one refund on any failure.
-  const runPhotoChain = useCallback(async (actions: string[]) => {
-    if (!clip || exporting || actions.length < 2) return;
-    setExporting(true); setExportPct(0); setSuccessAsset(null);
-    try {
-      let src = chainPath;
-      if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
-      if (!src) { flash(t.failed); return; }
-      const { status, ok, body } = await postJson('/api/ai/edit-photo', { actions, mediaUrl: src });
-      const j = body as { url?: string | null; path?: string | null } | null;
-      if (status === 402) flash(t.insufficient);
-      else if (status === 503) flash(t.notConfig);
-      else if (ok && j?.url) {
-        setExportPct(100);
-        if (j.path) setChainPath(j.path);
-        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
-        onAssetReady(j.url, 'image'); flash(t.done);
-      } else flash(describeOpFailure(body, t.failed));
-    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
-
-  // ── Audio Studio: playback, generative separation (billed), deterministic process (free) ──
+  // ── Audio Studio: playback and the deterministic process (free) ──
   const toggleAudioPlay = useCallback(() => {
     const a = audioRef.current; if (!a) return;
     if (a.paused) { void a.play(); setAudioPlaying(true); } else { a.pause(); setAudioPlaying(false); }
@@ -949,34 +830,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     a.currentTime = Math.max(0, Math.min(audioDur, frac * audioDur)); setAudioCur(a.currentTime);
   }, [audioDur]);
 
-  // Resolve the source once (upload original → cache), reusing the last AI result when chaining.
+  // Resolve the source once (upload original → cache).
   const audioSource = useCallback(async (): Promise<string | null> => {
-    if (chainPath) return chainPath;
     const src = originalPath ?? (clip ? pathOf(await uploadClip(clip.file)) : null);
     if (src && !originalPath) setOriginalPath(src);
     return src;
-  }, [chainPath, originalPath, clip]);
-
-  const runAudioAI = useCallback(async (action: 'vocal_isolation' | 'splitter') => {
-    if (!clip || exporting) return;
-    setExporting(true); setExportPct(0); setSuccessAsset(null); setSecondaryAudio(null);
-    try {
-      const src = await audioSource();
-      if (!src) { flash(t.failed); return; }
-      const { status, ok, body } = await postJson('/api/ai/edit-audio', { action, mediaUrl: src });
-      const j = body as { url?: string | null; path?: string | null; secondaryUrl?: string | null } | null;
-      if (status === 402) flash(t.insufficient);
-      else if (status === 503) flash(t.notConfig);
-      else if (ok && j?.url) {
-        setExportPct(100);
-        if (j.path) setChainPath(j.path);
-        if (j.secondaryUrl) setSecondaryAudio(j.secondaryUrl);
-        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
-        onAssetReady(j.url, 'audio'); flash(t.done);
-      } else flash(describeOpFailure(body, t.failed));
-    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
+  }, [originalPath, clip]);
 
   // Trim counts as an edit only when the user NARROWED the range from the full clip — not the
   // default {0, duration} that onLoadedMetadata sets (else the Apply CTA is enabled on load and
@@ -986,7 +845,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const runAudioProcess = useCallback(async () => {
     if (!clip || exporting) return;
     if (!audioHasEdit) { flash(t.editHint); return; }
-    setExporting(true); setExportPct(0); setSuccessAsset(null); setSecondaryAudio(null);
+    setExporting(true); setExportPct(0); setSuccessAsset(null);
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
@@ -997,27 +856,21 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioVol, audioDur, onAssetReady, flash, t.failed, t.done, t.editHint, t.timedOut]);
 
-  // In-editor Agent G command box: classify a typed instruction with the SAME brain and dispatch it on the current
-  // clip — photo → the AI action/chain, audio → the AI action, video → the matching timeline op. Unrecognised → toast.
+  // In-editor Agent G command box: a typed instruction drives the SAME sliders the user could set by hand. The old
+  // AI actions (remove background, upscale, colorize, face restore, vocal isolation/split) ran on Replicate and the
+  // server now refuses them (google_only), so a request for one gets an honest „unavailable" instead of a dead call.
   const onAgentCommand = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !clip || exporting) return;
     if (clip.kind === 'image') {
-      // AI actions first (remove_bg / upscale / colorize / face_restore); otherwise a colour-grade command drives the
-      // SAME brightness / contrast / saturation / temperature sliders the user could set by hand.
-      const acts = photoActions(trimmed);
-      if (acts.length > 1) { void runPhotoChain(acts); return; }
-      if (acts[0]) { void runPhotoAction(acts[0]); return; }
+      // A colour-grade command drives the brightness / contrast / saturation / temperature sliders.
       const g = parsePhotoEditSliders(trimmed);
       if (g) { setGrade((prev) => ({ ...prev, ...g })); flash(t.done); return; }
-      flash(t.agentNoOp);
+      flash(photoActions(trimmed).length ? t.notConfig : t.agentNoOp);
     } else if (clip.kind === 'audio') {
-      // AUDIO — first the AI Demucs actions (isolate / splitter); otherwise a slider command drives the SAME
-      // pitch / speed / fade / volume the user could set by hand ("fade in 2s", "duck to -12dB", "mute", "faster").
-      const a = audioAction(trimmed);
-      if (a) { void runAudioAI(a); return; }
+      // AUDIO — a slider command drives the pitch / speed / fade / volume ("fade in 2s", "duck to -12dB", "faster").
       const cmd = parseAudioEditCommand(trimmed);
-      if (!cmd) { flash(t.agentNoOp); return; }
+      if (!cmd) { flash(audioAction(trimmed) ? t.notConfig : t.agentNoOp); return; }
       if (cmd.pitch !== undefined) setPitch(cmd.pitch);
       if (cmd.speed !== undefined) setAudioSpeed(cmd.speed);
       if (cmd.volume !== undefined) setAudioVol(cmd.volume);
@@ -1036,7 +889,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       const fd = cmd.fade; if (fd) setFade((f) => ({ ...f, ...fd }));
       flash(t.done);
     }
-  }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, resetDraft, selectedSeg, flash, t.agentNoOp, t.done]);
+  }, [clip, exporting, splitAtPlayhead, toggleMuteSeg, resetDraft, selectedSeg, flash, t.agentNoOp, t.done, t.notConfig]);
 
   // Photo aspect preset (V2): center-crop the SOURCE to a ratio (or clear → original). Uses natural dims.
   const applyAspect = useCallback((ratio: number | null) => {
@@ -1047,45 +900,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     setAspectCrop({ x: Math.round((w - cw) / 2), y: Math.round((h - ch) / 2), w: cw, h: ch });
   }, [photoDim]);
 
-  // AI Background Replace (V2): prompt-driven bg swap via the metered edit-photo route (reserve-before + refund).
-  const runBgReplace = useCallback(async () => {
-    if (!clip || exporting) return;
-    const p = bgPrompt.trim();
-    if (!p) { flash(t.agentNoOp); return; }
-    setExporting(true); setExportPct(0); setSuccessAsset(null);
-    try {
-      let src = chainPath;
-      if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
-      if (!src) { flash(t.failed); return; }
-      const { status, ok, body } = await postJson('/api/ai/edit-photo', { action: 'background_replace', mediaUrl: src, prompt: p });
-      const j = body as { url?: string | null; path?: string | null } | null;
-      if (status === 402) flash(t.insufficient);
-      else if (status === 503) flash(t.notConfig);
-      else if (ok && j?.url) {
-        setExportPct(100);
-        if (j.path) setChainPath(j.path);
-        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
-        onAssetReady(j.url, 'image'); flash(t.done);
-      } else flash(describeOpFailure(body, t.failed));
-    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, bgPrompt, chainPath, originalPath, onAssetReady, flash, t.agentNoOp, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
-
-  // Agent G one-shot: once the forwarded clip is loaded, auto-run the requested AI action(s). A photo CHAIN (>1)
-  // runs server-side atomically; a single action runs directly. Cleared immediately so it fires exactly once.
+  // Agent G one-shot: a forwarded clip can carry AI actions (remove background, upscale, vocal isolation…). Those ran
+  // on Replicate and are refused server-side now, so say so once instead of firing a call that can only fail.
   useEffect(() => {
-    if (!pendingAutoActions || !pendingAutoActions.length || !clip || exporting) return;
-    const acts = pendingAutoActions;
+    if (!pendingAutoActions || !pendingAutoActions.length || !clip) return;
     setPendingAutoActions(null);
-    if (clip.kind === 'image') {
-      const photo = acts.filter((a): a is 'remove_bg' | 'upscale' | 'face_restore' | 'colorize' => a === 'remove_bg' || a === 'upscale' || a === 'face_restore' || a === 'colorize');
-      if (photo.length > 1) void runPhotoChain(photo);
-      else if (photo[0]) void runPhotoAction(photo[0]);
-    } else if (clip.kind === 'audio') {
-      const a = acts.find((x) => x === 'vocal_isolation' || x === 'splitter');
-      if (a === 'vocal_isolation' || a === 'splitter') void runAudioAI(a);
-    }
-  }, [pendingAutoActions, clip, exporting, runPhotoChain, runPhotoAction, runAudioAI]);
+    flash(t.notConfig);
+  }, [pendingAutoActions, clip, flash, t.notConfig]);
 
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
@@ -1243,15 +1064,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 </div>
               </div>
 
-              {/* AI separation (Demucs) → AI tab */}
-              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('ai') ? 'hidden' : ''}`}>
-                <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.audioStudio}</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <PhotoCard icon={<Mic size={16} />} label={t.vocalIso} cost={3} disabled={exporting} onClick={() => void runAudioAI('vocal_isolation')} />
-                  <PhotoCard icon={<Waves size={16} />} label={t.vocalSplit} cost={4} disabled={exporting} onClick={() => void runAudioAI('splitter')} />
-                </div>
-              </div>
-
               {/* TRIM tab — the in/out points, right under the waveform that shows them. */}
               {audioDur > 0 && (
                 <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('trim') ? 'hidden' : ''}`}>
@@ -1293,19 +1105,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 <video ref={videoRef} src={clip?.url} playsInline style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full"
                   onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)} onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
               )}
-              {isPhoto && maskMode && imgRef.current && stageRef.current && (() => {
-                const ir = imgRef.current.getBoundingClientRect(); const sr = stageRef.current.getBoundingClientRect();
-                return (
-                  <canvas ref={maskCanvasRef}
-                    style={{ position: 'absolute', left: ir.left - sr.left, top: ir.top - sr.top, width: ir.width, height: ir.height, opacity: 0.45, cursor: 'crosshair', touchAction: 'none' }}
-                    onMouseDown={(e) => { painting.current = true; paintAt(e.clientX, e.clientY); }}
-                    onMouseMove={(e) => { if (painting.current) paintAt(e.clientX, e.clientY); }}
-                    onMouseUp={() => { painting.current = false; }} onMouseLeave={() => { painting.current = false; }}
-                    onTouchStart={(e) => { painting.current = true; const tp = e.touches[0]; if (tp) paintAt(tp.clientX, tp.clientY); }}
-                    onTouchMove={(e) => { const tp = e.touches[0]; if (painting.current && tp) { e.preventDefault(); paintAt(tp.clientX, tp.clientY); } }}
-                    onTouchEnd={() => { painting.current = false; }} />
-                );
-              })()}
               {/* CROP OVERLAY. The old version was a bare outlined rectangle: nothing showed what would be
                   KEPT versus discarded, and nothing suggested the box could be adjusted — so an
                   imprecise drag meant starting over. Now the surround is dimmed (what you keep is the
@@ -1428,28 +1227,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <ToolButton icon={<RotateCcw size={15} />} label={t.reset} onClick={resetDraft} />
             </div>
 
-            {/* AI Photo Studio actions (PHOTO) → RETOUCH tab */}
-            {isPhoto && (
-              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('retouch') ? 'hidden' : ''}`}>
-                <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.aiStudio}</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <PhotoCard icon={<Eraser size={16} />} label={t.removeBg} cost={2} disabled={exporting} onClick={() => void runPhotoAction('remove_bg')} />
-                  <PhotoCard icon={<Maximize2 size={16} />} label={t.upscale} cost={5} disabled={exporting} onClick={() => void runPhotoAction('upscale')} />
-                  <PhotoCard icon={<Smile size={16} />} label={t.faceRestore} cost={3} disabled={exporting} onClick={() => void runPhotoAction('face_restore')} />
-                  <PhotoCard icon={<Palette size={16} />} label={t.colorize} cost={3} disabled={exporting} onClick={() => void runPhotoAction('colorize')} />
-                </div>
-                {/* AI Background Replace — prompt-driven bg swap (metered) */}
-                <div className="flex items-center gap-2 border-t border-app-border/10 pt-2.5">
-                  <input value={bgPrompt} onChange={(e) => setBgPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void runBgReplace(); } }} placeholder={t.bgReplacePh}
-                    className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none focus:ring-1 focus:ring-app-accent/40" />
-                  <button type="button" onClick={() => void runBgReplace()} disabled={exporting || !bgPrompt.trim()} title={t.bgReplace}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3 py-2 text-[12px] font-bold text-app-bg disabled:opacity-50">
-                    <Palette size={13} /><span className="hidden sm:inline">{t.bgReplace}</span><span className="ml-0.5 rounded-full bg-app-bg/25 px-1.5 text-[10px] tabular-nums">5</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Aspect ratio presets (PHOTO) → CROP tab, next to the crop tool it belongs with */}
             {isPhoto && (
               <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('crop') ? 'hidden' : ''}`}>
@@ -1571,25 +1348,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               </div>
             )}
 
-            {/* AI object removal (PHOTO) → RETOUCH tab */}
-            {isPhoto && (
-              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('retouch') ? 'hidden' : ''}`}>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.aiRemove}</span>
-                  <div className="flex gap-1.5">
-                    <MiniBtn icon={<Brush size={13} />} label={t.drawMask} active={maskMode} onClick={() => setMaskMode((v) => !v)} />
-                    <MiniBtn icon={<RotateCcw size={13} />} label={t.clearMask} onClick={clearMask} disabled={!maskMode} />
-                  </div>
-                </div>
-                {maskMode && <Slider icon={<Brush size={13} />} label={t.brush} min={10} max={100} value={brush} onChange={setBrush} />}
-                <div className="flex items-center gap-2">
-                  <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t.aiPromptPh} className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none" />
-                  <button type="button" onClick={() => void runInpaint()} disabled={!maskPainted || exporting} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3.5 py-2 text-[12px] font-bold text-app-bg disabled:opacity-50">
-                    {exporting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}{t.remove}
-                  </button>
-                </div>
-              </div>
-            )}
             </>)}
 
             {/* Result */}
@@ -1605,12 +1363,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                   : result.kind === 'audio'
                   ? <audio src={result.url} controls className="w-full" />
                   : <video src={result.url} controls playsInline className="max-h-52 w-full rounded-lg bg-black" />}
-                {secondaryAudio && (
-                  <div className="flex items-center justify-between gap-2 rounded-lg bg-app-elevated/60 px-3 py-2">
-                    <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-app-muted"><Waves size={12} className="text-app-accent" />{t.instrumental}</span>
-                    <button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-app-bg/50 px-3 text-[12.5px] font-semibold text-app-text transition-colors hover:text-app-accent"><Download size={13} />{t.download}</button>
-                  </div>
-                )}
               </div>
             )}
           </>
@@ -1636,7 +1388,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={successAsset.url} alt="" className="mb-3 max-h-48 w-full rounded-lg bg-black object-contain" />
                 : successAsset.kind === 'audio'
-                ? <div className="mb-3 rounded-lg bg-app-elevated/60 p-3"><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-app-muted"><Music2 size={13} className="text-app-accent" />{t.vocals}</div><audio src={successAsset.url} controls className="w-full" />{secondaryAudio && <div className="mt-2 border-t border-app-border/15 pt-2"><div className="mb-1.5 flex items-center justify-between text-[11.5px] font-semibold text-app-muted"><span className="flex items-center gap-1.5"><Waves size={12} className="text-app-accent" />{t.instrumental}</span><button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-app-bg/50 px-3 text-[12.5px] font-semibold text-app-text transition-colors hover:text-app-accent"><Download size={13} />{t.download}</button></div><audio src={secondaryAudio} controls className="w-full" /></div>}</div>
+                ? <div className="mb-3 rounded-lg bg-app-elevated/60 p-3"><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-app-muted"><Music2 size={13} className="text-app-accent" />{t.result}</div><audio src={successAsset.url} controls className="w-full" /></div>
                 : <video src={successAsset.url} controls playsInline className="mb-3 max-h-48 w-full rounded-lg bg-black" />}
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void downloadAsset(successAsset.url, filenameFor(successAsset.url, successAsset.kind))}
@@ -1660,12 +1412,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               ? [
                   { id: 'trim',   icon: <Scissors size={17} />, label: t.tabTrim },
                   { id: 'adjust', icon: <Gauge size={17} />,    label: t.tabAdjust },
-                  { id: 'ai',     icon: <Sparkles size={17} />, label: t.tabAi },
                 ]
               : [
-                  isPhoto
-                    ? { id: 'retouch', icon: <Sparkles size={17} />, label: t.tabRetouch }
-                    : { id: 'clips',   icon: <Film size={17} />,     label: t.tabClips },
+                  ...(isPhoto ? [] : [{ id: 'clips', icon: <Film size={17} />, label: t.tabClips }]),
                   { id: 'adjust',  icon: <SunMedium size={17} />,  label: t.tabAdjust },
                   { id: 'filters', icon: <Droplet size={17} />,    label: t.tabFilters },
                   { id: 'crop',    icon: <Crop size={17} />,       label: t.tabCrop },
@@ -1749,19 +1498,6 @@ function ToolButton({ icon, label, onClick, active, disabled }: { icon: React.Re
     <button type="button" onClick={onClick} disabled={disabled}
       className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-center text-[12px] font-semibold leading-tight transition-colors disabled:opacity-40 ${active ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
       <span className="shrink-0">{icon}</span><span className="min-w-0 break-words">{label}</span>
-    </button>
-  );
-}
-
-function PhotoCard({ icon, label, cost, onClick, disabled }: { icon: React.ReactNode; label: string; cost: number; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled}
-      className="flex min-h-[64px] flex-col items-start justify-between gap-2 rounded-xl border border-app-border/15 bg-app-elevated p-3 text-left transition-colors hover:border-app-accent/40 hover:bg-app-surface disabled:opacity-40">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-app-accent/15 text-app-accent">{icon}</span>
-      <span className="flex w-full items-center justify-between gap-1.5">
-        <span className="min-w-0 truncate text-[12px] font-semibold text-app-text">{label}</span>
-        <span className="shrink-0 rounded-full bg-app-bg/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-app-muted">{cost}</span>
-      </span>
     </button>
   );
 }
