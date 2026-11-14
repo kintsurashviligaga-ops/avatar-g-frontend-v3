@@ -238,7 +238,15 @@ export function useLibraryPage(kind: string, limit: number, offset?: number, fav
     // Opening the page (a new mount) always checks behind what is shown; switching tabs on it does not.
     refetchOnMount: 'always',
     retry: retryOnce,
+    // A new search on the same tab keeps the page on screen until its answer lands, so the grid (and how far it was
+    // scrolled) never collapses to a spinner between keystrokes. A different tab, page or owner starts clean.
+    placeholderData: (prev, prevQuery) => (prevQuery && sameButSearch(prevQuery.queryKey, who ?? '', kind, limit, offset ?? -1, favorites) ? prev : undefined),
   });
+}
+
+function sameButSearch(key: readonly unknown[], owner: string, kind: string, limit: number, offset: number, favorites: boolean): boolean {
+  const k = key[3] as { kind?: string; limit?: number; offset?: number; favorites?: boolean } | undefined;
+  return key[1] === owner && key[2] === 'page' && !!k && k.kind === kind && k.limit === limit && k.offset === offset && (k.favorites ?? false) === favorites;
 }
 
 /**

@@ -138,6 +138,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   }, [searchParams]);
   const [page, setPage] = useState(() => keptView(owner)?.page ?? 0);
   const [searchQuery, setSearchQuery] = useState(() => keptView(owner)?.q ?? '');
+  // The search the server is asked for: a moment after typing stops (below), at once for a view brought back.
+  const [serverQuery, setServerQuery] = useState(() => searchQuery.trim());
   // The account the view above is that of. An account known only after the first render (the session read) gets its
   // view here, in render, while its reads are still off; another account in this browser tab starts fresh.
   const [viewOf, setViewOf] = useState<string | null>(owner);
@@ -147,6 +149,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
       setTab(kept && isTab(kept.tab) ? kept.tab : 'video');
       setPage(kept?.page ?? 0);
       setSearchQuery(kept?.q ?? '');
+      setServerQuery((kept?.q ?? '').trim());
     }
     setViewOf(owner);
   }
@@ -170,11 +173,11 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // at once; leaving a tab mid-request aborts it (#160).
   const isFav = tab === 'favorites';
   // The search goes to the server a moment after typing stops, so it finds a work on any page, not only this one.
-  const [serverQuery, setServerQuery] = useState(() => searchQuery.trim());
   useEffect(() => {
+    if (searchQuery.trim() === serverQuery) return undefined;
     const id = window.setTimeout(() => setServerQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [searchQuery]);
+  }, [searchQuery, serverQuery]);
   const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], PAGE_SIZE, page * PAGE_SIZE, isFav, serverQuery);
   const items = library.data?.items ?? NO_ITEMS;
   const loading = library.isPending;
