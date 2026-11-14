@@ -78,10 +78,20 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
     if (pickRef.current) pickRef.current.value = '';
   };
 
+  // A delete in flight spins its own button and ignores a second tap; a failure says „could not be deleted" (it used to
+  // say the upload failed).
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
   const del = async (f: ConnectorFile) => {
-    const ok = await removeFile(f.id);
-    if (ok) setFiles((cur) => (cur ?? []).filter((x) => x.id !== f.id));
-    else setMessage(c.connUploadFailed);
+    if (removing.has(f.id)) return;
+    setRemoving((cur) => new Set(cur).add(f.id));
+    setMessage(null);
+    try {
+      const ok = await removeFile(f.id).catch(() => false);
+      if (ok) setFiles((cur) => (cur ?? []).filter((x) => x.id !== f.id));
+      else setMessage(c.connRemoveFailed);
+    } finally {
+      setRemoving((cur) => { const next = new Set(cur); next.delete(f.id); return next; });
+    }
   };
 
   return (
@@ -125,8 +135,9 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
                       {typeof f.chars === 'number' ? <span className="block text-[11.5px] text-app-muted">{c.connChars(f.chars)}</span> : null}
                     </span>
                     <button type="button" onClick={() => void del(f)} aria-label={c.connRemove(f.name)} title={c.connRemove(f.name)}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                      <Trash2 size={16} aria-hidden="true" />
+                      disabled={removing.has(f.id)} aria-busy={removing.has(f.id) || undefined}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text disabled:opacity-60">
+                      {removing.has(f.id) ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
                     </button>
                   </li>
                 ))}

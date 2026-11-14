@@ -41,7 +41,7 @@ export interface ResearchCopy {
   // ── connectors
   connHeading: string; connLead: string; connLocal: string; connLocalSub: string; connAdd: string; connAdding: string; connEmpty: string;
   connChars: (n: number) => string; connRemove: (name: string) => string; connUnavailable: string;
-  connFormats: string; connFilesLimit: (max: number) => string; connUploadFailed: string; connUnreadable: string; connLoadFailed: string; connSignIn: string; connTooLarge: string; connSignInButton: string;
+  connFormats: string; connFilesLimit: (max: number) => string; connUploadFailed: string; connRemoveFailed: string; connUnreadable: string; connLoadFailed: string; connSignIn: string; connTooLarge: string; connSignInButton: string;
 }
 
 const ka: ResearchCopy = {
@@ -66,7 +66,7 @@ const ka: ResearchCopy = {
   connHeading: 'ჩემი დოკუმენტები', connLead: 'ბმული შენს დოკუმენტებთან. კვლევა მათ ვებთან ერთად გამოიყენებს.', connLocal: 'ლოკალური ფაილები', connLocalSub: 'ატვირთე PDF, DOCX, TXT ან MD — ვინახავთ მხოლოდ ტექსტს.',
   connAdd: 'ფაილის დამატება', connAdding: 'იტვირთება…', connEmpty: 'ფაილები ჯერ არ გაქვს.', connChars: (n) => `${n.toLocaleString('en')} სიმბოლო`, connRemove: (name) => `წაშლა: ${name}`,
   connUnavailable: 'ფაილების შენახვა ჯერ არ არის ჩართული.',
-  connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `მაქსიმუმ ${m} დოკუმენტი. წაშალე ერთი, რომ ახალი დაამატო.`, connUploadFailed: 'ფაილის ატვირთვა ვერ მოხერხდა.', connUnreadable: 'ფაილში წასაკითხი ტექსტი ვერ ვიპოვეთ (სკანირებული PDF?).', connLoadFailed: 'სია ვერ ჩაიტვირთა.', connSignIn: 'ფაილების დასამატებლად შედი ანგარიშში.', connTooLarge: 'ფაილი ძალიან დიდია (მაქსიმუმ 3 მბ).', connSignInButton: 'შესვლა',
+  connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `მაქსიმუმ ${m} დოკუმენტი. წაშალე ერთი, რომ ახალი დაამატო.`, connUploadFailed: 'ფაილის ატვირთვა ვერ მოხერხდა.', connRemoveFailed: 'ფაილი ვერ წაიშალა. სცადე თავიდან.', connUnreadable: 'ფაილში წასაკითხი ტექსტი ვერ ვიპოვეთ (სკანირებული PDF?).', connLoadFailed: 'სია ვერ ჩაიტვირთა.', connSignIn: 'ფაილების დასამატებლად შედი ანგარიშში.', connTooLarge: 'ფაილი ძალიან დიდია (მაქსიმუმ 3 მბ).', connSignInButton: 'შესვლა',
 };
 
 const en: ResearchCopy = {
@@ -91,7 +91,7 @@ const en: ResearchCopy = {
   connHeading: 'My documents', connLead: 'Bring your own documents. A research reads them alongside the web.', connLocal: 'Local files', connLocalSub: 'Upload a PDF, DOCX, TXT or MD — we keep the text only.',
   connAdd: 'Add a file', connAdding: 'Uploading…', connEmpty: 'No files yet.', connChars: (n) => `${n.toLocaleString('en')} characters`, connRemove: (name) => `Delete ${name}`,
   connUnavailable: 'File storage is not switched on yet.',
-  connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `Up to ${m} documents. Delete one to add another.`, connUploadFailed: 'The file could not be uploaded.', connUnreadable: 'We could not find readable text in that file (a scanned PDF?).', connLoadFailed: 'The list could not be loaded.', connSignIn: 'Sign in to add files.', connTooLarge: 'That file is too large (3 MB at most).', connSignInButton: 'Sign in',
+  connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `Up to ${m} documents. Delete one to add another.`, connUploadFailed: 'The file could not be uploaded.', connRemoveFailed: 'The file could not be deleted. Try again.', connUnreadable: 'We could not find readable text in that file (a scanned PDF?).', connLoadFailed: 'The list could not be loaded.', connSignIn: 'Sign in to add files.', connTooLarge: 'That file is too large (3 MB at most).', connSignInButton: 'Sign in',
 };
 
 const ru: ResearchCopy = {
@@ -116,7 +116,7 @@ const ru: ResearchCopy = {
   connHeading: 'Мои документы', connLead: 'Ваши собственные документы. Исследование читает их наряду с сетью.', connLocal: 'Локальные файлы', connLocalSub: 'Загрузите PDF, DOCX, TXT или MD — мы храним только текст.',
   connAdd: 'Добавить файл', connAdding: 'Загружаем…', connEmpty: 'Файлов пока нет.', connChars: (n) => `${n.toLocaleString('en')} символов`, connRemove: (name) => `Удалить ${name}`,
   connUnavailable: 'Хранение файлов пока не включено.',
-  connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `До ${m} документов. Удалите один, чтобы добавить новый.`, connUploadFailed: 'Не удалось загрузить файл.', connUnreadable: 'В файле не удалось найти читаемый текст (скан PDF?).', connLoadFailed: 'Не удалось загрузить список.', connSignIn: 'Войдите, чтобы добавлять файлы.', connTooLarge: 'Файл слишком большой (не более 3 МБ).', connSignInButton: 'Войти',
+  connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `До ${m} документов. Удалите один, чтобы добавить новый.`, connUploadFailed: 'Не удалось загрузить файл.', connRemoveFailed: 'Не удалось удалить файл. Попробуйте ещё раз.', connUnreadable: 'В файле не удалось найти читаемый текст (скан PDF?).', connLoadFailed: 'Не удалось загрузить список.', connSignIn: 'Войдите, чтобы добавлять файлы.', connTooLarge: 'Файл слишком большой (не более 3 МБ).', connSignInButton: 'Войти',
 };
 
 const COPY: Record<Lang, ResearchCopy> = { ka, en, ru };
