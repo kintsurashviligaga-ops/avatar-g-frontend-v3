@@ -792,7 +792,7 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
     process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
     mockAvatarAccess = { allowed: false, dailySessions: 0 };
     let j = await (await POST(post({ avatar: 'Kira' }))).json();
-    expect(mockAvatarAudience).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }));
+    expect(mockAvatarAudience.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ id: 'user-1' }));
     expect(j).toMatchObject({ avatar: null, avatarRefused: 'audience', avatarAllowed: false, model: 'models/gemini-2.5-flash-native-audio-latest' });
     expect(avatarSetup(0).avatarConfig).toBeUndefined();
     expect(perUserMock).not.toHaveBeenCalledWith('user-1', expect.objectContaining({ keyPrefix: RATE_LIMITS.LIVE_AVATAR_USER.keyPrefix }));
