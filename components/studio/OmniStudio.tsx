@@ -64,6 +64,7 @@ import { useVeoEngineInfo } from './video/VeoParametersPanel';
 import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
 import { ClipCreatePanel } from './create/ClipCreatePanel';
+import { DirectorBoard, useDirectorsWorkflowEnabled } from './director/DirectorBoard';
 import { ClipAskCard } from './clip/ClipAskCard';
 import { clipStepFromState, type ClipStep } from './clip/ClipProgress';
 import {
@@ -2472,6 +2473,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
   const [videoTab, setVideoTab] = useState<'cinema' | 'product' | 'videoswap' | 'vfx'>('cinema');
+  // Phase 8.2 Director's Workflow: storyboard → scene cards. Hidden unless DIRECTORS_WORKFLOW lets this user in (off by default).
+  const directorsWorkflowOn = useDirectorsWorkflowEnabled();
+  const [directorOpen, setDirectorOpen] = useState(false);
   const [swapSourceVideo, setSwapSourceVideo] = useState<{ name: string; url: string; previewUrl?: string } | null>(null);
   const [swapSourceVideoBusy, setSwapSourceVideoBusy] = useState(false);
   const swapVideoRef = useRef<HTMLInputElement | null>(null);
@@ -11153,6 +11157,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               }}
             />
             )}
+            {videoTab === 'cinema' && directorsWorkflowOn && (
+              <button type="button" data-testid="dw-open" onClick={() => setDirectorOpen(true)}
+                className="w-full rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-left text-[13px] font-medium text-app-text hover:bg-app-elevated">
+                {locale === 'ka' ? '🎬 რეჟისორი — ფილმი სცენებით (1–10)' : locale === 'ru' ? '🎬 Режиссёр — фильм по сценам (1–10)' : "🎬 Director — a film in scenes (1–10)"}
+              </button>
+            )}
+            {directorOpen && <DirectorBoard locale={locale} onClose={() => setDirectorOpen(false)} />}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
             {videoTab === 'product' && (
