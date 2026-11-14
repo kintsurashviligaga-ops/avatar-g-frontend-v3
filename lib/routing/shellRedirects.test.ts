@@ -33,8 +33,8 @@ describe('three orphan pages over tables Production does not have are retired (o
   test.each([
     ['services/workflow', '/:locale/dashboard'],
     ['services/workflow/:path*', '/:locale/dashboard'],
-    ['account/invoices', '/:locale/account/billing'],
-    ['account/invoices/:path*', '/:locale/account/billing'],
+    ['account/invoices', '/:locale/settings'],
+    ['account/invoices/:path*', '/:locale/settings'],
     ['admin/disputes', '/:locale/admin'],
   ])('/{lang}/%s → %s (307)', async (from, to) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -64,5 +64,26 @@ describe('/create and /app land in the one window (final release FR-11: /ka/crea
   test('no page claims those paths, so the redirect is what answers', () => {
     const root = join(__dirname, '..', '..');
     for (const p of ['app/[locale]/create/page.tsx', 'app/[locale]/app/page.tsx']) expect(existsSync(join(root, p))).toBe(false);
+  });
+});
+
+describe('the Stripe billing page is retired: payments are BOG only (owner, 2026-11-14)', () => {
+  test.each([
+    ['account/billing', '/:locale/settings'],
+    ['account/payments', '/:locale/settings'],
+    ['account/business', '/:locale/settings'],
+    ['account/returns', '/:locale/settings'],
+  ])('/{lang}/%s → %s (307)', async (from, to) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const config = require('../../next.config.js') as { redirects: () => Promise<Redirect[]> };
+    const rule = (await config.redirects()).find((r) => r.source === `/:locale(ka|en|ru)/${from}`);
+    expect(rule).toEqual({ source: `/:locale(ka|en|ru)/${from}`, destination: to, permanent: false });
+  });
+
+  test('the page, its Stripe-portal hook and the old payments page are gone', () => {
+    const root = join(__dirname, '..', '..');
+    for (const p of ['app/[locale]/account/billing/page.tsx', 'app/[locale]/account/payments/page.tsx', 'hooks/useSubscriptionStatus.ts']) {
+      expect(existsSync(join(root, p))).toBe(false);
+    }
   });
 });
