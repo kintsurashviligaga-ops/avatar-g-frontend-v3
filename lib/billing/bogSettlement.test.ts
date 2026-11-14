@@ -7,8 +7,10 @@ jest.mock('server-only', () => ({}));
 
 const mockFulfill = jest.fn();
 const mockRecordFailure = jest.fn();
+const mockGrantBonus = jest.fn();
 jest.mock('./wallet-ledger', () => ({
   fulfillBogOrder: (...a: unknown[]) => mockFulfill(...a),
+  grantPurchasedCredits: (...a: unknown[]) => mockGrantBonus(...a),
   recordBogRenewalFailure: (...a: unknown[]) => mockRecordFailure(...a),
 }));
 const mockDeleteCard = jest.fn(async () => true);
@@ -106,6 +108,25 @@ describe('a completed payment', () => {
     const out = await settleBogOrder(db, order(), receipt());
     expect(out).toEqual({ status: 'completed', granted: true, kind: 'topup', credits: 200, tier: null, periodEnd: null, autoRenew: null });
     expect(mockFulfill).toHaveBeenCalledWith({ shopOrderId: 'myavatar-topup-0123456789abcdef', bogOrderId: 'bog-1', cardMask: '548888xxxxxx9893', cardSaved: false });
+  });
+
+  test('a today\'s top-up row (credits = floor(amount × 10)) grants no bonus', async () => {
+    mockGrantBonus.mockClear();
+    mockFulfill.mockResolvedValueOnce(fulfilled());
+    await settleBogOrder(db, order(), receipt());
+    expect(mockGrantBonus).not.toHaveBeenCalled();
+  });
+
+  test('a v8 top-up row (25 ₾ → 260) gets its 10-credit bonus once, also on a redelivery', async () => {
+    mockGrantBonus.mockReset().mockResolvedValue(510);
+    mockFulfill.mockResolvedValueOnce(fulfilled({ credits: 250 }));
+    const r25 = receipt({ requestAmount: 25, transferAmount: 25 } as Partial<BogReceipt>);
+    const out = await settleBogOrder(db, order({ amount_gel: 25, credits: 260 }), r25);
+    expect(out).toMatchObject({ status: 'completed', credits: 260 });
+    expect(mockGrantBonus).toHaveBeenCalledWith('user-1', 10, 'bog-bonus:myavatar-topup-0123456789abcdef');
+    mockFulfill.mockResolvedValueOnce(fulfilled({ granted: false, credits: 250 }));
+    await settleBogOrder(db, order({ amount_gel: 25, credits: 260, status: 'completed' }), r25);
+    expect(mockGrantBonus).toHaveBeenCalledTimes(2); // same ref: refund_credits books it once
   });
 
   test('a redelivery is still "completed", just granted=false (the RPC is idempotent)', async () => {

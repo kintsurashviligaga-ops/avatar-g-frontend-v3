@@ -16,7 +16,8 @@ import 'server-only';
 import { randomBytes } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BOG_RESPONSE_CODES, deleteSavedCard, getBogReceipt, type BogConfig, type BogEnvironment, type BogFetchDeps, type BogReceipt } from './bogClient';
-import { fulfillBogOrder, recordBogRenewalFailure } from './wallet-ledger';
+import { walletBookedCredits } from './margin/bogV8';
+import { fulfillBogOrder, grantPurchasedCredits, recordBogRenewalFailure } from './wallet-ledger';
 
 export type BogOrderKind = 'topup' | 'subscription' | 'renewal';
 
@@ -37,6 +38,35 @@ export interface BogOrderRow {
 
 export const BOG_ORDER_COLUMNS =
   'shop_order_id,bog_order_id,user_id,amount_gel,status,kind,tier,credits,subscription_id,card_saved,period_end,created_at';
+
+/**
+ * v8 top-up bonus (GG 2026-11-14): a v8 pack's order row stores ALL its credits (25 ₾ → 260), but bog_fulfill_order books
+ * a top-up through credit_wallet_gel at floor(amount × 10) (250). The difference is granted here under ref
+ * `bog-bonus:<order>` (refund_credits: ref-idempotent, so a redelivery or the reconcile cron retrying it grants once).
+ * A pre-v8 row stores exactly floor(amount × 10), so its bonus is 0 and nothing is called: this follows the ROW, not the
+ * flag. Returns the bonus granted (0 = none due), or null when the grant failed and a later settle should retry.
+ */
+export function topupBonusFor(order: Pick<BogOrderRow, 'kind' | 'amount_gel' | 'credits'>): number {
+  if (order.kind !== 'topup') return 0;
+  const stored = Math.floor(Number(order.credits ?? 0));
+  const booked = walletBookedCredits(Number(order.amount_gel));
+  return Number.isFinite(stored) && stored > booked ? stored - booked : 0;
+}
+
+export async function grantTopupBonus(
+  order: Pick<BogOrderRow, 'kind' | 'amount_gel' | 'credits' | 'user_id' | 'shop_order_id'>,
+  grant: (userId: string, credits: number, ref: string) => Promise<number | null> = grantPurchasedCredits,
+): Promise<number | null> {
+  const bonus = topupBonusFor(order);
+  if (bonus <= 0) return 0;
+  const balance = await grant(order.user_id, bonus, `bog-bonus:${order.shop_order_id}`);
+  if (balance === null) {
+    // eslint-disable-next-line no-console
+    console.error(`[bog] top-up bonus NOT granted order=${order.shop_order_id} bonus=${bonus} — the next settle/reconcile retries`);
+    return null;
+  }
+  return bonus;
+}
 
 export type SettleOutcome =
   | {
@@ -194,11 +224,13 @@ export async function settleBogOrder(
         cardSaved: cardSavedForRenewals(order, receipt),
       });
       if (!f) return { status: 'error', reason: 'fulfill_failed' };
+      // Also on a redelivery (granted: false): the bonus grant is idempotent, so a missed one is retried here.
+      const bonus = f.kind === 'topup' ? await grantTopupBonus(order) : 0;
       if (f.supersededParentOrders.length && opts.cfg && opts.deps) {
         const { cfg, deps } = opts;
         await Promise.allSettled(f.supersededParentOrders.map((id) => deleteSavedCard(cfg, deps, id)));
       }
-      return { status: 'completed', granted: f.granted, kind: f.kind, credits: f.credits, tier: f.tier, periodEnd: f.periodEnd, autoRenew: f.autoRenew };
+      return { status: 'completed', granted: f.granted, kind: f.kind, credits: f.credits + (bonus ?? 0), tier: f.tier, periodEnd: f.periodEnd, autoRenew: f.autoRenew };
     }
 
     case 'rejected': {
