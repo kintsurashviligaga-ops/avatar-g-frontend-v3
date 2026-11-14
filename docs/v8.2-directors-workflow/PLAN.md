@@ -38,10 +38,10 @@ The older Veo-only film path (storyboard frames → English scene scripts) and t
 
 **Phase 8.2 — storyboard and scene cards (no generation)**
 - **PR A (this PR):** `lib/video/directorsWorkflow/` — scene model, checks, per-scene engine and price, card edits, scene → prompt, storyboard planner instruction + strict reader, flag `DIRECTORS_WORKFLOW` (off / admin / everyone). Pure code, 19 tests, nothing wired, $0.
-- **PR B:** `POST /api/video/director-workflow/plan` (one Vertex Gemini call → draft board, free) and the scene-card UI in the Video service, behind the flag. Screenshots at 390 / 1440.
+- **PR B (#350):** `POST /api/video/director-workflow/plan` (one Vertex Gemini call → draft board, free) and the scene-card UI in the Video service, behind the flag. Screenshots at 390 / 1440.
 
 **Phase 8.3 — render, audio, final cut**
-- **PR C:** the run: approve → hold the total, render scenes in order through the direct-clip path (scene N+1 waits for scene N's last frame only when it continues from it; independent scenes render in parallel, max 2), refund any failed scene, timeline card per scene.
+- **PR C (draft):** `…/approve` (whole-film balance check, nothing charged), `…/scene` (one scene = one clip on the single-clip charge path, last frame of the previous clip as first frame, refund on a refused submit), `runner.ts` (order, max 2 in parallel, a scene after a failed one is blocked and never charged, re-render one scene), status per card. Was planned as: the run: approve → hold the total, render scenes in order through the direct-clip path (scene N+1 waits for scene N's last frame only when it continues from it; independent scenes render in parallel, max 2), refund any failed scene, timeline card per scene.
 - **PR D:** final cut with `longform/stitch`, Library entry, "re-do scene 3", and the paid check on myavatar.ge (admins, GG-approved budget).
 
 ## GG's decisions (2026-11-14 10:38Z)
