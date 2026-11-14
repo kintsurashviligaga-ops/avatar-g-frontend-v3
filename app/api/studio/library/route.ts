@@ -120,6 +120,13 @@ function mayResign(row: GenerationJobRow): boolean {
 /** How many legacy manual saves one page proves (one ranged GET each, in parallel). A page is at most 60 rows. */
 const LEGACY_PROOFS_PER_PAGE = 60;
 
+/** The longest search the Library takes (characters). */
+const LIBRARY_SEARCH_MAX = 100;
+/** LIKE/ILIKE treat `%`, `_` and `\` as special; a user's search means them literally. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 /** A completed job exposes its media either as a signed_url or inside result.url. */
 function pickUrl(row: GenerationJobRow): string | null {
   if (typeof row.signed_url === 'string' && row.signed_url) return row.signed_url;
@@ -150,6 +157,9 @@ export async function GET(req: NextRequest) {
   const kinds = kindParam === null ? null : kindParam.split(',').map((k) => k.trim()).filter((k): k is LibraryKind => (LISTED_KINDS as string[]).includes(k));
   // Only the starred works. A signed-out visitor has none (the demo library is nobody's to star).
   const favoritesOnly = req.nextUrl.searchParams.get('favorite') === '1';
+  // Search (Phase 7.8): the words of a work's prompt, across the whole Library, not only the page on screen. Capped,
+  // and LIKE's wildcards are escaped so „100%" finds „100%" instead of matching everything.
+  const search = (req.nextUrl.searchParams.get('q') ?? '').trim().slice(0, LIBRARY_SEARCH_MAX);
   if ((kinds && kinds.length === 0) || (favoritesOnly && !user)) {
     return NextResponse.json({ items: [], demo, nextCursor: null }, { headers: { 'Cache-Control': 'private, no-store', ...timing.headers() } });
   }
@@ -173,6 +183,7 @@ export async function GET(req: NextRequest) {
       .order('id', { ascending: false }) // one total order, so a cursor (and two rows in the same instant) is stable
       .range(before ? 0 : offset, (before ? 0 : offset) + limit - 1);
     if (kinds) query = kinds.length === 1 ? query.eq('service_type', kinds[0]) : query.in('service_type', kinds);
+    if (search) query = query.ilike('params->>prompt', `%${escapeLike(search)}%`);
     // Strictly after the cursor's row. Both values passed decodeLibraryCursor (no quote, comma or parenthesis) and are
     // double-quoted, so neither can end the filter.
     if (before) query = query.or(`created_at.lt."${before.t}",and(created_at.eq."${before.t}",id.lt."${before.i}")`);
