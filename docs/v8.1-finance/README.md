@@ -54,11 +54,11 @@ A new **Finance** tab in `/[locale]/admin`, admin-only, behind `ADMIN_FINANCE_DA
 
 | Figure | Source |
 |---|---|
-| Total revenue (₾) | `bog_orders` where `status = 'paid'` |
+| Total revenue (₾) | `wallet_topups` (BOG top-ups) + `bog_orders` `status = 'completed'`, kind subscription/renewal (same split as `/api/admin/financials`) |
 | Google Cloud cost | `provider_costs` (from #313) per call = **estimated**; replaced by `reconcile_reports` per day = **reconciled** |
 | Net profit, margin % | revenue after card fee and VAT − Google cost (`finance.summarize`) |
 | Paid usage margin | credits charged × net ₾ per credit vs their cost (shows if free credits drag the realised margin down) |
-| User usage table | top credit burners: `credit_ledger` spend + `provider_costs`, with plan, cost and margin per user |
+| User usage table | top credit burners: `credit_ledger` spend (delta < 0) + `provider_costs`, with plan, cost and margin per user |
 | Margin alerts | `alerts.marginAlerts`: MARGIN_LOW (< 65 %, critical < 50 %), COST_SPIKE (cost per call +15 % vs the previous window), UNPRICED (cost with 0 credits, > $1) |
 
 If a table is missing (e.g. `provider_costs` before #313's migration runs), the route returns the other figures and marks that part "not available yet". It never errors the page.

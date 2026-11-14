@@ -3,8 +3,9 @@
  * file does the maths, so every figure on the dashboard is unit-tested.
  *
  * Sources (all read-only, service role, admin only):
- *   revenue   bog_orders where status = 'paid' (₾, BOG is the only payment rail)
- *   usage     credit_ledger rows with amount < 0 (credits spent), per user
+ *   revenue   wallet_topups (every BOG top-up lands there, ref bog:<order>) + bog_orders status = 'completed' with kind
+ *             subscription | renewal (plan payments never touch wallet_topups), the same split /api/admin/financials uses
+ *   usage     credit_ledger rows with delta < 0 (credits spent), per user
  *   cost      provider_costs (#313: one row per Google call, USD + credits charged, by capability/model)
  *             → "estimated" until reconcile_reports (Cloud Billing export) covers the day, then "reconciled"
  *
