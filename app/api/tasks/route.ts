@@ -34,6 +34,7 @@ import { liveRunDeps } from '@/lib/agent/run/runLive';
 import { cancelTask, listTasks, MAX_LIST, readTask } from '@/lib/tasks/taskService';
 import { liveTaskDeps } from '@/lib/tasks/taskLive';
 import { parseTaskId } from '@/lib/tasks/taskView';
+import { RELAY_HEADER, verifyRelayTicket } from '@/lib/tasks/relayTicket';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,6 +64,19 @@ function afterOf(raw: string | null): number | undefined {
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  // A read relayed by /api/tasks/stream with its signed pass for this one task (lib/tasks/relayTicket): the stream
+  // checked the session and the rate limit when it opened, so this read goes straight to the task. Any other or
+  // invalid pass is ignored and the read is checked as usual.
+  const relayed = req.headers.get(RELAY_HEADER);
+  if (relayed && req.nextUrl.searchParams.has('id')) {
+    const id = parseTaskId(req.nextUrl.searchParams.get('id'));
+    const pass = id ? verifyRelayTicket(relayed, id, Date.now()) : null;
+    if (pass && id) {
+      const after = afterOf(req.nextUrl.searchParams.get('after'));
+      const task = await readTask(liveTaskDeps(), { userId: pass.userId, id, workersOpen: pass.workersOpen, ...(after !== undefined ? { after } : {}) });
+      return task ? NextResponse.json({ ok: true, task }, { headers: NO_STORE }) : notFound();
+    }
+  }
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 });
   const limited = await checkRateLimit(req, RATE_LIMITS.TASKS, user.id);

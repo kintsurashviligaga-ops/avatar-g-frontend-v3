@@ -15,6 +15,8 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { parseTaskId, type TaskView } from '@/lib/tasks/taskView';
 import { streamTask } from '@/lib/tasks/progressStream';
+import { agentMediaOpenTo } from '@/lib/agent/media/access';
+import { mintRelayTicket, relayTicketEnabled, RELAY_HEADER } from '@/lib/tasks/relayTicket';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +43,12 @@ export async function GET(req: NextRequest): Promise<Response> {
   // The caller's own session, passed through to the one task route.
   const pass: Record<string, string> = {};
   for (const h of ['cookie', 'authorization']) { const v = req.headers.get(h); if (v) pass[h] = v; }
+  // TASK_RELAY_TICKET (lib/tasks/relayTicket): this request already checked the session and the rate limit, so the
+  // reads carry a signed pass for this one task and skip both. The session still rides along as the fallback.
+  if (relayTicketEnabled()) {
+    const ticket = mintRelayTicket({ userId: user.id, taskId: id, workersOpen: agentMediaOpenTo(user) }, Date.now(), (maxDuration + 30) * 1000);
+    if (ticket) pass[RELAY_HEADER] = ticket;
+  }
   const origin = req.nextUrl.origin;
   const read = async (a: number | undefined): Promise<TaskView | null> => {
     const url = `${origin}/api/tasks?id=${encodeURIComponent(id)}${a !== undefined ? `&after=${a}` : ''}`;
