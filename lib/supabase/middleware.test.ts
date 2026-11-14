@@ -24,6 +24,7 @@ let mockUser: { id: string } | null = null;
 let mockThrow = false;
 let mockThrowError: Error | null = null;
 let mockHang = false;
+let mockClaimsCalls = 0;
 let mockRefresh: Cookie[] | null = null;
 let capturedCookieAdapter: { getAll(): Cookie[]; setAll(c: Cookie[]): void } | null = null;
 
@@ -37,6 +38,11 @@ jest.mock('@supabase/ssr', () => ({
           if (mockHang) return new Promise(() => {});
           if (mockThrow) throw mockThrowError ?? new Error('auth server unreachable');
           return { data: { user: mockUser } };
+        },
+        getClaims: async () => {
+          mockClaimsCalls += 1;
+          if (mockHang) return new Promise(() => {});
+          return { data: mockUser ? { claims: { sub: mockUser.id, aud: 'authenticated', email: 'a@b.ge' } } : null, error: null };
         },
       },
     };
@@ -69,6 +75,8 @@ beforeEach(() => {
   mockHang = false;
   mockRefresh = null;
   capturedCookieAdapter = null;
+  mockClaimsCalls = 0;
+  delete process.env.AUTH_LOCAL_CLAIMS;
 });
 
 it('returns the validated user on the happy path', async () => {
@@ -131,5 +139,27 @@ describe('Auth server unreachable (2026-11-12 outage)', () => {
     expect(user).toBeNull();
     expect(authUnavailable).toBe(true);
     jest.useRealTimers();
+  });
+});
+
+describe('AUTH_LOCAL_CLAIMS (Phase 8.0 P0-1)', () => {
+  it('off by default: getUser() is the check, getClaims() is never called', async () => {
+    mockUser = { id: 'user_1' };
+    const { user } = await updateSession(fakeRequest({ 'sb-x-auth-token': 'valid' }));
+    expect(user).toEqual({ id: 'user_1' });
+    expect(mockClaimsCalls).toBe(0);
+  });
+  it('on: the user comes from the verified claims and is marked claims-only', async () => {
+    process.env.AUTH_LOCAL_CLAIMS = '1';
+    mockUser = { id: 'user_1' };
+    const { user, authUnavailable } = await updateSession(fakeRequest({ 'sb-x-auth-token': 'valid' }));
+    expect(mockClaimsCalls).toBe(1);
+    expect(user).toMatchObject({ id: 'user_1', email: 'a@b.ge', claimsOnly: true });
+    expect(authUnavailable).toBe(false);
+  });
+  it('on: no valid token gives no user', async () => {
+    process.env.AUTH_LOCAL_CLAIMS = 'on';
+    const { user } = await updateSession(fakeRequest({ 'sb-x-auth-token': 'expired' }));
+    expect(user).toBeNull();
   });
 });

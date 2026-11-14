@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { localClaimsEnabled, userFromClaims } from './localClaims';
 import { createServerClient } from '@supabase/ssr';
 import type { User } from '@supabase/supabase-js';
 import { hasSessionCookie } from '@/lib/routing/landing';
@@ -87,7 +88,12 @@ export async function updateSession(request: NextRequest): Promise<UpdateSession
         resolve(null);
       }, MIDDLEWARE_AUTH_TIMEOUT_MS);
     });
-    const result = await Promise.race([supabase.auth.getUser(), timeout]);
+    // AUTH_LOCAL_CLAIMS (lib/supabase/localClaims): getClaims() still refreshes an expired session (that is a network
+    // call, under the same cap), but a valid token is checked here, with no round trip to Supabase Auth.
+    const check = localClaimsEnabled()
+      ? supabase.auth.getClaims().then(({ data, error }) => ({ data: { user: data?.claims ? userFromClaims(data.claims) : null }, error }))
+      : supabase.auth.getUser();
+    const result = await Promise.race([check, timeout]);
     if (result === null) {
       authUnavailable = true;
     } else {
