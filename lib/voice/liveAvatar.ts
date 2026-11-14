@@ -33,6 +33,22 @@ export const LIVE_AVATAR_MAX_MS = 5 * 60_000;
 /** The avatar ticket outlives the cap a little, so the screen's own cap ends the avatar before the relay does. */
 export const LIVE_AVATAR_TICKET_MS = LIVE_AVATAR_MAX_MS + 60_000;
 
+/**
+ * v8 (GG 2026-11-14 10:26Z): the FREE plan's live avatar is 1 minute a day (5 minutes cost ~$2 a day per free user).
+ * Applies only while NEXT_PUBLIC_PRICING_V8 is on; paid plans and admins keep LIVE_AVATAR_MAX_MS.
+ */
+export const LIVE_AVATAR_FREE_V8_MAX_MS = 60_000;
+
+/** The avatar session cap for this account. */
+export function liveAvatarMaxMs(p: { v8: boolean; admin: boolean; paid: boolean }): number {
+  return p.v8 && !p.admin && !p.paid ? LIVE_AVATAR_FREE_V8_MAX_MS : LIVE_AVATAR_MAX_MS;
+}
+
+/** The ticket for a session capped at `maxMs`: a minute longer, so the screen's cap ends the avatar before the relay does. */
+export function liveAvatarTicketMs(maxMs: number = LIVE_AVATAR_MAX_MS): number {
+  return maxMs + 60_000;
+}
+
 /** An allowlisted avatar name (case-insensitive), else null. */
 export function normalizeLiveAvatar(raw: unknown): LiveAvatarName | null {
   if (typeof raw !== 'string') return null;
