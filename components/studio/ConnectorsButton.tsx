@@ -44,9 +44,12 @@ export function ConnectorsButton({ locale, className }: { locale: string; classN
     if (!open) return;
     let live = true;
     void fetchConnectors().then((r) => { if (live && r.ok) setDrive(r.connectors.find((c) => c.id === 'google_drive')); });
-    void fetch('/api/agent/browser/login', { cache: 'no-store' }).then((r) => r.json()).then((j: { enabled?: boolean; sites?: unknown[] }) => {
-      if (live) setLogins({ enabled: j.enabled === true, count: Array.isArray(j.sites) ? j.sites.length : 0 });
-    }).catch(() => undefined);
+    // No fetch (old browsers, test env) = the row simply stays hidden.
+    if (typeof fetch === 'function') {
+      void fetch('/api/agent/browser/login', { cache: 'no-store' }).then((r) => r.json()).then((j: { enabled?: boolean; sites?: unknown[] }) => {
+        if (live) setLogins({ enabled: j.enabled === true, count: Array.isArray(j.sites) ? j.sites.length : 0 });
+      }).catch(() => undefined);
+    }
     return () => { live = false; };
   }, [open]);
 
