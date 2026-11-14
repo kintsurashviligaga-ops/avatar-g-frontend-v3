@@ -64,7 +64,8 @@ import { useVeoEngineInfo } from './video/VeoParametersPanel';
 import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
 import { ClipCreatePanel } from './create/ClipCreatePanel';
-import { DirectorBoard, useDirectorsWorkflowEnabled } from './director/DirectorBoard';
+import { useDirectorsWorkflowEnabled } from './director/DirectorBoard';
+import { DirectorStudio } from './director/DirectorStudio';
 import { ClipAskCard } from './clip/ClipAskCard';
 import { clipStepFromState, type ClipStep } from './clip/ClipProgress';
 import {
@@ -11163,7 +11164,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {locale === 'ka' ? '🎬 რეჟისორი — ფილმი სცენებით (1–10)' : locale === 'ru' ? '🎬 Режиссёр — фильм по сценам (1–10)' : "🎬 Director — a film in scenes (1–10)"}
               </button>
             )}
-            {directorOpen && <DirectorBoard locale={locale} onClose={() => setDirectorOpen(false)} />}
+            {directorOpen && <DirectorStudio locale={locale} onClose={() => setDirectorOpen(false)} />}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
             {videoTab === 'product' && (
