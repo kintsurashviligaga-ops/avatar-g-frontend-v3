@@ -62,3 +62,23 @@ it('the real video command box darkens without selecting slow playback', async (
   expect(screen.getByRole('button', { name: '1×', exact: true }).classList.contains('bg-app-accent')).toBe(true);
   expect(fetched).toEqual([asset.url]);
 });
+
+// Phase 7.8 (GG 2026-11-14): the editor's AI photo and audio panels (remove background, upscale, face restore, colorize,
+// background replace, object removal, vocal isolation/split) ran on Replicate, and the server refuses every one of them
+// (google_only). They were buttons that could only fail, and they made this editor look like a second „Montage".
+it('a photo opens on Adjust with no AI studio, retouch tab or object removal', async () => {
+  render(<SurgicalEditor locale="en" onExit={() => {}} initialAsset={{ url: PICTURE, kind: 'image' }} />);
+  await waitFor(() => expect(document.querySelectorAll('button[title^="import-"][title$=".png"]')).toHaveLength(1));
+  expect(screen.getByText('Photo & audio editor')).toBeTruthy();
+  for (const gone of ['AI Photo Studio', 'Remove background', 'AI object removal', 'Retouch', 'Draw mask', 'AI background replace']) {
+    expect(screen.queryByText(gone)).toBeNull();
+  }
+  expect(screen.getAllByText('Adjust').length).toBeGreaterThan(0);
+});
+
+it('AI actions forwarded by Agent G are announced as unavailable, never posted', async () => {
+  const asset = { url: PICTURE, kind: 'image' as const, autoActions: ['remove_bg', 'upscale'] };
+  render(<SurgicalEditor locale="en" onExit={() => {}} initialAsset={asset} />);
+  await waitFor(() => expect(screen.getByText('This tool is temporarily unavailable')).toBeTruthy());
+  expect(fetched.every((u) => u === PICTURE)).toBe(true);
+});

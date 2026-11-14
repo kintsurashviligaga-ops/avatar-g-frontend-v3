@@ -419,9 +419,11 @@ test.describe('desktop 1280×800 — ref6', () => {
     const picture = page.locator('img[src*="/templates/image/product.jpg"]').filter({ visible: true }).last();
     await expect(picture).toBeVisible({ timeout: 20_000 });
     expect(await picture.evaluate((el) => !el.closest('#studio-settings'))).toBe(true);
-    for (const name of ['Download', 'Share', 'HD upscale', 'Regenerate', 'Edit', 'Save to library', 'Send to video']) {
+    for (const name of ['Download', 'Share', 'Regenerate', 'Edit', 'Save to library', 'Send to video']) {
       await expect(page.getByRole('button', { name, exact: true }).filter({ visible: true }).first()).toBeVisible();
     }
+    // No dead upscale: /api/ai/upscale refuses every request (Real-ESRGAN had no Google engine), so the bubble offers none.
+    await expect(page.getByRole('button', { name: 'HD upscale', exact: true })).toHaveCount(0);
     await expect(page.getByText('A lighthouse on a cliff at sunset').filter({ visible: true }).first()).toBeVisible();
     expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', aspectRatio: '1:1', quality: 'high' });
     await shot(page, 'desktop-result');
