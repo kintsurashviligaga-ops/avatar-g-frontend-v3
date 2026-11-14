@@ -141,15 +141,15 @@ export const libraryKeys = {
   /** Everything of one owner's Library. */
   owner: (owner: string) => ['library', owner] as const,
   /** One page of one tab: `kind` is the API's comma list ('' = every kind); `favorites` only the starred works. */
-  page: (owner: string, kind: string, limit: number, offset: number, favorites = false) =>
-    ['library', owner, 'page', favorites ? { kind, limit, offset, favorites } : { kind, limit, offset }] as const,
+  page: (owner: string, kind: string, limit: number, offset: number, favorites = false, q = '') =>
+    ['library', owner, 'page', { kind, limit, offset, ...(favorites ? { favorites } : {}), ...(q ? { q } : {}) }] as const,
   /** The studio grid's endless list, every kind. */
   feed: (owner: string, limit: number) => ['library', owner, 'feed', { limit }] as const,
 };
 
 /** `offset` left out asks for the newest `limit`; `before` continues after a cursor; `favorites` reads the starred works. */
 export async function fetchLibraryPage(
-  query: { kind?: string; limit: number; offset?: number; before?: string; favorites?: boolean },
+  query: { kind?: string; limit: number; offset?: number; before?: string; favorites?: boolean; q?: string },
   signal?: AbortSignal,
 ): Promise<LibraryPage> {
   const qs = new URLSearchParams();
@@ -158,6 +158,7 @@ export async function fetchLibraryPage(
   qs.set('limit', String(query.limit));
   if (query.offset !== undefined) qs.set('offset', String(query.offset));
   if (query.before) qs.set('before', query.before);
+  if (query.q) qs.set('q', query.q);
   const res = await fetch(`/api/studio/library?${qs.toString()}`, { cache: 'no-store', credentials: 'include', signal });
   if (!res.ok) throw new LibraryFetchError(res.status);
   const json = (await res.json()) as { items?: LibraryItem[]; demo?: unknown; nextCursor?: unknown };
@@ -224,12 +225,13 @@ const retryOnce = (failures: number, error: unknown) =>
 
 // ── Reads ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** One page of one tab (the /library page); `favorites` makes it a page of the starred works (the Favorites tab). */
-export function useLibraryPage(kind: string, limit: number, offset?: number, favorites = false) {
+/** `q` searches the prompts of the whole Library (server-side), within the tab's kind. */
+export function useLibraryPage(kind: string, limit: number, offset?: number, favorites = false, q = '') {
   const who = useLibraryOwner();
   useLibraryUpdates(who);
   return useQuery({
-    queryKey: libraryKeys.page(who ?? '', kind, limit, offset ?? -1, favorites),
-    queryFn: ({ signal }) => fetchLibraryPage({ kind, limit, offset, favorites }, signal),
+    queryKey: libraryKeys.page(who ?? '', kind, limit, offset ?? -1, favorites, q),
+    queryFn: ({ signal }) => fetchLibraryPage({ kind, limit, offset, favorites, q }, signal),
     enabled: who !== null,
     staleTime: (q) => (expiresSoon(q.state.data) ? 0 : LIBRARY_STALE_MS),
     structuralSharing: shareKeepingLinks,
