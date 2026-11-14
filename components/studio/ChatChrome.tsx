@@ -61,14 +61,16 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
 import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
-import AuthModal from '@/components/chat/AuthModal';
-import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
+// Phase 8.0 P1-2: these three only show after a click (sign-in sheet, first-login welcome, library sheet), so they
+// load as their own chunks instead of riding in the shared first-load chunk every page downloads.
+const AuthModal = dynamic(() => import('@/components/chat/AuthModal'), { ssr: false });
+const WelcomeOnboarding = dynamic(() => import('@/components/onboarding/WelcomeOnboarding'), { ssr: false });
 import { track } from '@/lib/analytics/track';
 import { searchServices, serviceHref, type ServiceDefinition } from '@/lib/catalog/services';
 import { ServiceSearchResults } from '@/components/studio/ServiceSearchResults';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
-import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
+const StudioLibraryGrid = dynamic(() => import('@/components/studio/StudioLibraryGrid'), { ssr: false });
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
