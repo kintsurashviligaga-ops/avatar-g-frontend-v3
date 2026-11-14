@@ -143,5 +143,5 @@ export function checkBrowserTask(task: unknown): BrowserCheck {
 /** What one task gives back. */
 export interface BrowserStepResult { op: BrowserStep['op']; ok: boolean; url?: string; title?: string; text?: string; shot?: string; error?: string }
 export type BrowserResult =
-  | { ok: true; steps: BrowserStepResult[]; shots: Array<{ name: string; bytes: Buffer }>; finalUrl: string; wallMs: number }
+  | { ok: true; steps: BrowserStepResult[]; shots: Array<{ name: string; bytes: Buffer }>; finalUrl: string; wallMs: number; session?: string }
   | { ok: false; error: 'browser_disabled' | 'refused' | 'timeout' | 'cancelled' | 'runner_failed'; message: string };

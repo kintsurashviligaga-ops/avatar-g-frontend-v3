@@ -73,3 +73,62 @@ export function vercelBrowserHost(snapshotId: string, create: BrowserCreate = sd
     },
   };
 }
+
+/** The SDK calls the login host needs (a subset of @vercel/sandbox's Sandbox). */
+export interface LoginSandboxLike extends BrowserSandboxLike {
+  readonly name: string;
+  runCommand(params: { cmd: string; args: string[]; cwd: string; env: Record<string, string>; signal: AbortSignal }):
+    Promise<{ exitCode: number | null; stdout(): Promise<string>; stderr(): Promise<string> }>;
+}
+export interface LoginSdk {
+  create(params: BrowserCreateParams): Promise<LoginSandboxLike>;
+  get(name: string): Promise<LoginSandboxLike>;
+  spawn(sbx: LoginSandboxLike, cmd: string, args: string[]): Promise<void>;
+}
+
+async function realLoginSdk(): Promise<LoginSdk> {
+  const { Sandbox } = await import('@vercel/sandbox');
+  return {
+    async create(params) {
+      return (await sdkCreate(params)) as unknown as LoginSandboxLike;
+    },
+    async get(name) {
+      return (await Sandbox.get({ name })) as unknown as LoginSandboxLike;
+    },
+    async spawn(sbx, cmd, args) {
+      await (sbx as unknown as InstanceType<typeof Sandbox>).runCommand({ cmd, args, cwd: BROWSER_WORKDIR, env: {}, detached: true });
+    },
+  };
+}
+
+/**
+ * The login host (lib/agent/browser/login): the same snapshot, network and empty env as a task, but the sandbox is
+ * found again by its name on each request, and the driver runs detached while the person logs in.
+ */
+export function vercelLoginHost(snapshotId: string, sdk: () => Promise<LoginSdk> = realLoginSdk): import('./login').LoginHost {
+  const wrap = (api: LoginSdk, sbx: LoginSandboxLike): import('./login').LoginSandbox => ({
+    name: sbx.name,
+    async writeFile(path, content) { await sbx.writeFiles([{ path: `${BROWSER_WORKDIR}/${path}`, content }]); },
+    async readBytes(path) { return sbx.readFileToBuffer({ path: `${BROWSER_WORKDIR}/${path}` }); },
+    async spawn(cmd, args) { await api.spawn(sbx, cmd, args); },
+    async stop() { await sbx.stop(); },
+  });
+  return {
+    async create(spec) {
+      const api = await sdk();
+      const sbx = await api.create({
+        source: { type: 'snapshot', snapshotId },
+        resources: { vcpus: Math.max(1, Math.floor(spec.vcpus)) },
+        timeout: spec.timeoutMs,
+        networkPolicy: { allow: ['*'], subnets: { deny: [...spec.denySubnets] } },
+        env: {},
+      });
+      return wrap(api, sbx);
+    },
+    async attach(name) {
+      if (!/^[A-Za-z0-9_-]{1,120}$/.test(name)) throw new Error('bad sandbox name');
+      const api = await sdk();
+      return wrap(api, await api.get(name));
+    },
+  };
+}

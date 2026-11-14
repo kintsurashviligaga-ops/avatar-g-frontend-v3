@@ -246,6 +246,10 @@ export const RATE_LIMITS = {
   // sandbox in the same $20 ledger as code runs, so fewer per day than code runs.
   BROWSER_RUN_USER:  { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:browser:user' } as const,
   BROWSER_RUN_BURST: { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:browser:min' } as const,
+  // BROWSER_LOGIN_* — logging in inside the cloud browser (/api/agent/browser/login): a login window is a sandbox too,
+  // so few per day; while one is open the picture is read about once a second and each tap/key is one request.
+  BROWSER_LOGIN_USER: { maxRequests: 10,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:browser:login:user' } as const,
+  BROWSER_LOGIN_LIVE: { maxRequests: 150, windowMs: 60_000,           keyPrefix: 'rl:browser:login:live' } as const,
   // SITE_STEP_* — Agent G acting on myavatar.ge in the user's tab (/api/agent/site/step): one flash call per step, a task is
   // at most 25 steps, so 60 a minute and 1500 a day.
   SITE_STEP_BURST:   { maxRequests: 60,  windowMs: 60_000,           keyPrefix: 'rl:sitestep:min' } as const,
