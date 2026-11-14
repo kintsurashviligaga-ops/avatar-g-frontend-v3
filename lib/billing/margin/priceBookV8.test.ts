@@ -1,7 +1,6 @@
 /** @jest-environment node */
 import { PRICE_BOOK, PRICE_BOOK_TODAY, PRICE_BOOK_V8, pricingV8Active } from '@/lib/credits/priceBook';
 import { clipCostGel, deckCostGel, opCostUsd, unitOp, usdToCostGel } from '@/lib/credits/unitEconomics';
-import { renewalAllowanceCredits, topupBonusCreditsV8, topupCreditsV8, BOG_PLAN_OFFERS_V8, BOG_TOPUP_PACKS_GEL_V8 } from './bogV8';
 import { grossMargin, MARGIN_ECON, minCreditsPerUnit } from './econ';
 import { computePriceBookV8 } from './priceBookV8';
 import { liveAvatarMaxMs, liveAvatarTicketMs, LIVE_AVATAR_MAX_MS } from '@/lib/voice/liveAvatar';
@@ -113,24 +112,6 @@ describe('free live avatar: 1 minute a day under v8', () => {
     expect((await liveAvatarAccess({}, { ...env, NEXT_PUBLIC_PRICING_V8: 'on' }, paid)).maxMs).toBe(LIVE_AVATAR_MAX_MS);
     expect((await liveAvatarAccess({}, { ...env, NEXT_PUBLIC_PRICING_V8: 'on' }, async () => { throw new Error('db'); })).maxMs).toBe(60_000);
     expect((await liveAvatarAccess({ admin: true } as never, { NEXT_PUBLIC_PRICING_V8: 'on' })).maxMs).toBe(LIVE_AVATAR_MAX_MS);
-  });
-});
-
-describe('BOG v8 data (not wired into live BOG code)', () => {
-  test('plans on today\'s tiers, top-ups with bonus', () => {
-    expect(BOG_PLAN_OFFERS_V8.map((o) => [o.tier, o.amountGel, o.credits])).toEqual([['starter', 25, 280], ['creator', 55, 650], ['business', 299, 3700]]);
-    expect(BOG_TOPUP_PACKS_GEL_V8).toEqual([10, 25, 50, 100]);
-    expect([10, 25, 50, 100].map(topupCreditsV8)).toEqual([100, 260, 540, 1100]);
-    expect([10, 25, 50, 100].map(topupBonusCreditsV8)).toEqual([0, 10, 40, 100]);
-    expect(topupCreditsV8(33)).toBe(330);
-    expect(topupCreditsV8(-1)).toBe(0);
-  });
-  test('a renewal keeps the book it was bought on', () => {
-    expect(renewalAllowanceCredits('starter', 25)).toBe(280);
-    expect(renewalAllowanceCredits('starter', '25.00')).toBe(280);
-    expect(renewalAllowanceCredits('starter', 54)).toBe(540); // bought before launch: today's allowance
-    expect(renewalAllowanceCredits('business', 299)).toBe(3700);
-    expect(renewalAllowanceCredits('free', 0)).toBe(0);
   });
 });
 

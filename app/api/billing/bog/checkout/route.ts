@@ -2,7 +2,7 @@
  * POST /api/billing/bog/checkout — start a Bank of Georgia payment: a PAYG top-up or a monthly plan.
  *
  *   { kind: 'topup', amountGel }                         → credits (floor(amount × 10)), once
- *   { kind: 'plan',  tierId: starter|creator|business }  → the plan's monthly allowance now, then every month on the
+ *   { kind: 'plan',  tierId: starter|creator|business (+ pro under v8) } → the plan's monthly allowance now, then every month on the
  *                                                          saved card (the pricing page's basic/pro ids are accepted)
  *   optional { locale: 'ka'|'en'|'ru' } — the language of BOG's page and of the page the customer returns to.
  *
@@ -12,6 +12,10 @@
  * ⚠️ THE PENDING ORDER IS WRITTEN FIRST, WITH WHAT IT IS WORTH. Amount, credits and tier come from the server-side
  * catalogue (lib/billing/bogCatalog) and are stored before BOG ever hears of the order; the callback credits from
  * that row, never from anything the bank or the browser says. No row → no order → no payment we cannot credit.
+ *
+ * v8 (NEXT_PUBLIC_PRICING_V8, off by default): top-ups are the fixed v8 packs (10 / 25 / 50 / 100 ₾) and the row
+ * stores their credits WITH the bonus (settlement grants the part credit_wallet_gel does not); plans are the v8 offers,
+ * Pro included. The admin top-up store (getActiveTiers) is not consulted under v8: the v8 packs are the price list.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
@@ -20,7 +24,8 @@ import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate
 import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
 import { bogCheckoutMode, bogConfig, bogSubscriptionMode, createBogOrder, saveCardForAutomaticPayments } from '@/lib/billing/bogClient';
-import { bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
+import { BOG_TOPUP_PACKS_GEL, bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
+import { pricingV8Active } from '@/lib/credits/priceBook';
 import { BOG_CHECKOUT_TTL_MINUTES, bogLimits, checkBogLimits, type BogLimitCheck } from '@/lib/billing/bogLimits';
 import { bogCallbackUrl, bogSandboxBlocked, newBogOrderId } from '@/lib/billing/bogSettlement';
 import { TIERS } from '@/lib/billing/tiers';
@@ -103,9 +108,11 @@ export async function POST(request: NextRequest) {
   const isPlan = body.kind === 'plan' || body.kind === 'subscription';
   if (body.kind === 'topup') {
     const amountGel = Number(body.amountGel);
-    const purchasable = await getActiveTiers();
-    if (!Number.isFinite(amountGel) || !purchasable.some((t) => t.gelAmount === amountGel)) {
-      return json({ error: `amountGel must be one of ${purchasable.map((t) => t.gelAmount).join(', ')}`, error_code: 'BAD_AMOUNT' }, 400);
+    const allowed = pricingV8Active(process.env.NEXT_PUBLIC_PRICING_V8)
+      ? [...BOG_TOPUP_PACKS_GEL]
+      : (await getActiveTiers()).map((t) => t.gelAmount);
+    if (!Number.isFinite(amountGel) || !allowed.includes(amountGel)) {
+      return json({ error: `amountGel must be one of ${allowed.join(', ')}`, error_code: 'BAD_AMOUNT' }, 400);
     }
     const credits = topupCredits(amountGel);
     row = { kind: 'topup', amount_gel: amountGel, credits };
@@ -119,7 +126,10 @@ export async function POST(request: NextRequest) {
       return json({ error: 'Bank of Georgia plans are not open yet', error_code: 'BOG_PLANS_ADMIN_ONLY' }, 403);
     }
     const offer = bogPlanOffer(body.tierId);
-    if (!offer) return json({ error: 'tierId must be starter, creator or business', error_code: 'BAD_TIER' }, 400);
+    if (!offer) {
+      const tiers = pricingV8Active(process.env.NEXT_PUBLIC_PRICING_V8) ? 'starter, creator, pro or business' : 'starter, creator or business';
+      return json({ error: `tierId must be ${tiers}`, error_code: 'BAD_TIER' }, 400);
+    }
     // ⚠️ ONE LIVE PLAN PER TIER. Two tabs, or a second click after paying, would otherwise charge the same plan twice
     // for overlapping months. A different tier is an upgrade/downgrade: allowed, and the new plan stops the old one
     // from renewing once it is paid (bog_fulfill_order).

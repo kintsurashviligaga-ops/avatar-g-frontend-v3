@@ -10,7 +10,7 @@
  */
 import { quoteCredits, type QuoteInput } from '@/lib/credits/quote';
 import { ECON, clipCostGel, netGelPerCredit, opCostGel, unitOp, videoCostGel } from '@/lib/credits/unitEconomics';
-import { PAID_TIER_IDS, TIERS, monthlyAllowanceCredits, type PaidTierId } from '@/lib/billing/tiers';
+import { TODAY_SOLD_TIER_IDS, TIERS, monthlyAllowanceCredits, type PaidTierId } from '@/lib/billing/tiers';
 import { planPriceGel, BOG_CREDITS_PER_GEL } from '@/lib/billing/bogCatalog';
 
 /** The owner's minimum: profit at least equal to cost (100 %). */
@@ -103,8 +103,8 @@ export function buildPriceRows(): PriceRow[] {
 }
 
 export function buildPlanRows(): PlanRow[] {
-  return PAID_TIER_IDS.map((tier) => {
-    const priceGel = planPriceGel(tier);
+  return TODAY_SOLD_TIER_IDS.map((tier) => {
+    const priceGel = planPriceGel(tier, false); // today's plans; the v8 book is on the Finance dashboard (#344)
     const credits = monthlyAllowanceCredits(tier);
     return {
       tier,

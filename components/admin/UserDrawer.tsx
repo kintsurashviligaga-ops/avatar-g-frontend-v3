@@ -153,7 +153,7 @@ export default function UserDrawer({ ka, userId, onClose, onBalance, fmt }: {
               <div className="flex flex-wrap items-center gap-2">
                 <select value={tier} onChange={(e) => setTier(e.target.value as TierId)}
                   className="rounded-md border border-white/15 bg-[#151922] px-2 py-1.5 text-[12.5px] focus:outline-none">
-                  {TIER_IDS.map((t) => <option key={t} value={t}>{ka ? TIERS[t].names.ka : TIERS[t].names.en}</option>)}
+                  {TIER_IDS.filter((t) => t !== 'pro' /* no comp value yet (COMP_TIER_VALUE) */).map((t) => <option key={t} value={t}>{ka ? TIERS[t].names.ka : TIERS[t].names.en}</option>)}
                 </select>
                 {tier !== 'free' && (
                   <label className="flex items-center gap-1.5 text-[12px] text-gray-300">
