@@ -27,7 +27,7 @@ const COPY: Record<Lang, {
   s3Title: string; s3Sub: string; balance: string; createFirst: string; skip: string;
 }> = {
   ka: {
-    s1Title: 'MyAvatar-ში კეთილი იყოს თქვენი მობრძანება!',
+    s1Title: 'კეთილი იყოს შენი მობრძანება MyAvatar-ში!',
     s1Sub: 'შექმენი AI ვიდეო, მუსიკა და სურათები — წამებში.',
     start: 'დაწყება',
     s2Title: 'რა გინდა შექმნა?',
