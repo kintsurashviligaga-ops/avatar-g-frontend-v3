@@ -1,6 +1,6 @@
-# Plans and top-ups (PROPOSAL for GG)
+# Plans and top-ups (APPROVED by GG 2026-11-14)
 
-Generated from `lib/billing/margin/packages.ts`. Prices are in ₾ because BOG charges ₾ ($ at 2.7 ₾ for comparison). Nothing here is sold until GG approves the numbers.
+Generated from `lib/billing/margin/packages.ts`. Prices are in ₾ because BOG charges ₾ ($ at 2.7 ₾ for comparison). Approved by GG 2026-11-14 10:26Z. Sold once the wiring flag is on.
 
 ## Monthly plans
 

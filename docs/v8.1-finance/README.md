@@ -1,7 +1,8 @@
 # Phase 8.1: Financial architecture, monetization and admin experience
 
-Status: **PROPOSAL, draft PRs only.** Nothing is merged. No live BOG code, wallet, credit ledger or database row changes.
-Prices and plans are for GG to approve. Prices read 2026-11-14 from Google's public pricing pages.
+Status: **APPROVED by GG 2026-11-14 10:26Z** (plans, top-ups, 65 % price list). Still draft PRs: nothing is merged, and no live BOG code,
+wallet, credit ledger or database row changes. The switch to v8 happens in a wiring PR behind a flag. Prices read 2026-11-14 from
+Google's public pricing pages.
 
 | File | What it holds |
 |---|---|
@@ -73,18 +74,17 @@ If a table is missing (e.g. `provider_costs` before #313's migration runs), the 
 - "No hidden fees" block: the price shown is the price charged; credits are only taken for a result; failed generations are refunded; top-up credits never expire.
 - Buttons go to the existing checkout. No BOG code is touched.
 
-## 5. Risks for GG
+## 5. GG's decisions (2026-11-14 10:26Z)
 
-1. **Free live avatar.** The free plan's perk "1 avatar session a day (5 min)" costs about $2.08 per active free user per day (44 credits a minute). 50 sign-up credits cover about 1 minute. Recommend dropping it to 1 minute a day, or making it paid-only.
-2. **VAT.** If MyAvatar registers for VAT (18 %), every price rises about 22 %. The engine does this by itself when `vatRate` changes.
-3. **Google promo pricing.** Gemini 3.8 Flash and Flash TTS are at half price until 2026-12-31. The matrix uses full prices on purpose, so the promo is extra margin, not a cliff on 1 January.
-4. **Price rise for current users.** Every action gets about 1.7× dearer. Suggest honoring today's prices for existing balances for 30 days, then switching.
-5. **Free and admin credits** are spent with no revenue, so the realised margin can sit under 65 % even when every price is right. The dashboard shows both numbers.
-6. **Live minute.** The live avatar keeps a 40K-token context per minute in the estimate. A real call trace after the DB is back will confirm or move the ✦44.
+1. **Free live avatar: 1 minute a day** (was 5). More needs a plan or credits. The free plan's perk text says so; the wiring PR caps the free avatar session at 1 minute behind the v8 flag.
+2. **Existing users: old prices for 30 days.** At launch, each user's existing balance becomes a legacy pool. For 30 days an action paid from that pool costs today's price; credits bought after launch, an action the pool can't fully cover, and everything after day 30 cost the v8 price (`legacy.ts`, `chargeFor`). This is the only place a price under 65 % is allowed.
+3. **VAT stays 0 %.** If MyAvatar registers, change `vatRate` and every price rises by itself (about 22 % at 18 %).
+4. **Full Google prices, not the promo.** Gemini 3.8 Flash and Flash TTS are half price until 2026-12-31, so margins sit above 65 % until then.
+5. **Plans and top-ups approved:** Start 25 ₾, Creator 55 ₾, Pro 129 ₾, Business 299 ₾; top-ups 10 / 25 / 50 / 100 ₾.
+6. **65 % price list approved** (e.g. 8 s 720p video ✦66).
 
-## 6. What GG decides
+Still worth watching once live: free and admin credits pull the realised margin under 65 % (the dashboard shows both numbers), and the live avatar minute (✦44) assumes a 40K-token context per minute until a real call trace confirms it.
 
-- Approve or change the plan prices and credits (PACKAGES.md).
-- Approve the 65 % price list (COGS_MATRIX.md), and when existing users move to it.
-- The free live avatar allowance.
-- Then: a wiring PR moves `PRICE_BOOK`, `lib/billing/tiers` and `bogCatalog` to these numbers behind a flag, and the paid checks run once the database is up.
+## 6. Next
+
+- Wiring PR: `PRICE_BOOK`, `lib/billing/tiers`, `bogCatalog`, the free avatar cap and the legacy pool move to v8 behind a flag (off). It is tested on a Preview once the database is back.
