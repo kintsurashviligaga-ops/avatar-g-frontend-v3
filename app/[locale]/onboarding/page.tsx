@@ -1,7 +1,4 @@
 import { redirect } from 'next/navigation';
-import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
-import { createServerClient } from '@/lib/supabase/server';
-import { signInPath } from '@/lib/routing/signIn';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,31 +6,15 @@ type Props = {
   params: Promise<{ locale: string }>;
 };
 
+/**
+ * /{locale}/onboarding — kept only so an old bookmark lands somewhere useful.
+ *
+ * The page used to render an avatar-naming wizard that no screen linked to. It was English only, its three voices were
+ * ElevenLabs ids that /api/elevenlabs/tts refuses (google_only), and its „Play" read JSON from a route that answers MP3,
+ * so every preview failed. First-run onboarding is WelcomeOnboarding, shown inside the chat (ChatChrome), so this path
+ * now opens the dashboard, where that welcome appears for a new account.
+ */
 export default async function OnboardingPage({ params }: Props) {
   const { locale } = await params;
-
-  const supabase = createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect(signInPath(locale, { redirect: `/${locale}/onboarding` }));
-  }
-
-  // If the user has already completed onboarding (persona row present),
-  // skip the wizard and go straight to the dashboard.
-  const { data: existing } = await supabase
-    .from('avatars')
-    .select('id')
-    .eq('user_id', user.id)
-    .not('name', 'is', null)
-    .limit(1)
-    .maybeSingle();
-
-  if (existing?.id) {
-    redirect(`/${locale}/dashboard`);
-  }
-
-  return <OnboardingWizard locale={locale} />;
+  redirect(`/${locale}/dashboard`);
 }
