@@ -14,7 +14,7 @@
  */
 import type { DirectClipAspect, DirectClipResolution, DirectClipSeconds } from '@/lib/video/directClip';
 
-/** GG 2026-11-14: 1–10 scenes. */
+/** GG 2026-11-14: 1–10 scenes, at most 10 s each = 100 s. */
 export const DW_MIN_SCENES = 1;
 export const DW_MAX_SCENES = 10;
 /** At most 3 people per project; Omni keeps voices apart best with few speakers, and a card names who is in it. */
@@ -90,7 +90,7 @@ export interface DwProject {
   /** The one-line idea the storyboard came from. */
   logline: string;
   aspect: DirectClipAspect;
-  /** Omni resolution for scenes that speak Georgian (720p / 1080p). Veo scenes follow directClipResolution. */
+  /** The whole film's resolution, picked by the user (GG 2026-11-14): every scene and the final cut follow it (plan.ts). */
   resolution: DirectClipResolution;
   characters: DwCharacter[];
   scenes: DwScene[];

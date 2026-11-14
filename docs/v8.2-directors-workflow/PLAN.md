@@ -38,19 +38,19 @@ The older Veo-only film path (storyboard frames → English scene scripts) and t
 
 **Phase 8.2 — storyboard and scene cards (no generation)**
 - **PR A (this PR):** `lib/video/directorsWorkflow/` — scene model, checks, per-scene engine and price, card edits, scene → prompt, storyboard planner instruction + strict reader, flag `DIRECTORS_WORKFLOW` (off / admin / everyone). Pure code, 19 tests, nothing wired, $0.
-- **PR B:** `POST /api/video/director-workflow/plan` (one Vertex Gemini call → draft board, free or a small fixed planning price — GG to say) and the scene-card UI in the Video service, behind the flag. Screenshots at 390 / 1440.
+- **PR B:** `POST /api/video/director-workflow/plan` (one Vertex Gemini call → draft board, free) and the scene-card UI in the Video service, behind the flag. Screenshots at 390 / 1440.
 
 **Phase 8.3 — render, audio, final cut**
 - **PR C:** the run: approve → hold the total, render scenes in order through the direct-clip path (scene N+1 waits for scene N's last frame only when it continues from it; independent scenes render in parallel, max 2), refund any failed scene, timeline card per scene.
 - **PR D:** final cut with `longform/stitch`, Library entry, "re-do scene 3", and the paid check on myavatar.ge (admins, GG-approved budget).
 
-## Decisions for GG
+## GG's decisions (2026-11-14 10:38Z)
 
-1. **Planning price.** Making the storyboard is one cheap Gemini text call (≈ $0.002). Free, or ✦1?
-2. **Mixed resolutions.** Veo 8 s renders 1080p, Omni defaults to 720p. Joining them needs a re-encode to one size. Recommend: when a board mixes engines, Omni scenes render at 1080p so the film is 1080p throughout (costs more per Omni scene), or offer the user a 720p / 1080p choice for the whole film.
-3. **Charging.** Recommend: hold the full total on approve, charge each scene when it is delivered, refund failed scenes automatically. (Today a single clip is charged up front and refunded on failure; holding needs no new ledger code, only one charge per scene.)
-4. **Length cap.** 10 scenes × 10 s = 100 s maximum. OK, or cap total length lower (e.g. 60 s) for non-admins?
-5. **Music across scenes.** Per-scene music cues (as built) can change between cuts. Should a whole-film music bed be an option in PR D (Lyria, mixed under the dialogue), or stay out as GG asked for single clips?
+1. **Planning is free.** Users can re-plan and edit the board as often as they like; nothing is charged before approval.
+2. **One resolution for the whole film, picked by the user (720p or 1080p).** Omni scenes render at that resolution. At 1080p a 4 or 6 s scene without a Georgian line goes to Omni 1080p (Veo renders 1080p only at 8 s), so no scene is upscaled. At 720p a Veo 8 s scene renders 1080p and the final cut scales it down.
+3. **Charging:** approve checks the balance covers the whole film; each scene is charged when it starts through the same charge path as a single clip, and a failed scene is refunded automatically (the existing status route). Net result: the user pays only for delivered scenes. A true ledger reservation would be a billing change and is not part of these PRs.
+4. **Length cap 100 s** (10 scenes × 10 s).
+5. **Whole-film music bed (PR D):** optional Lyria track mixed under the dialogue; the user can ask "add cinematic music to the whole film".
 
 ## Not in scope
 

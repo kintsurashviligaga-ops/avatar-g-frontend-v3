@@ -1,3 +1,4 @@
+import { omniClipCredits } from '@/lib/credits/priceBook';
 import { directClipCredits } from '@/lib/video/directClip';
 import {
   addScene,
@@ -61,6 +62,16 @@ describe('engine and price per scene', () => {
     const q = quoteProject(p);
     expect(q.totalCredits).toBe(directClipCredits({ seconds: 8, tier: 'fast', photos: 0, resolution: '720p', speech: 'ka' }));
     expect(q.totalSeconds).toBe(8);
+  });
+
+  it('one resolution for the whole film: at 1080p a short silent scene goes to Omni 1080p, a Veo 8 s stays Veo 1080p', () => {
+    const p = { ...project([kaScene('s1', 1), scene('s2', 2, { seconds: 4 }), scene('s3', 3)]), resolution: '1080p' as const };
+    const q = quoteProject(p);
+    expect(q.scenes.map((s) => [s.clip.engine, s.clip.resolution])).toEqual([['omni', '1080p'], ['omni', '1080p'], ['veo', '1080p']]);
+    expect(q.scenes[1]!.credits).toBe(omniClipCredits('1080p', 4));
+    // At 720p a short silent scene stays on Veo at 720p.
+    const p720 = project([scene('s1', 1, { seconds: 4 })]);
+    expect(sceneClipSpec(p720, p720.scenes[0]!)).toMatchObject({ engine: 'veo', resolution: '720p' });
   });
 
   it('the total is the sum of the scenes, and a custom pricer replaces the price book', () => {

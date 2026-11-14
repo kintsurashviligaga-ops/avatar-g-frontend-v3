@@ -5,7 +5,10 @@
  * Every rule here is the SINGLE-CLIP rule, applied scene by scene, so a 1-scene project costs exactly what the same clip
  * costs in the Video service today:
  *   • engine — directClipEngine: a Georgian line or 10 s → Gemini Omni, otherwise Veo.
- *   • resolution — directClipResolution (Veo 720p below 8 s, 1080p at 8 s; Omni as the project asks, speech 1080p).
+ *   • ONE RESOLUTION FOR THE WHOLE FILM (GG 2026-11-14 10:38Z): the user picks 720p or 1080p. Omni renders every scene at
+ *     that resolution. Veo renders 1080p only at 8 s, so in a 1080p film a 4 or 6 s scene without a Georgian line goes to
+ *     Omni at 1080p instead (no upscaled scene in the cut). In a 720p film a Veo 8 s scene still renders 1080p and the
+ *     final cut scales it down (a down-scale loses nothing).
  *   • words fit the scene — clipSpeechFits (a line longer than the clip is refused here, not rushed by the engine).
  *
  * PRICE COMES FROM A PRICER, not from this file. `livePricer` is today's price book (directClipCredits). The Phase 8.1
@@ -14,11 +17,11 @@
  *
  * Pure and client-safe.
  */
+import { omniClipCredits } from '@/lib/credits/priceBook';
+import { videoCredits } from '@/lib/credits/videoPricing';
 import {
   DIRECT_CLIP_SECONDS,
-  directClipCredits,
   directClipEngine,
-  directClipResolution,
   type DirectClipEngine,
   type DirectClipResolution,
   type DirectClipSeconds,
@@ -55,9 +58,14 @@ export interface DwClipSpec {
 /** Credits for one scene's clip. */
 export type DwPricer = (clip: DwClipSpec) => number;
 
-/** Today's price book — the same function the Video service quotes a single clip with. */
+/** Today's price book — the same rows the Video service quotes a single clip with (directClipCredits). */
 export const livePricer: DwPricer = (c) =>
-  directClipCredits({ seconds: c.seconds, tier: c.tier, photos: c.photos, resolution: c.resolution, speech: c.speech });
+  c.engine === 'omni'
+    ? omniClipCredits(c.resolution, c.seconds)
+    : videoCredits({ seconds: c.seconds, quality: c.tier, scenes: 1, referenceMode: c.photos >= 2 });
+
+/** Veo renders 1080p at 8 s only; 720p at 4 and 6 s (lib/veo/capabilities resolutionFor). */
+const veoResolution = (seconds: number): DirectClipResolution => (seconds === 8 ? '1080p' : '720p');
 
 const linesOf = (scene: DwScene): string[] => scene.audio.lines.map((l) => l.text.trim()).filter(Boolean);
 
@@ -73,12 +81,14 @@ export function sceneSpeakers(project: DwProject, scene: DwScene): ClipSpeaker[]
 
 export function sceneClipSpec(project: DwProject, scene: DwScene): DwClipSpec {
   const speech = speaksGeorgian(linesOf(scene)) ? 'ka' : null;
-  const engine = directClipEngine(scene.seconds, speech);
+  const single = directClipEngine(scene.seconds, speech);
+  // A 1080p film never carries a 720p Veo scene: below 8 s it is Omni's, at the film's resolution.
+  const engine: DirectClipEngine = single === 'veo' && project.resolution === '1080p' && scene.seconds !== 8 ? 'omni' : single;
   const photos = scene.firstFrame === 'photo' && scene.photoId ? 1 : scene.firstFrame === 'previous' ? 1 : 0;
   return {
     engine,
     seconds: scene.seconds,
-    resolution: directClipResolution(scene.seconds, project.resolution, speech),
+    resolution: engine === 'omni' ? project.resolution : veoResolution(scene.seconds),
     speech,
     tier: DW_VEO_TIER,
     photos,
