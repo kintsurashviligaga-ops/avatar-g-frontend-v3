@@ -3,7 +3,6 @@ import { PRICE_BOOK, PRICE_BOOK_TODAY, PRICE_BOOK_V8, pricingV8Active } from '@/
 import { clipCostGel, deckCostGel, opCostUsd, unitOp, usdToCostGel } from '@/lib/credits/unitEconomics';
 import { renewalAllowanceCredits, topupBonusCreditsV8, topupCreditsV8, BOG_PLAN_OFFERS_V8, BOG_TOPUP_PACKS_GEL_V8 } from './bogV8';
 import { grossMargin, MARGIN_ECON, minCreditsPerUnit } from './econ';
-import { readLegacyState, priceWithLegacyPool, type LegacyPoolReader } from './legacyPool';
 import { computePriceBookV8 } from './priceBookV8';
 import { liveAvatarMaxMs, liveAvatarTicketMs, LIVE_AVATAR_MAX_MS } from '@/lib/voice/liveAvatar';
 import { liveAvatarAccess } from '@/lib/voice/liveAudience';
@@ -114,25 +113,6 @@ describe('free live avatar: 1 minute a day under v8', () => {
     expect((await liveAvatarAccess({}, { ...env, NEXT_PUBLIC_PRICING_V8: 'on' }, paid)).maxMs).toBe(LIVE_AVATAR_MAX_MS);
     expect((await liveAvatarAccess({}, { ...env, NEXT_PUBLIC_PRICING_V8: 'on' }, async () => { throw new Error('db'); })).maxMs).toBe(60_000);
     expect((await liveAvatarAccess({ admin: true } as never, { NEXT_PUBLIC_PRICING_V8: 'on' })).maxMs).toBe(LIVE_AVATAR_MAX_MS);
-  });
-});
-
-describe('legacy pool reader', () => {
-  const client = (row: unknown, error: unknown = null): LegacyPoolReader => ({
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row as never, error }) }) }) }),
-  });
-  const launch = '2026-12-01T00:00:00Z';
-  const day5 = new Date('2026-12-06T00:00:00Z');
-  test('reads the pool; missing table / error / empty = no pool', async () => {
-    expect(await readLegacyState(client({ pool: '500', launch_at: launch }), 'u')).toEqual({ legacyPool: 500, launchAt: launch });
-    expect(await readLegacyState(client(null, { code: '42P01' }), 'u')).toBeNull();
-    expect(await readLegacyState(client({ pool: 0, launch_at: launch }), 'u')).toBeNull();
-    expect(await readLegacyState({ from: () => { throw new Error('boom'); } } as never, 'u')).toBeNull();
-  });
-  test('an 8 s 720p clip costs today\'s ✦38 from the pool, v8 ✦66 without one', async () => {
-    const legacy = PRICE_BOOK_TODAY.omniClip['720p'][8];
-    expect(await priceWithLegacyPool(client({ pool: 500, launch_at: launch }), 'u', 66, legacy, day5)).toMatchObject({ credits: legacy, basis: 'legacy' });
-    expect(await priceWithLegacyPool(client(null, { code: '42P01' }), 'u', 66, legacy, day5)).toMatchObject({ credits: 66, basis: 'v8' });
   });
 });
 
