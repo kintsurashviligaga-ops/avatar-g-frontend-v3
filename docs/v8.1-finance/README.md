@@ -94,13 +94,17 @@ One switch, `NEXT_PUBLIC_PRICING_V8=on` (off by default; it is inlined into the 
 | Every price | `lib/credits/priceBook.ts`: `PRICE_BOOK` = `PRICE_BOOK_V8` or `PRICE_BOOK_TODAY` | All 38 callers (buttons, routes, toasts, admin) read the v8 numbers. `priceBookV8.test` recomputes each from the approved list and the 65 % rule |
 | Free live avatar | `lib/voice/liveAvatar.liveAvatarMaxMs`, `liveAudience`, `/api/voice/live`, the call screen | Free plan: 1 minute per session (1 session a day). Paid plans and admins keep 5 minutes. The plan lookup runs only with the flag on; a failed lookup counts as free |
 | `price_versions` rows (#313) | `lib/billing/v5/priceVersions.rowProblem` | A row under 65 % at the floor credit is refused (`minCreditsPerUnit`) |
-| 30-day legacy pool | `legacy.chargeFor`, `legacyPool.readLegacyState`, `sql/v8_legacy_pool.sql` (NOT applied) | Reads the pool; no table = every action at the v8 price |
+| Existing balances (GG 15:21Z: top up 1.7× at launch) | `sql/02_legacy_conversion_launch.sql`, `sql/04_legacy_conversion_day30.sql` (NOT applied) | No code change: one SQL at launch adds 70 % to every balance, a second SQL on day 30 takes back the unspent extra |
 | Plans and top-ups | `lib/billing/margin/bogV8.ts` (data only) | Nothing yet: see below |
 
-Still needed, and each touches live BOG code or the ledger, so each waits for the DB-up test and GG's word:
+Launch preparation (drafts, nothing applied; GG 15:20Z): the SQL lives in `docs/v8.1-finance/sql/` (tested on a local Postgres 16), BOG checkout and renewal for the v8 plans are in their own draft PR, and the button-by-button order is in `LAUNCH_CHECKLIST.md`.
 
-1. Run `sql/v8_legacy_pool.sql`, take the snapshot at launch, and have the charge path call `consume_legacy_pool` next to `deduct_credits` (legacy price when it returns true, v8 otherwise).
-2. BOG checkout sells `BOG_PLAN_OFFERS_V8`; the renewal cron uses `renewalAllowanceCredits(tier, amount_gel)` so a pre-launch subscription keeps its old allowance; top-up settlement grants `topupBonusCreditsV8` on top of what `credit_wallet_gel` books.
-3. Pro (129 ₾ / 1,550) needs a 4th tier value in `subscriptions.tier` before it can be sold.
+| File | When | What |
+|---|---|---|
+| `00_preflight.sql` | When Supabase is back | Read-only: the constraints, grant function and balance trigger it relies on exist; counts balances |
+| `01_pro_tier.sql` | Before the deploy | Adds `pro` to the three tier constraints and to `grant_subscription_allowance` (patched from its live body). Safe to re-run |
+| `02_legacy_conversion_launch.sql` | Right after the v8 deploy is READY | Every balance > 0 gets +⌈balance × 0.7⌉ through `credit_ledger` (kind `v8_legacy_conversion`), recorded in `credit_legacy_conversions`. Safe to re-run |
+| `04_legacy_conversion_day30.sql` | Day 30 after launch | Takes back min(bonus, balance − credits added since launch): spending comes out of the bonus first, later top-ups and allowances are never touched. Does nothing before day 30; safe to re-run |
+| `99_rollback.sql` | Only to undo launch | Takes back the unspent bonus; the Pro tier stays |
 
-Until 2 lands, keep the flag off: the pricing page would show the v8 plans while checkout still charges today's.
+Keep the flag off until the BOG v8 PR is merged with this one: the pricing page would otherwise show the v8 plans while checkout still charges today's.
