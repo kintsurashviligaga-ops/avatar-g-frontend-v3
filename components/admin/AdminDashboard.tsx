@@ -14,6 +14,7 @@ import LiveVisitors from '@/components/admin/LiveVisitors';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import UserDrawer from '@/components/admin/UserDrawer';
 import PricesPanel from '@/components/admin/PricesPanel';
+import FinancePanel from '@/components/admin/FinancePanel';
 import ServiceSwitches from '@/components/admin/ServiceSwitches';
 import BogReadiness from '@/components/admin/BogReadiness';
 import type { AdminStats } from '@/lib/admin/stats';
@@ -26,6 +27,7 @@ type Tab =
   | 'support'
   | 'services'
   | 'prices'
+  | 'finance'
   | 'overview'
   | 'reliability'
   | 'activity'
@@ -49,6 +51,8 @@ interface Props {
   stats: AdminStats;
   initialUsers: AdminUserPage;
   pipelineHealth: PipelineHealth | null;
+  /** Phase 8.1 founder Finance tab (ADMIN_FINANCE_DASHBOARD, off by default). */
+  financeEnabled?: boolean;
 }
 
 function Stat({ label, value, sub, accent = 'default' }: { label: string; value: string | number; sub?: string; accent?: Accent }) {
@@ -71,7 +75,7 @@ function MiniStat({ label, value, sub }: { label: string; value: string | number
   );
 }
 
-export default function AdminDashboard({ locale, stats: initialStats, initialUsers, pipelineHealth: initialHealth }: Props) {
+export default function AdminDashboard({ locale, stats: initialStats, initialUsers, pipelineHealth: initialHealth, financeEnabled = false }: Props) {
   const ka = locale === 'ka';
   const [tab, setTab] = useState<Tab>('dashboard');
   const [stats, setStats] = useState<AdminStats>(initialStats);
@@ -153,6 +157,7 @@ export default function AdminDashboard({ locale, stats: initialStats, initialUse
     { id: 'support', label: ka ? '💬 მხარდაჭერა' : '💬 Support' },
     { id: 'services', label: ka ? '⚡ სერვისები' : '⚡ Services' },
     { id: 'prices', label: ka ? '🏷️ ფასები' : '🏷️ Prices' },
+    ...(financeEnabled ? [{ id: 'finance' as Tab, label: ka ? '💰 ფინანსები' : '💰 Finance' }] : []),
     { id: 'overview', label: ka ? '📈 მიმოხილვა' : '📈 Overview' },
     { id: 'jobs', label: ka ? '🎬 რიგი (Jobs)' : '🎬 Queue' },
     { id: 'billing', label: ka ? '💳 ბილინგი' : '💳 Billing' },
@@ -244,6 +249,7 @@ export default function AdminDashboard({ locale, stats: initialStats, initialUse
           {tab === 'dashboard' && <DashboardPanel ka={ka} />}
           {tab === 'services' && <ServiceSwitches ka={ka} />}
           {tab === 'prices' && <PricesPanel ka={ka} />}
+          {tab === 'finance' && financeEnabled && <FinancePanel ka={ka} />}
           {tab === 'overview' && <Overview ka={ka} stats={stats} top={top} pipelineHealth={pipelineHealth} fmt={fmt} />}
           {tab === 'reliability' && <ReliabilityPanel ka={ka} />}
           {tab === 'users' && <Users ka={ka} initial={initialUsers} fmt={fmt} />}
