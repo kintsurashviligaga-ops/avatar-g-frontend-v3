@@ -1313,3 +1313,35 @@ describe('server timing, only for a traced turn', () => {
     expect(body.endsWith('data: [DONE]\n\n')).toBe(true);
   });
 });
+
+describe('Phase 8.0 P1-1: the body is read while the session is checked', () => {
+  test('the upload is already being read when the Auth check starts, and the turn still answers', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const server = require('../../../../lib/supabase/server') as { authedClientFromRequest: jest.Mock };
+    const req = post(userTurn('hi'));
+    const readBody = jest.spyOn(req, 'json');
+    let readStartedBeforeAuth: boolean | null = null;
+    server.authedClientFromRequest.mockImplementationOnce(async () => {
+      readStartedBeforeAuth = readBody.mock.calls.length > 0;
+      return { supabase: { rpc: mockRpc }, user: mockUser };
+    });
+    mockStream.mockImplementationOnce(gemini([{ text: 'ok' }], {}));
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(readStartedBeforeAuth).toBe(true);
+    expect(readBody).toHaveBeenCalledTimes(1);
+  });
+
+  test('a signed-out caller refused before the body is used leaves no unhandled rejection', async () => {
+    const req = new NextRequest('https://myavatar.ge/api/chat/gemini', { method: 'POST', body: 'not json' });
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      expect((await POST(req)).status).toBeGreaterThanOrEqual(400);
+      await new Promise((r) => setImmediate(r));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+});
