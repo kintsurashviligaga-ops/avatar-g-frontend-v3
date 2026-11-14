@@ -12,6 +12,7 @@ import { formatWalletBalance } from '@/lib/billing/gel';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
 import { ConnectionsSection } from './ConnectionsSection';
+import { createBrowserClient } from '@/lib/supabase/browser';
 
 /**
  * Settings — top-level user preferences surface.
@@ -36,7 +37,7 @@ interface Copy {
   pageTitle: string; pageSubtitle: string;
   language: { title: string; subtitle: string };
   theme: { title: string; dark: string; light: string; subtitle: string };
-  profile: { title: string; status: string; signedIn: string; signedOut: string; unknown: string };
+  profile: { title: string; status: string; signedIn: string; signedOut: string; unknown: string; email: string; name: string };
   account: { title: string; body: string; button: string };
   usage: { title: string; subtitle: string; loading: string; failed: string; credits: string; resets: string };
   history: { title: string; subtitle: string; loading: string; empty: string; credits: string };
@@ -52,7 +53,7 @@ const COPY: Record<Locale, Copy> = {
     pageTitle: 'პარამეტრები', pageSubtitle: 'ანგარიში, ენა და ბალანსი ერთ ადგილზე.',
     language: { title: 'ენა', subtitle: 'ცვლის ინტერფეისის ენას მთელი აპლიკაციისთვის.' },
     theme: { title: 'თემა', subtitle: 'მუქი ან ღია გარეგნობა.', dark: 'მუქი', light: 'ღია' },
-    profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხართ', signedOut: 'შესული არ ხართ', unknown: 'ახლა ვერ შევამოწმეთ.' },
+    profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხარ', signedOut: 'შესული არ ხარ', unknown: 'ახლა ვერ შევამოწმეთ.', email: 'ელფოსტა', name: 'სახელი' },
     account: { title: 'ანგარიში', body: 'ბალანსის, ისტორიისა და მოწვევების სანახავად შედი ანგარიშზე.', button: 'შესვლა' },
     usage: {
       title: 'ბალანსი და მოხმარება', subtitle: 'რამდენი კრედიტი გაქვს ამ პერიოდში.',
@@ -73,7 +74,7 @@ const COPY: Record<Locale, Copy> = {
     pageTitle: 'Settings', pageSubtitle: 'Account, language and balance in one place.',
     language: { title: 'Language', subtitle: 'Switches the interface language across the app.' },
     theme: { title: 'Theme', subtitle: 'Dark or light appearance.', dark: 'Dark', light: 'Light' },
-    profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out', unknown: 'Could not check right now.' },
+    profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out', unknown: 'Could not check right now.', email: 'Email', name: 'Name' },
     account: { title: 'Account', body: 'Sign in to see your balance, history and invites.', button: 'Sign in' },
     usage: {
       title: 'Balance & usage', subtitle: 'Your credits for this period.',
@@ -94,7 +95,7 @@ const COPY: Record<Locale, Copy> = {
     pageTitle: 'Настройки', pageSubtitle: 'Аккаунт, язык и баланс в одном месте.',
     language: { title: 'Язык', subtitle: 'Меняет язык интерфейса.' },
     theme: { title: 'Тема', subtitle: 'Тёмное или светлое оформление.', dark: 'Тёмная', light: 'Светлая' },
-    profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт', unknown: 'Сейчас не удалось проверить.' },
+    profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт', unknown: 'Сейчас не удалось проверить.', email: 'Эл. почта', name: 'Имя' },
     account: { title: 'Аккаунт', body: 'Войдите, чтобы увидеть баланс, историю и приглашения.', button: 'Войти' },
     usage: {
       title: 'Баланс и расход', subtitle: 'Ваши кредиты за этот период.',
@@ -330,7 +331,26 @@ function SignInCard({ t }: { t: Copy['account'] }) {
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
+/** Who is signed in: the session's own email and name (Phase 7.8 — the card used to say only „signed in"). */
+function useSignedInIdentity(signedIn: boolean): { email: string | null; name: string | null } | null {
+  const [who, setWho] = useState<{ email: string | null; name: string | null } | null>(null);
+  useEffect(() => {
+    if (!signedIn) { setWho(null); return; }
+    let cancelled = false;
+    createBrowserClient().auth.getUser().then(({ data }) => {
+      if (cancelled || !data.user) return;
+      const meta = (data.user.user_metadata ?? {}) as { full_name?: unknown; name?: unknown };
+      const name = typeof meta.full_name === 'string' && meta.full_name.trim() ? meta.full_name.trim()
+        : typeof meta.name === 'string' && meta.name.trim() ? meta.name.trim() : null;
+      setWho({ email: data.user.email ?? data.user.phone ?? null, name });
+    }).catch(() => { /* the status line still says signed in */ });
+    return () => { cancelled = true; };
+  }, [signedIn]);
+  return who;
+}
+
 function ProfileSection({ t, account }: { t: Copy['profile']; account: Account }) {
+  const who = useSignedInIdentity(account.state === 'signedIn');
   return (
     <Card>
       <CardHeader icon={User} title={t.title} />
@@ -354,6 +374,18 @@ function ProfileSection({ t, account }: { t: Copy['profile']; account: Account }
               </>
             )}
           </div>
+          {who?.name && (
+            <div className="mt-3" data-testid="settings-name">
+              <div className="text-xs uppercase tracking-wider text-app-muted">{t.name}</div>
+              <div className="mt-0.5 truncate text-sm font-medium md:text-base">{who.name}</div>
+            </div>
+          )}
+          {who?.email && (
+            <div className="mt-3" data-testid="settings-email">
+              <div className="text-xs uppercase tracking-wider text-app-muted">{t.email}</div>
+              <div className="mt-0.5 truncate text-sm font-medium md:text-base">{who.email}</div>
+            </div>
+          )}
         </div>
       </div>
     </Card>
