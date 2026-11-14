@@ -1,7 +1,7 @@
 /**
- * lib/billing/margin/packages.ts — the PROPOSED v8 plans and top-ups (Phase 8.1). Pure. Prices in ₾ because BOG charges
- * ₾; USD is shown for comparison at $1 = 2.7 ₾. These are PROPOSALS for GG: nothing here is sold until GG approves the
- * numbers and a wiring PR moves lib/billing/tiers + bogCatalog to them (live BOG code is never touched by this PR).
+ * lib/billing/margin/packages.ts — the v8 plans and top-ups (Phase 8.1). Pure. Prices in ₾ because BOG charges ₾; USD is
+ * shown for comparison at $1 = 2.7 ₾. APPROVED by GG 2026-11-14 10:26Z (plans, top-ups, free live avatar 1 min a day).
+ * Nothing here is sold until the wiring PR's flag is turned on (live BOG code is never touched by this PR).
  *
  * Every package must sell a credit at ≥ MARGIN_ECON.floorCreditGel, because every action is priced at that floor
  * (econ.ts). packageProblems() refuses a cheaper package, and packages.test fails the build on one. Every plan also stays
@@ -46,7 +46,7 @@ export const PLANS: readonly PlanOffer[] = [
     perks: [
       { ka: '50 კრედიტი რეგისტრაციისას', en: '50 credits when you sign up' },
       { ka: 'ჩატი დღიური ლიმიტით', en: 'Chat with a daily limit' },
-      { ka: 'ლაივ ავატარი: 1 სესია დღეში (5 წთ)', en: 'Live avatar: 1 session a day (5 min)' },
+      { ka: 'ლაივ ავატარი: 1 წუთი დღეში', en: 'Live avatar: 1 minute a day' },
     ],
   },
   {
