@@ -8,7 +8,7 @@
  * and free. The price under the cards is computed here from the same pure quote the server checks again before any
  * charge (lib/video/directorsWorkflow/plan.quoteProject). Rendering is `onApprove`'s job (Phase 8.3).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   DW_MAX_CHARACTERS,
   DW_MAX_LINES_PER_SCENE,
@@ -195,8 +195,10 @@ function SceneCard({ locale, project, scene, credits, engine, problems, run, onR
   );
 }
 
-export function DirectorBoard({ locale, onClose, onApprove, initial, runs, running, notice, onRerun }: {
+export function DirectorBoard({ locale, onClose, onApprove, initial, runs, running, notice, onRerun, after }: {
   locale: Lang;
+  /** Phase 8.3 PR D: shown under the cards (the final cut once every scene is delivered). */
+  after?: ReactNode;
   /** Phase 8.3: each scene's render, shown on its card. */
   runs?: DwRuns;
   /** A film is rendering: the approve button waits. */
@@ -326,6 +328,7 @@ export function DirectorBoard({ locale, onClose, onApprove, initial, runs, runni
                 </button>
               )}
               {notice && <p className="text-[12.5px] text-amber-500" role="status" data-testid="dw-notice">{notice}</p>}
+              {after}
               {boardProblems.map((p, i) => <p key={i} className="text-[12px] text-amber-500" role="alert">{problemText(locale, p)}</p>)}
             </div>
           )}

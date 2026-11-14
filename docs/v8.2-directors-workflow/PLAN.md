@@ -42,7 +42,13 @@ The older Veo-only film path (storyboard frames → English scene scripts) and t
 
 **Phase 8.3 — render, audio, final cut**
 - **PR C (draft):** `…/approve` (whole-film balance check, nothing charged), `…/scene` (one scene = one clip on the single-clip charge path, last frame of the previous clip as first frame, refund on a refused submit), `runner.ts` (order, max 2 in parallel, a scene after a failed one is blocked and never charged, re-render one scene), status per card. Was planned as: the run: approve → hold the total, render scenes in order through the direct-clip path (scene N+1 waits for scene N's last frame only when it continues from it; independent scenes render in parallel, max 2), refund any failed scene, timeline card per scene.
-- **PR D:** final cut with `longform/stitch`, Library entry, "re-do scene 3", and the paid check on myavatar.ge (admins, GG-approved budget).
+- **PR D (draft, flag off):** final cut with `longform/stitch`, Library entry, "re-do scene 3", and the paid check on myavatar.ge (admins, GG-approved budget).
+  - `POST /api/video/director-workflow/cut`: the cut is free. Clips must be our own storage links. Each clip is downloaded through `publicFetch` before ffmpeg runs, so ffmpeg never opens a URL. Matching clips are stream-copied, mismatched ones are re-encoded to the film frame (1080p is 1920×1080, 720p is 1280×720, 24 fps).
+  - Music bed: priced from the music row for the bed's length (`quote: true` is free). It is debited once and refunded if Lyria or the cut misses. It is always instrumental and mixed under the dialogue (bed at 0.3).
+  - Library: one id per project (`dwfilm_<id>`), so a re-cut after "re-do scene 3" replaces the film.
+  - UI: a "Final cut · free" panel appears once every scene is delivered. A music switch takes a style line or a whole sentence ("add cinematic music to the whole film"). The film plays in the panel.
+  - Not yet checked with paid runs: the Lyria bed, the real ffmpeg cut and the Library entry. These wait for GG's budget once the database is back.
+  - Known gap: if every clip shares one size that differs from the film frame, the stream copy keeps that size. Clips are rendered at the film's resolution, so this should not happen.
 
 ## GG's decisions (2026-11-14 10:38Z)
 
