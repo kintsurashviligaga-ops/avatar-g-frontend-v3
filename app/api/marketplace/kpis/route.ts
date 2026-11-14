@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient, getSessionUser } from '@/lib/supabase/server';
 
 // Force dynamic rendering (uses cookies and env vars at runtime)
 export const dynamic = 'force-dynamic';
@@ -19,7 +19,7 @@ interface GrowthKpi {
 export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getSessionUser(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

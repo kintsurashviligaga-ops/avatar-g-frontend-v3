@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient, getSessionUser } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
 import { getMonthlyUsage, checkThresholds, currentMode } from '@/lib/services/billing/BillingGuard';
 
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getSessionUser(supabase);
     const gate = await assertAdminAccess(request, user ?? null);
     if (!gate.ok) {
       return NextResponse.json({ error: gate.reason }, { status: user ? 403 : 401 });

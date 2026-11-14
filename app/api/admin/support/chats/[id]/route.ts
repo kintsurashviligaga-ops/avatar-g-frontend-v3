@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceRoleClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, getSessionUser } from '@/lib/supabase/server';
 import { isAdmin, adminAllowlist } from '@/lib/auth/adminGuard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -23,7 +23,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function actorEmail(): Promise<string> {
   try {
     const sb = createSupabaseServerClient();
-    const { data: { user } } = await sb.auth.getUser();
+    const { data: { user } } = await getSessionUser(sb);
     const email = (user?.email ?? '').toLowerCase();
     return adminAllowlist().includes(email) ? email : 'unknown-admin';
   } catch {

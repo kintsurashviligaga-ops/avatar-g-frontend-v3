@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createServerClient, createServiceRoleClient, getSessionUser } from '@/lib/supabase/server';
 import { resolveTenantContext } from '@/lib/tenant/context';
 import { cacheGet, cacheSet } from '@/lib/platform/cache';
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const supabase = createServerClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getSessionUser(supabase);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

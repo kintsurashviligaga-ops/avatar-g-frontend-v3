@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createServerClient, createServiceRoleClient, getSessionUser } from '@/lib/supabase/server';
 import { structuredLog } from '@/lib/logger';
 import type { ExecutiveTaskLog } from '@/types/billing';
 
@@ -14,7 +14,7 @@ export async function GET() {
     const supabase = createServerClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
 
     if (!user) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

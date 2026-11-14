@@ -59,6 +59,7 @@ const AUTH_SIGNALS: RegExp[] = [
   /requireAuthenticatedUser\s*\(/,
   /authedClientFromRequest\s*\(/,
   /auth\.getUser\s*\(/,                          // direct Supabase session check (+ RLS-scoped writes)
+  /getSessionUser\s*\(/,                         // shared session check (lib/supabase/server getSessionUser)
   /assertAdmin(Access)?\s*\(/,                  // admin-gated
   /x-admin-key|ADMIN_KEY|MIGRATION_RUN_KEY/,    // admin-key gated
   /constructEvent\s*\(/,                        // Stripe webhook signature verification

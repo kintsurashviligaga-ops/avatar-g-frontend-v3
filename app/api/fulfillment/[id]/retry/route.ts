@@ -1,6 +1,6 @@
 // API: Retry failed fulfillment job
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { FulfillmentService } from '@/lib/fulfillment/FulfillmentService';
 
 export async function POST(
@@ -14,7 +14,7 @@ export async function POST(
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
