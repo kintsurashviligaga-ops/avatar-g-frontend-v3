@@ -16,9 +16,6 @@
     "app/api/agent/run/route.ts": [
       "nanobananaapi"
     ],
-    "app/api/app/health/route.ts": [
-      "openai"
-    ],
     "app/api/calls/bridge/[op]/route.ts": [
       "gemini_developer_api",
       "nanobananaapi"
