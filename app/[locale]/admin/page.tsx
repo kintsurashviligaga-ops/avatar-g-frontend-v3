@@ -4,6 +4,7 @@ import { gatherAdminStats, type AdminStats } from '@/lib/admin/stats';
 import { listUsers, type AdminUserPage } from '@/lib/admin/users';
 import { checkPipelineHealth, type PipelineHealth } from '@/lib/pipeline/statusAgent';
 import AdminDashboard from '@/components/admin/AdminDashboard';
+import { financeDashboardOn } from '@/lib/billing/margin/flags';
 import AdminLogin from '@/components/admin/AdminLogin';
 import AdminAccessDenied from '@/components/admin/AdminAccessDenied';
 
@@ -55,5 +56,5 @@ export default async function AdminPage({ params }: Props) {
 
   const pipelineHealth: PipelineHealth | null = await checkPipelineHealth().catch(() => null);
 
-  return <AdminDashboard locale={locale} stats={stats} initialUsers={initialUsers} pipelineHealth={pipelineHealth} />;
+  return <AdminDashboard locale={locale} stats={stats} initialUsers={initialUsers} pipelineHealth={pipelineHealth} financeEnabled={financeDashboardOn()} />;
 }
