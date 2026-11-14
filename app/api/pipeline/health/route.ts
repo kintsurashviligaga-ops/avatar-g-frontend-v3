@@ -8,7 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import { checkPipelineHealth } from '@/lib/pipeline/statusAgent';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { isAdminUserAsync } from '@/lib/admin/guard';
 
 export const runtime = 'nodejs';
@@ -18,7 +18,7 @@ export async function GET() {
   const publicPayload = { status: 'operational', timestamp: new Date().toISOString() };
   try {
     const supabase = createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getSessionUser(supabase);
     const isAdmin = await isAdminUserAsync(user);
     if (!isAdmin) return NextResponse.json(publicPayload);
 

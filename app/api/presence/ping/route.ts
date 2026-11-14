@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceRoleClient, createSupabaseServerClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, createSupabaseServerClient, getSessionUser } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 /**
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   // Signed-in visitors are attributed; anonymous ones are still counted.
   let userId: string | null = null;
   try {
-    const { data: { user } } = await createSupabaseServerClient().auth.getUser();
+    const { data: { user } } = await getSessionUser(createSupabaseServerClient());
     userId = user?.id ?? null;
   } catch { /* anonymous */ }
 

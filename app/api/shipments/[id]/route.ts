@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ShippingService } from '@/lib/shipping/ShippingService';
+import { getSessionUser } from '@/lib/supabase/server';
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +22,7 @@ export async function GET(
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -82,7 +83,7 @@ export async function PUT(
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

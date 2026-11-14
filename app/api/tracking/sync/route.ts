@@ -1,7 +1,7 @@
 // API: Sync tracking (manual trigger or cron)
 import { NextRequest, NextResponse } from 'next/server';
 import { isCronAuthorized } from '@/lib/api/cronAuth';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient, getSessionUser } from '@/lib/supabase/server';
 import { TrackingSyncService } from '@/lib/fulfillment/TrackingSyncService';
 
 export async function POST(request: NextRequest) {
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     if (!isCronAuthorized(request)) {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getSessionUser(supabase);
 
       if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

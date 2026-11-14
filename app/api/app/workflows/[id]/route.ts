@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { WorkflowDefinitionUpdateSchema } from '@/lib/workflows/schemas';
 import { getBillingSnapshot } from '@/lib/billing/enforce';
 import { validateWorkflowForPlan } from '@/lib/workflows/runner';
@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   const supabase = createServerClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getSessionUser(supabase);
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const supabase = createServerClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getSessionUser(supabase);
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

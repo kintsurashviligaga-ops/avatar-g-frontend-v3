@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { resolveTenantContext } from '@/lib/tenant/context';
 import { routeAI } from '@/lib/ai/router';
 import { recordMeteringEvent } from '@/lib/monetization/metering';
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServerClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
