@@ -25,6 +25,7 @@ import { updateJobStage } from '@/lib/orchestrator/jobs';
 import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
 import { overlayInserts } from '@/lib/video/insertOps';
 import { reportError } from '@/lib/observability/report-error';
+import type { SmartDeps, SmartLayers } from './smart/server';
 import {
   ASPECT_DIMS,
   buildConcatPlan,
@@ -37,9 +38,9 @@ import {
 
 const WEEK_SEC = 604_800;
 
-export type MontageStep = 'resolve' | 'bridge' | 'normalize' | 'stitch' | 'inserts' | 'music';
+export type MontageStep = 'resolve' | 'bridge' | 'normalize' | 'stitch' | 'inserts' | 'smart' | 'music';
 
-const PCT: Record<MontageStep, number> = { resolve: 6, bridge: 26, normalize: 58, stitch: 84, inserts: 92, music: 96 };
+const PCT: Record<MontageStep, number> = { resolve: 6, bridge: 26, normalize: 58, stitch: 84, inserts: 90, smart: 93, music: 96 };
 
 export interface MontageResult {
   videoUrl: string;
@@ -77,6 +78,14 @@ export interface MontageRunOptions {
    * is laid (each counts as missed).
    */
   makeCutaway?: (prompt: string, k: number) => Promise<string | null>;
+  /**
+   * The Smart Editor's layers (Phase 8.7, lib/services/montage/smart): text and effects tracks and word captions, laid
+   * over the master in ONE pass after the cutaways and before the sound. The route sets it only when MONTAGE_SMART_EDITOR
+   * lets this user in (off by default), so an ordinary render never runs this leg.
+   */
+  smart?: SmartLayers | null;
+  /** Test seam for the smart leg (ffmpeg, resvg, storage). Absent = the real wiring. */
+  smartDeps?: Pick<SmartDeps, 'rasterize' | 'ffmpegRun' | 'upload'>;
 }
 
 async function stage(opts: MontageRunOptions, step: MontageStep): Promise<void> {
@@ -227,6 +236,20 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
         videoUrl = laid;
         stepsRun.push('inserts');
       }
+    }
+
+    // ── LEG 4c · smart layers ──────────────────────────────────────────────────────────────────────────
+    // Text, effects and captions the user placed (FAIL POLICY: a caption track that did not land is a wrong edit, so the
+    // job fails rather than delivering a master without the words the user paid to have recognised).
+    // Loaded only when there are layers, so an ordinary render never pulls in the smart editor's server code.
+    const smartMod = opts.smart ? await import('./smart/server') : null;
+    if (smartMod && smartMod.hasSmartLayers(opts.smart)) {
+      if (await halted()) return { ok: false, step: 'smart', error: 'cancelled' };
+      await stage(opts, 'smart');
+      const laid = await smartMod.renderSmartLayers(opts.smartDeps ?? smartMod.liveSmartDeps(), videoUrl, opts.smart, w, h, totalSec);
+      if (!laid) return { ok: false, step: 'smart', error: 'the captions, text or effects could not be laid over the edit' };
+      videoUrl = laid;
+      stepsRun.push('smart');
     }
 
     // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────

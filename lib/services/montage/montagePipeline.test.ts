@@ -17,6 +17,10 @@ jest.mock('../../orchestrator/storage-adapter', () => ({
 }));
 jest.mock('../../orchestrator/jobs', () => ({ updateJobStage: jest.fn(async () => undefined) }));
 jest.mock('../../observability/report-error', () => ({ reportError: jest.fn() }));
+// The smart leg loads ./smart/server only when there are layers; its heavy imports are stubbed for that case.
+jest.mock('../../admin/guard', () => ({ isAdminUserAsync: jest.fn(async () => false) }));
+jest.mock('../../veo/vertexAuth', () => ({ getVertexAccessToken: jest.fn(), vertexAiConfig: jest.fn(() => null) }));
+jest.mock('../../security/callerMedia', () => ({ firstUnreadableOwnUrl: jest.fn(async () => -1), resolveCallerMedia: jest.fn() }));
 
 // eslint-disable-next-line import/first
 import { runMontage } from './montagePipeline';
@@ -57,6 +61,28 @@ describe('runMontage · the music start', () => {
 
   it('no bed: no mux at all', async () => {
     await runMontage(request({ musicUrl: undefined, musicStartSec: 30 }));
+    expect(muxAudioOntoVideo).not.toHaveBeenCalled();
+  });
+});
+
+describe('runMontage · the Smart Editor leg (Phase 8.7)', () => {
+  const smart = { tracks: { texts: [], effects: [{ id: 'f0', t0: 1, t1: 1.3, kind: 'flash' as const, amount: 0.6 }] }, captions: null };
+  const deps = (url: string | null) => ({
+    rasterize: jest.fn(async () => Buffer.from('png')),
+    ffmpegRun: jest.fn(async () => { throw new Error('the fake has no ffmpeg'); }),
+    upload: jest.fn(async () => url),
+  });
+
+  it('no layers: the leg never runs and the steps are as before', async () => {
+    const out = await runMontage(request());
+    expect(out.ok && out.result.stepsRun).not.toContain('smart');
+    expect(out.ok && out.result.stepsRun).toContain('music');
+  });
+
+  it('layers that cannot be laid fail the job at the smart step (a wrong edit, not a smaller one)', async () => {
+    const d = deps('https://cdn.test/smart.mp4');
+    const out = await runMontage(request(), { smart, smartDeps: d });
+    expect(out).toEqual({ ok: false, step: 'smart', error: expect.stringMatching(/captions, text or effects/) });
     expect(muxAudioOntoVideo).not.toHaveBeenCalled();
   });
 });
