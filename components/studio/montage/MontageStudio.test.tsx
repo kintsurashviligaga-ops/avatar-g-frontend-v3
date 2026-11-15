@@ -476,4 +476,39 @@ describe('the edit survives a reload (kept on this device)', () => {
     expect(resignCalls()).toHaveLength(0);
     expect(screen.queryByTestId('montage-restored')).toBeNull();
   });
+
+  describe('Smart Editor (Phase 8.7, NEXT_PUBLIC_MONTAGE_SMART_EDITOR)', () => {
+    const before = process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR;
+    afterEach(() => { process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR = before; });
+
+    it('off: no Smart tool, no smart lanes, and the export carries no `smart`', async () => {
+      delete process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR;
+      render(<MontageStudio locale="ka" onExit={() => {}} />);
+      await addTwoClips();
+      expect(screen.queryByTestId('montage-tool-smart')).toBeNull();
+      expect(screen.queryByTestId('smart-lane-text')).toBeNull();
+      await act(async () => { uploads.splice(0).forEach((r, i) => r({ path: `u/${i}` })); });
+      await waitFor(() => expect(screen.getByTestId('montage-export-btn')).toBeEnabled());
+      await act(async () => { fireEvent.click(screen.getByTestId('montage-export-btn')); });
+      await waitFor(() => expect(renderBody()).not.toBeNull());
+      expect(renderBody().smart).toBeUndefined();
+    });
+
+    it('on: the Smart panel places a title on the Text lane, and the export sends it as `smart`', async () => {
+      process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR = 'admin';
+      render(<MontageStudio locale="en" onExit={() => {}} />);
+      await addTwoClips();
+      expect(screen.getByTestId('smart-lane-text')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('montage-tool-smart'));
+      fireEvent.change(screen.getByTestId('smart-text-input'), { target: { value: 'სათაური' } });
+      fireEvent.click(screen.getByTestId('smart-text-add'));
+      expect(screen.getByRole('button', { name: 'სათაური' })).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('montage-panel-done'));
+      await act(async () => { uploads.splice(0).forEach((r, i) => r({ path: `u/${i}` })); });
+      await waitFor(() => expect(screen.getByTestId('montage-export-btn')).toBeEnabled());
+      await act(async () => { fireEvent.click(screen.getByTestId('montage-export-btn')); });
+      await waitFor(() => expect(renderBody()).not.toBeNull());
+      expect(renderBody().smart.tracks.texts[0]).toEqual(expect.objectContaining({ text: 'სათაური', look: 'title' }));
+    });
+  });
 });
