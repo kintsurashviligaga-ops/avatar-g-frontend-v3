@@ -1,4 +1,5 @@
 /** @jest-environment node */
+/* eslint-disable @typescript-eslint/no-explicit-any -- test fixtures build raw glTF JSON */
 import {
   studio3dAudience, studio3dAllowed, validateStudio3d, isOwnStorageUrl, clampStlMm,
   quote3d, journeyQuote, grossMargin, fullCostUsd, creditsForCost,

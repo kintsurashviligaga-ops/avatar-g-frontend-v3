@@ -1,4 +1,5 @@
 /** @jest-environment node */
+/* eslint-disable @typescript-eslint/no-explicit-any -- test fixtures build raw glTF JSON */
 import { readGlb, packGlb, GlbError, glbToStl, readStl, glbToObj, meshToObj } from '..';
 import { fromTRS, multiply, IDENTITY } from '../export/glb';
 
