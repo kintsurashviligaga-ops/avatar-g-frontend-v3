@@ -307,7 +307,10 @@ describe('buildStudioPlan', () => {
     expect(r.plan.warnings).toContain('studio_voice_lips_approximate');
     expect(r.plan.background).toEqual({ kind: 'image', description: 'a bright modern office' });
     expect(r.plan.scenes.every((s) => s.turns.length >= 1 && s.turns.length <= 4)).toBe(true);
-    expect(r.plan.quote.background).toBe(8);
+    expect(r.plan.quote.background).toBe(0); // described in the prompt, no image made
+    const live = buildStudioPlan({ script: KA_10S, presenterId: 'live-ben', background: { kind: 'generate', prompt: 'an office' } }, { book: 'v8' });
+    expect(live.ok && live.plan.quote.background).toBe(8);
+    expect(buildStudioPlan({ script: KA_10S, presenterId: omni.id, background: { kind: 'upload', path: 'avatar-studio/u/uploads/a.png' } }, { book: 'v8' })).toMatchObject({ ok: false, reason: 'bad_background' });
   });
 
   it('refuses unknown presenters and voices, and empty backgrounds, before any charge', () => {
