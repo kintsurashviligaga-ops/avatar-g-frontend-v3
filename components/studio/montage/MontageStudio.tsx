@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Copy as CopyIcon, Film, Loader2, Minus, Music2, Palette, Pause, Play, Plus,
-  Ratio, Redo2, RotateCcw, Scissors, SlidersHorizontal, Timer, Trash2, Type, Undo2, Volume2, VolumeX, X,
+  Ratio, Redo2, RotateCcw, Scissors, SlidersHorizontal, Sparkles, Timer, Trash2, Type, Undo2, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { isMontageAspect, type MontageAspect, type MontageCaptionPos, type MontageGrade, type MontageTransition } from '@/lib/services/montage/montagePlan';
 import { useJobQueue } from '@/store/useJobQueue';
@@ -51,10 +51,18 @@ import { usePlayer, type PlayerClip } from './usePlayer';
 import { listenForMontageCommands, type MontageCommandHost } from './voiceCommands';
 import { peekTask } from '@/lib/agent/media/jobFollow';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
+import { smartEditorClientOn } from '@/lib/services/montage/smart/flag';
+import { beatTicks } from '@/lib/services/montage/smart/timeline';
+import { SmartPanel } from './smart/SmartPanel';
+import { SmartLanes, smartLanesHeight } from './smart/SmartLanes';
+import { emptySmart, seqClips, smartRenderField, type SmartState } from './smart/smartEdit';
+import { FX_LABEL, SMART_COPY } from './smart/smartCopy';
+
+
 
 interface Tool { id: string; label: string; Icon: typeof Film; run: () => void; disabled?: boolean }
 
-type Panel = 'music' | 'text' | 'filters' | 'adjust' | 'format' | 'transition' | 'duration' | 'media';
+type Panel = 'music' | 'text' | 'filters' | 'adjust' | 'format' | 'transition' | 'duration' | 'media' | 'smart';
 
 export interface MontageStudioProps {
   locale: string;
@@ -169,6 +177,14 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   const fileRef = useRef<HTMLInputElement | null>(null);
   const musicFileRef = useRef<HTMLInputElement | null>(null);
   const timelineRef = useRef<TimelineHandle | null>(null);
+  // Smart Editor layers (text/effects tracks, recognised words, template, beat grid). Not part of the undo history:
+  // the clip edits it makes (pauses, beat, template) go through `apply` like any other edit.
+  const [smart, setSmart] = useState<SmartState>(emptySmart);
+  // The Smart Editor (Phase 8.7): shown only when NEXT_PUBLIC_MONTAGE_SMART_EDITOR is 'admin' or 'everyone' (inlined at
+  // build; read here, not at module load, so a test can switch it).
+  const SMART_ON = smartEditorClientOn(process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR);
+  const smartRef = useRef(smart);
+  smartRef.current = smart;
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   const filesById = useRef(new Map<string, File>());
   /** blob: URLs the HOST handed in (initialMusic) — theirs to revoke, never ours. */
@@ -586,7 +602,9 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     setSelectedId(null);
     setPanel(null);
     const clientJobId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '';
-    const body = buildRenderBody(editRef.current, sourcesRef.current);
+    const base = buildRenderBody(editRef.current, sourcesRef.current);
+    const smartField = SMART_ON ? smartRenderField(smartRef.current, editRef.current) : null;
+    const body = smartField ? { ...base, smart: smartField } : base;
     setExp({ phase: 'running', stage: null, pct: 0 }); // 0% until the render reports one (§3.3)
     const stop = { done: false };
     let delivered = false;
@@ -638,7 +656,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
       if (claimed.current) { if (mounted.current) releaseInline(claimed.current); claimed.current = null; }
       onExportEnd?.(delivered);
     }
-  }, [claimInline, lang, locale, onDelivered, onExportEnd, onExportStart, pause, releaseInline, t]);
+  }, [SMART_ON, claimInline, lang, locale, onDelivered, onExportEnd, onExportStart, pause, releaseInline, t]);
 
   // ── Voice: `myavatar:montage-command` (voiceCommands.ts) — export · set_music_start · state ──────────────────
   // The host object is rebuilt every render and read through a ref, so the one listener never holds a stale closure;
@@ -793,6 +811,19 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
         return selected && selectedSrc?.kind === 'image' ? (
           <DurationPanel t={t} value={clipDuration(selected)} onChange={(v) => apply((e) => setPhotoDuration(e, selected.id, v), `dur:${selected.id}`)} onDone={closePanel} />
         ) : null;
+      case 'smart':
+        return SMART_ON ? (
+          <SmartPanel
+            locale={locale}
+            edit={edit}
+            sources={sources}
+            smart={smart}
+            playheadSec={player.time}
+            onEdit={(fn) => apply(fn)}
+            onSmart={setSmart}
+            onDone={closePanel}
+          />
+        ) : null;
       default:
         return null;
     }
@@ -806,6 +837,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     { id: 'filters', label: t.filters, Icon: Palette, run: () => setPanel('filters') },
     { id: 'adjust', label: t.adjust, Icon: SlidersHorizontal, run: () => setPanel('adjust') },
     { id: 'format', label: t.format, Icon: Ratio, run: () => setPanel('format') },
+    ...(SMART_ON ? [{ id: 'smart', label: SMART_COPY.tool[lang], Icon: Sparkles, run: () => { pause(); setPanel('smart'); } }] : []),
   ];
   const clipTools: Tool[] = selected ? [
     ...(selectedSrc?.status === 'error' ? [{ id: 'retry', label: t.retry, Icon: RotateCcw, run: () => retryUpload(selectedSrc.id) }] : []),
@@ -1073,6 +1105,26 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
               onText={openText}
               onToggleOriginal={() => apply((e) => ({ ...e, originalSound: !e.originalSound }))}
               onZoom={zoom}
+              {...(SMART_ON ? {
+                smartLanes: {
+                  height: smartLanesHeight(desktop ? 22 : 18),
+                  render: (g: { pad: number; pxPerSec: number; top: number }) => (
+                    <SmartLanes
+                      tracks={smart.tracks}
+                      clips={seqClips(edit)}
+                      totalSec={total}
+                      pxPerSec={g.pxPerSec}
+                      pad={g.pad}
+                      top={g.top}
+                      laneH={desktop ? 22 : 18}
+                      playheadSec={player.time}
+                      beats={beatTicks(smart.grid, edit.musicStartSec, total)}
+                      labels={{ text: SMART_COPY.laneText[lang], fx: SMART_COPY.laneFx[lang], remove: SMART_COPY.remove[lang], fxNames: Object.fromEntries(Object.entries(FX_LABEL).map(([k, v]) => [k, v[lang]])) }}
+                      onChange={(tracks) => setSmart((cur) => ({ ...cur, tracks }))}
+                    />
+                  ),
+                },
+              } : {})}
             />
           </div>
 
