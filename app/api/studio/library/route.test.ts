@@ -112,6 +112,21 @@ const getItems = async () => {
 };
 const urlOf = (items: Array<{ id: string; url: string }>, id: string) => items.find((i) => i.id === id)?.url;
 
+describe('GET — Art Director pictures carry their own path (Phase 8.4 recipe card)', () => {
+  test('artPath only for an art-director-v1 row whose object is exactly this user\'s result', async () => {
+    const id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    mockRows = [
+      row('art', signed('renders', `art-director/${USER}/${id}.png`), { service_type: 'image', params: { subtype: 'art-director-v1', prompt: 'fox' } }),
+      row('other', signed('renders', `art-director/${OTHER}/${id}.png`), { service_type: 'image', params: { subtype: 'art-director-v1' } }),
+      row('plain', signed('renders', `art-director/${USER}/${id}.png`), { service_type: 'image', params: {} }),
+      row('tenant', signed('renders', `art-director/${USER}/${id}.png`, 'https://evil.supabase.co'), { service_type: 'image', params: { subtype: 'art-director-v1' } }),
+    ];
+    const items = (await getItems()) as Array<{ id: string; artPath?: string }>;
+    expect(items.find((i) => i.id === 'art')?.artPath).toBe(`art-director/${USER}/${id}.png`);
+    for (const k of ['other', 'plain', 'tenant']) expect(items.find((i) => i.id === k)?.artPath).toBeUndefined();
+  });
+});
+
 describe('GET — re-signing is limited to what is provably ours', () => {
   test('a producer row in a media bucket on our host is re-signed, in ONE batched call per bucket', async () => {
     mockRows = [

@@ -258,6 +258,11 @@ import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent
 import { montageEditorOpenedText, multiVideoRoute, pickOneVideoText } from '@/lib/chat/chatMediaRoute';
 import { attachedEarlierNote, attachedKind, clock as fileClock, readAttachedFiles, toAttachedFile, type AttachedFile } from '@/lib/chat/attachedFiles';
 import { uploadErrorText, uploadFileToStorage } from './ui/useUpload';
+import { ArtChatCard } from './artDirector/ArtChatCard';
+import { postArtChat } from './artDirector/chatRun';
+import { artChatClientOn, lastArtBase, planArtChat, type ArtChatBase, type ArtChatRequest, type ArtChatState } from '@/lib/image/artDirector/chat';
+import { detectEditIntent } from '@/lib/image/artDirector/intent';
+import { artBook, imageCredits, sizesFor } from '@/lib/image/artDirector/price';
 import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
@@ -869,6 +874,10 @@ interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 // render at once. Default OFF via env → production is byte-identical to the legacy single-
 // render path until `NEXT_PUBLIC_PARALLEL_CINEMA=1` is set (safe to deploy + type/Jest verify).
 const ENABLE_PARALLEL_CINEMA = process.env.NEXT_PUBLIC_PARALLEL_CINEMA === '1';
+// Phase 8.4 Art Director in the chat: the Image tool's lines go to /api/image/art-director (grid, edit, upscale). OFF unless
+// NEXT_PUBLIC_IMAGE_ART_DIRECTOR is 'admin' or 'everyone'; the server's IMAGE_ART_DIRECTOR still decides per user, and a
+// refusal sends the line down the old image path.
+const ART_CHAT = artChatClientOn(process.env.NEXT_PUBLIC_IMAGE_ART_DIRECTOR);
 /**
  * A film that already wrote its own failure on its bubble. The queued job must still settle as failed, so renderFilm
  * throws — and its catch used to paint the generic "the service may be busy" line over the real reason. In Production
@@ -972,6 +981,8 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** The queue job rendering this bubble, when it is not the bubble's own id — what its ResultCard's cancel stops. */
   jobId?: string;
+  /** An Art Director grid or edit in this bubble (Phase 8.4): the request and each tile as the route answered. Never persisted. */
+  art?: ArtChatState;
   /** A 3D result's model (our Storage, .glb) — kept as data, not only as the link in the text, so it survives a reload
    *  (leanMessages) and the chat model is told what was made (lib/chat/historySerializer). */
   glbUrl?: string }
@@ -2337,6 +2348,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [imgStyle, setImgStyle] = useState<string>(IMAGE_PANEL_DEFAULTS.style);
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
+  // The Art Director tile the next chat edit targets, when the user pressed "Use as base" on one (else the newest).
+  const [artPick, setArtPick] = useState<ArtChatBase | null>(null);
   // The chat's MODEL is not component state: the header's ModelSwitcher writes it to lib/chat/chatModeStore and
   // streamChat reads it at send time (a useState here was lost on every „New session“ remount). The reply language
   // is the server's auto-detect — the two never-set useStates that used to sit here (language, tier) are gone.
@@ -5025,6 +5038,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
   }, [submitJob, trackJobSettle, notifyCredit]);
 
+  /**
+   * Phase 8.4 — one Art Director press from the chat (a new grid, or an edit / upscale / extend / vary of an Art Director
+   * picture). Its own bubble with a working grid, then each tile as the route answered: a delivered image is charged on
+   * its own, a failed one is not. `fallback` runs when the server refuses this user (IMAGE_ART_DIRECTOR off for them):
+   * the two bubbles are taken back and the old image path makes the picture instead.
+   */
+  const runArtChat = useCallback(async (request: ArtChatRequest, userText: string | null, fallback?: () => void) => {
+    const bubbleId = `art_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const userId = `${bubbleId}_u`;
+    const working: ArtChatState = { request, tiles: Array.from({ length: request.count }, (_, index) => ({ index, status: 'working' as const })) };
+    setMessages((prev) => [...prev, ...(userText ? [{ role: 'user' as const, text: userText, id: userId }] : []), { role: 'assistant', text: '', id: bubbleId, art: working }]);
+    const r = await postArtChat(fetch, request);
+    if (r.kind === 'fallback' && fallback) {
+      setMessages((prev) => prev.filter((m) => m.id !== bubbleId && m.id !== userId));
+      fallback();
+      return;
+    }
+    if (r.kind === 'ok') {
+      updateBubble(bubbleId, { art: { request, tiles: r.tiles } });
+      if (r.charged > 0) notifyCredit('image', { count: r.tiles.filter((t) => t.status === 'done').length, credits: r.charged });
+      return;
+    }
+    updateBubble(bubbleId, { art: { request, tiles: [], error: r.kind === 'error' ? r.code : 'failed' } });
+  }, [updateBubble, notifyCredit]);
+
   // PHASE 29 (VECTOR 1) — Script-to-Storyboard: decompose a pasted script into N identity-anchored scenes
   // via the EXISTING storyboard route (scriptsOnly — deterministic split, else the Prompt Agent; no new
   // backend), then hand the whole grid to the Video Studio through the bridge store, which pre-populates
@@ -6881,6 +6919,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // as a slot frees — instead of the old shared-ref Promise.all-of-4.
     // ⚠️ effMode, not mode, in the three generative branches: the release above flipped the CHIP to Image but this
     // very send still built a VIDEO storyboard — the new mode only took effect on the next message.
+    // Phase 8.4 — a line that changes the last Art Director picture (or the tile picked with "Use as base"), typed with
+    // nothing attached: an Art Director edit of THAT picture, in any tool. Off unless NEXT_PUBLIC_IMAGE_ART_DIRECTOR.
+    if (ART_CHAT && text && attachments.length === 0) {
+      const artBase = artPick ?? lastArtBase(messagesRef.current.map((m) => m.art));
+      if (artBase && (effMode === 'image' || detectEditIntent(text, true))) {
+        const artSizes = sizesFor(artBook());
+        const plan = planArtChat({ text, base: artBase, settings: { aspectRatio: opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect, count: opts?.single ? 1 : imgCount, avoid: imgNegative }, locale: locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka', sizes: artSizes });
+        if (plan.kind === 'not_sold') {
+          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '', art: { request: { v: 1, operation: 'upscale', prompt: '', references: [], keepRest: true, aspectRatio: '1:1', size: plan.size, count: 1, styleId: null, avoid: [], locale: 'ka' }, tiles: [], error: 'size_not_sold' } }]);
+        } else {
+          setArtPick(null);
+          void runArtChat(plan.request, text);
+        }
+        setInput('');
+        stopDictationEcho();
+        return;
+      }
+    }
     if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       closeSettingsLayer();
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
@@ -6889,8 +6945,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // A ratio written in the words („… 9:16") is the frame the user asked for, whatever the picker was left on.
       const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
       const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(opts?.studio ? { studio: opts.studio } : pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
-      if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount);
-      else runImageJob(text, ref, spec);
+      const oldPath = () => { if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec); };
+      // Phase 8.4 — a new picture with no reference photo and no template: an Art Director grid (1/2/4 at the chat's
+      // ratio, 1K unless the line names a size). The old path runs when the server says this user may not use it.
+      if (ART_CHAT && !ref && !spec.templateId && !spec.studio) {
+        const plan = planArtChat({ text, base: null, settings: { aspectRatio: aspect, count: opts?.single ? 1 : imgCount, avoid: neg }, locale: locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka', sizes: sizesFor(artBook()) });
+        if (plan.kind === 'run') void runArtChat(plan.request, text, oldPath);
+        else oldPath();
+      } else oldPath();
       setInput('');
       setAttachments([]);
       stopDictationEcho();
@@ -7591,7 +7653,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith, updateBubble]);
+  }, [askSceneRedo, artPick, runArtChat, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith, updateBubble]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -9919,6 +9981,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </div>
                   </div>
                 )}
+                {m.art && (() => {
+                  const artLang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
+                  const book = artBook();
+                  const sold = sizesFor(book);
+                  const artPrice = (size: '1K' | '2K' | '4K') => (sold.includes(size) ? imageCredits({ size, references: 0, book }) : null);
+                  return (
+                    <ArtChatCard state={m.art} lang={artLang} prices={{ '1K': artPrice('1K'), '2K': artPrice('2K'), '4K': artPrice('4K') }}
+                      upload={async (f) => { const r = await uploadFileToStorage(f); return 'path' in r ? { path: r.path } : { error: r.error }; }}
+                      onRun={(request) => void runArtChat(request, null)}
+                      onPickBase={(tile) => tile.path && setArtPick({ path: tile.path, ...(tile.width ? { width: tile.width } : {}), ...(tile.height ? { height: tile.height } : {}) })}
+                      picked={artPick?.path ?? null} />
+                  );
+                })()}
                 {m.batch && (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-1.5">
@@ -10739,7 +10814,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain, confirmClip, changeClipAsk, cancelClipAsk, confirmEdit, changeEditAsk, cancelEditAsk]);
+  ), [artPick, runArtChat, busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain, confirmClip, changeClipAsk, cancelClipAsk, confirmEdit, changeEditAsk, cancelEditAsk]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

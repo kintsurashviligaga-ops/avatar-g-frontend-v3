@@ -26,6 +26,7 @@ import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, Chevro
 import { documentFileName } from '@/lib/documents/spec';
 import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
 import { PlanView } from '@/components/studio/create/newtools/PlanView';
+import { RecipeCard } from '@/components/studio/artDirector/RecipeCard';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 import { saveMedia } from '@/lib/media/saveMedia';
@@ -71,7 +72,7 @@ const IMAGE_KINDS = new Set(['image', 'interior']);
 const COPY: Record<Lang, {
   title: string; tabs: Record<Tab, string>; empty: string; emptyFav: string; favFailed: string; download: string; del: string; edit: string;
   play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
-  plan: string; openPlan: string; closePlan: string; open: string;
+  plan: string; openPlan: string; closePlan: string; open: string; recipe: string;
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
@@ -81,7 +82,7 @@ const COPY: Record<Lang, {
     favFailed: 'ვარსკვლავი ვერ შეინახა. სცადე თავიდან.',
     download: 'ჩამოტვირთვა', del: 'წაშლა', edit: 'რედაქტირება ედიტორში', play: 'დაკვრა',
     confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
-    plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა', open: 'ნახვა',
+    plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა', open: 'ნახვა', recipe: 'რეცეპტი',
   },
   en: {
     title: 'Library',
@@ -91,7 +92,7 @@ const COPY: Record<Lang, {
     favFailed: 'The star could not be saved. Try again.',
     download: 'Download', del: 'Delete', edit: 'Open in Editor', play: 'Play',
     confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
-    plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan', open: 'Open',
+    plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan', open: 'Open', recipe: 'Recipe',
   },
   ru: {
     title: 'Библиотека',
@@ -101,7 +102,7 @@ const COPY: Record<Lang, {
     favFailed: 'Не удалось сохранить отметку. Попробуйте ещё раз.',
     download: 'Скачать', del: 'Удалить', edit: 'Открыть в редакторе', play: 'Воспроизвести',
     confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
-    plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план', open: 'Открыть',
+    plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план', open: 'Открыть', recipe: 'Рецепт',
   },
 };
 
@@ -154,6 +155,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
   const savingRef = useRef(new Set<string>());
   const [openPlan, setOpenPlan] = useState<string | null>(null);
+  // An Art Director picture's recipe card (Phase 8.4), one open at a time.
+  const [openRecipe, setOpenRecipe] = useState<string | null>(null);
   // Files that would not load. The first failure fetches the page again once, quietly (every link in it is minted
   // fresh, which mends a page left open past its links' 24 h); a file that fails again shows MediaUnavailable.
   const [failed, setFailed] = useState<Set<string>>(new Set());
@@ -357,6 +360,14 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                       <Move3d size={14} aria-hidden="true" /> {openPlan === it.id ? t.closePlan : t.openPlan}
                     </button>
                   )}
+                  {it.artPath && !demo && (
+                    <button type="button" onClick={() => setOpenRecipe((cur) => (cur === it.id ? null : it.id))} aria-expanded={openRecipe === it.id}
+                      data-testid="library-recipe-toggle"
+                      className="mx-2 mt-2 inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-app-border/20 px-3 text-[12.5px] font-semibold text-app-text transition hover:border-app-accent/60">
+                      {t.recipe}
+                    </button>
+                  )}
+                  {it.artPath && !demo && openRecipe === it.id && <div className="px-2 pt-2"><RecipeCard path={it.artPath} lang={lang} /></div>}
                   <div className="flex items-center justify-between gap-1 p-2">
                     <span className="truncate text-[10.5px] text-app-muted">{fmtDate(it.createdAt, lang)}</span>
                     <div className="flex shrink-0 items-center gap-0.5">

@@ -52,6 +52,8 @@ export interface LibraryItem {
   expiresAt?: string;
   /** The signed-in owner starred it. Absent on the demo library (and when the stars could not be read). */
   favorite?: boolean;
+  /** An Art Director picture: its storage path (recipe card, PNG/JPG download). */
+  artPath?: string;
 }
 
 export interface LibraryPage {
