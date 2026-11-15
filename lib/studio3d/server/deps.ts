@@ -9,6 +9,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { deductCreditsOnce, refundCredits } from '@/lib/orchestrator/ledger';
 import { createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
+import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { llmText } from '@/lib/ai/llmText';
 import { getVertexAccessToken } from '@/lib/veo/vertexAuth';
 import { cloudRunEngine, engineConfig } from '../engine';
@@ -104,6 +105,15 @@ export function studio3dDeps(): Studio3dDeps {
         return r ? { base64: r.base64, mimeType: r.mimeType } : null;
       },
       text: (prompt) => llmText({ user: prompt, maxTokens: 5, temperature: 0, timeoutMs: 10_000 }),
+    },
+    library: {
+      // The Library re-signs a verified storage link, so the model stays openable after this link expires.
+      record: (row, glbUrl) =>
+        recordCompletedAsset({ id: row.id, userId: row.userId, serviceType: 'image', subtype: 'model3d', url: glbUrl, prompt: row.request.prompt || null, source: 'studio3d', storageVerified: true }),
+    },
+    async readBytes(path) {
+      const { data, error } = await sb.storage.from(BUCKET).download(path);
+      return error || !data ? null : new Uint8Array(await data.arrayBuffer());
     },
     engine: cfg ? cloudRunEngine(cfg, { fetch: (u, i) => fetch(u, i), token: () => getVertexAccessToken(false) }) : null,
     newId: () => randomUUID(),

@@ -57,6 +57,10 @@ export interface Studio3dDeps {
     text(prompt: string): Promise<string | null>;
   };
   engine: Studio3dEngine | null;
+  /** File a delivered model in the Library (once). Optional: tests and old wiring may leave it out. */
+  library?: { record(row: JobRow, glbUrl: string): Promise<boolean> };
+  /** Bytes of a file in the private studio3d bucket (downloads). */
+  readBytes?: (path: string) => Promise<Uint8Array | null>;
   gate?: MarginGate;
   newId(): string;
   now(): number;
@@ -263,7 +267,12 @@ async function syncWorker(deps: Studio3dDeps, row: JobRow): Promise<JobRow> {
   if (manifest?.step === 'done') {
     const outputs: Studio3dOutputs = { glb: p.glb, turntable: p.turntable, preview: p.preview, ...(manifest.faces ? { faces: manifest.faces } : {}), ...(manifest.gpuSeconds ? { gpuSeconds: manifest.gpuSeconds } : {}) };
     if (row.state.step === 'starting') row = await step(deps, row, { type: 'started', execution: row.state.execution ?? 'unknown' });
-    return step(deps, row, { type: 'delivered', outputs });
+    const done = await step(deps, row, { type: 'delivered', outputs });
+    if (done.state.step === 'done' && deps.library) {
+      const glbUrl = await deps.storage.signRead(p.glb, 3600);
+      if (glbUrl) await deps.library.record(done, glbUrl).catch(() => false);
+    }
+    return done;
   }
   if (manifest?.step === 'failed') return step(deps, row, { type: 'fail', error: manifest.error || 'worker_failed' });
   if (manifest && ['shape', 'texture', 'export'].includes(manifest.step)) {
@@ -300,4 +309,26 @@ async function view(deps: Studio3dDeps, row: JobRow): Promise<JobView> {
   if (s.step === 'queued') out.etaSec = etaSeconds(1);
   else if (s.step === 'starting' || s.step === 'shape') out.etaSec = etaSeconds(0);
   return out;
+}
+
+/** A finished model as GLB / OBJ (zip) / STL. Owner only; free. */
+export async function downloadJob(
+  deps: Studio3dDeps,
+  userId: string,
+  id: string,
+  format: unknown,
+  mm?: unknown,
+): Promise<{ ok: true; file: import('./download').DownloadFile } | ServiceError> {
+  const { isDownloadFormat, buildDownload } = await import('./download');
+  if (!isDownloadFormat(format)) return err(400, 'bad_format');
+  const r = await owned(deps, userId, id);
+  if (!('state' in r)) return r;
+  if (r.state.step !== 'done' || !r.state.outputs?.glb || !deps.readBytes) return err(409, 'not_ready');
+  const glb = await deps.readBytes(r.state.outputs.glb);
+  if (!glb) return err(502, 'storage_failed');
+  try {
+    return { ok: true, file: await buildDownload(glb, format, { mm, base: r.request.prompt }) };
+  } catch {
+    return err(422, 'convert_failed');
+  }
 }

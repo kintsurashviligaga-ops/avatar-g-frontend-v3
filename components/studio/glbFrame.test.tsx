@@ -46,7 +46,9 @@ test('ServiceParamsPanel loads the viewer client-only, showing that placeholder 
   // Required here, not imported: its module-scope dynamic() call must find the recorder above already initialised.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('./ServiceParamsPanel');
-  expect(mockDynamicCalls).toHaveLength(1);
+  // Two client-only chunks: this viewer, then the Phase 8.8 3D Studio card (asked for only when STUDIO_3D_V2 is open).
+  expect(mockDynamicCalls).toHaveLength(2);
+  expect(mockDynamicCalls.every((c) => c.opts.ssr === false)).toBe(true);
   const { loader, opts } = mockDynamicCalls[0]!;
   expect(opts.ssr).toBe(false);
   expect(typeof opts.loading).toBe('function');

@@ -15,6 +15,26 @@ import { stepLabel, t, lang as toLang, type Lang } from '@/lib/studio3d/labels';
 import type { Studio3dStep } from '@/lib/studio3d/pipeline';
 import type { JobView } from '@/lib/studio3d/server/service';
 import { useStudio3dJob } from './useStudio3dJob';
+import { stashPendingEdit, PENDING_EDIT_EVENT } from '@/lib/studio/pendingEdit';
+import { dispatchSceneAction, isSceneGlbUrl } from '@/lib/studio/scene3d';
+import { clampStlMm, STL_MM } from '@/lib/studio3d/spec';
+
+/** "Use in Video": the free turntable clip goes to Montage on the timeline, inside the open studio. */
+export function sendToVideo(turntableUrl: string): boolean {
+  if (!stashPendingEdit(turntableUrl, 'video')) return false;
+  window.dispatchEvent(new Event(PENDING_EDIT_EVENT));
+  return true;
+}
+
+/** "Add to scene": the model goes into the 3D scene (lib/studio/scene3d). False when no scene is mounted. */
+export function addToScene(glbUrl: string, label: string): boolean {
+  if (!isSceneGlbUrl(glbUrl)) return false;
+  dispatchSceneAction({ type: 'open_scene' });
+  return dispatchSceneAction({ type: 'place_object', url: glbUrl, ...(label ? { label: label.slice(0, 60) } : {}) });
+}
+
+export const downloadHref = (id: string, format: 'glb' | 'obj' | 'stl', mm?: number) =>
+  `/api/studio3d/${id}/download?format=${format}${format === 'stl' ? `&mm=${clampStlMm(mm)}` : ''}`;
 
 const Studio3dViewer = dynamic(() => import('./Studio3dViewer'), {
   ssr: false,
@@ -35,6 +55,7 @@ const ERRORS: Record<string, Record<Lang, string>> = {
   blocked: { ka: t('blocked', 'ka'), en: t('blocked', 'en'), ru: t('blocked', 'ru') },
   insufficient_credits: { ka: 'კრედიტი არ გყოფნის', en: 'Not enough credits', ru: 'Недостаточно кредитов' },
 };
+const chip = 'inline-flex h-9 items-center rounded-full bg-app-bg/70 px-3 text-[13px]';
 const errorText = (code: string, l: Lang) => ERRORS[code]?.[l] ?? stepLabel('failed', l);
 
 export function priceLine(mode: Mode, high: boolean, l: Lang): string {
@@ -58,6 +79,8 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
   const [mode, setMode] = useState<Mode>(initial?.mode ?? (initial?.imageUrl ? 'image' : 'text'));
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [high, setHigh] = useState(!!initial?.high);
+  const [mm, setMm] = useState<number>(STL_MM.default);
+  const [note, setNote] = useState('');
   const job = state.status === 'job' ? state.job : null;
 
   const canSend = useMemo(() => {
@@ -139,9 +162,29 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
       {job.step === 'done' && job.model && (
         <>
           <Studio3dViewer url={job.model.glbUrl} locale={l} />
-          <div className="flex flex-wrap gap-2" data-studio3d-downloads="">
-            <a href={job.model.glbUrl} download className="inline-flex h-9 items-center rounded-full bg-app-bg/70 px-3 text-[13px]">{t('download', l)} GLB</a>
+          <div className="flex flex-wrap items-center gap-2" data-studio3d-downloads="">
+            <a href={downloadHref(job.id, 'glb')} download className={chip}>{t('download', l)} GLB</a>
+            <a href={downloadHref(job.id, 'obj')} download className={chip}>{t('download', l)} OBJ</a>
+            <span className="inline-flex items-center gap-1">
+              <a href={downloadHref(job.id, 'stl', mm)} download className={chip}>{t('download', l)} STL</a>
+              <label className="inline-flex items-center gap-1 text-[12px] text-app-text/70">
+                <input type="number" inputMode="numeric" min={STL_MM.min} max={STL_MM.max} value={mm}
+                  onChange={(e) => setMm(clampStlMm(e.target.value))} aria-label={t('stlHeight', l)}
+                  className="h-9 w-16 rounded-lg bg-app-bg/60 px-2 text-[13px]" /> mm
+              </label>
+            </span>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {job.model.turntableUrl && (
+              <button type="button" className={chip} onClick={() => setNote(sendToVideo(job.model!.turntableUrl!) ? '' : stepLabel('failed', l))}>
+                🎬 {t('useInVideo', l)} · {t('free', l)}
+              </button>
+            )}
+            <button type="button" className={chip} onClick={() => setNote(addToScene(job.model!.glbUrl, '') ? '' : (l === 'ka' ? 'სცენა არ არის გახსნილი' : l === 'ru' ? 'Сцена не открыта' : 'No scene is open'))}>
+              {t('addToScene', l)}
+            </button>
+          </div>
+          {note && <p role="status" className="text-[12px] text-app-text/70">{note}</p>}
         </>
       )}
     </section>

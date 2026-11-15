@@ -65,7 +65,7 @@ it('a failure says the credits came back', () => {
 it('a finished model opens the viewer and the GLB download', () => {
   render(<Studio3dCard locale="en" job={view({ mode: 'image', step: 'done', model: { glbUrl: 'https://signed/model.glb' } }) as any} />);
   expect(screen.getByTestId('viewer').dataset.url).toBe('https://signed/model.glb');
-  expect(screen.getByRole('link', { name: 'Download GLB' }).getAttribute('href')).toBe('https://signed/model.glb');
+  expect(screen.getByRole('link', { name: 'Download GLB' }).getAttribute('href')).toBe('/api/studio3d/00000000-0000-4000-8000-000000000001/download?format=glb');
   expect(screen.getAllByRole('listitem').every((li) => li.dataset.state === 'done')).toBe(true);
 });
 

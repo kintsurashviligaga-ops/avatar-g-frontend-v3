@@ -32,9 +32,12 @@ Plan doc (gap analysis, UI/UX, viewer, prices, infra, decisions D1–D6): https:
   Agent G intent → 3D card, Library 3D row, Add to scene.
 
 ## Env (none set in prod)
-`STUDIO_3D_V2=off|admin|everyone`, `STUDIO_3D_GCP_PROJECT`, `STUDIO_3D_REGION=europe-west4`, `STUDIO_3D_JOB`,
-`STUDIO_3D_TIMEOUT_SEC=600`.
+`STUDIO_3D_V2=off|admin|everyone` (server), `NEXT_PUBLIC_STUDIO_3D_V2` (same values; while unset the chat's 3D panel
+does not even ask the server), `STUDIO_3D_GCP_PROJECT`, `STUDIO_3D_REGION=europe-west4`, `STUDIO_3D_JOB`,
+`STUDIO_3D_TIMEOUT_SEC=600`, `STUDIO_3D_DAILY_CAP=200`.
 
 ## Turn-on (GG only)
 1. GG says GREEN → build + deploy the worker job (~$2 incl. one probe), measure GPU seconds, re-check prices.
-2. Merge A→B→C, set `STUDIO_3D_V2=admin`, test on myavatar.ge, then `everyone` by GG card.
+2. GG runs `supabase/migrations/20261115a_studio3d_jobs.sql` (table + private bucket).
+3. Merge A→B→C, set `STUDIO_3D_V2=admin` + `NEXT_PUBLIC_STUDIO_3D_V2=admin`, redeploy, test on myavatar.ge, then
+   `everyone` by GG card.
