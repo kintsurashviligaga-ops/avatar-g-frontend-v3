@@ -86,25 +86,25 @@ export function multiply(a: Mat4, b: Mat4): Mat4 {
   const out = new Array(16).fill(0);
   for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
     let s = 0;
-    for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+    for (let k = 0; k < 4; k++) s += a[k * 4 + r]! * b[c * 4 + k]!;
     out[c * 4 + r] = s;
   }
   return out;
 }
 
 export function fromTRS(t: number[] = [0, 0, 0], q: number[] = [0, 0, 0, 1], s: number[] = [1, 1, 1]): Mat4 {
-  const [x, y, z, w] = q;
-  const [sx, sy, sz] = s;
+  const [x = 0, y = 0, z = 0, w = 1] = q;
+  const [sx = 1, sy = 1, sz = 1] = s;
   return [
     (1 - 2 * (y * y + z * z)) * sx, 2 * (x * y + z * w) * sx, 2 * (x * z - y * w) * sx, 0,
     2 * (x * y - z * w) * sy, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z + x * w) * sy, 0,
     2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0,
-    t[0], t[1], t[2], 1,
+    t[0] ?? 0, t[1] ?? 0, t[2] ?? 0, 1,
   ];
 }
 
 const det3 = (m: Mat4) =>
-  m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]);
+  m[0]! * (m[5]! * m[10]! - m[9]! * m[6]!) - m[4]! * (m[1]! * m[10]! - m[9]! * m[2]!) + m[8]! * (m[1]! * m[6]! - m[5]! * m[2]!);
 
 /* ---------------------------------------------------------------- accessors ---------------------------------------------------------------- */
 
@@ -172,7 +172,7 @@ export function readGlb(buf: Uint8Array): GlbMesh {
     const f = pbr.baseColorFactor ?? [1, 1, 1, 1];
     return {
       name: String(m.name || `material_${i}`).replace(/[^\w.-]+/g, '_').slice(0, 40) || `material_${i}`,
-      baseColor: [f[0], f[1], f[2], f[3]] as [number, number, number, number],
+      baseColor: [f[0]!, f[1]!, f[2]!, f[3]!] as [number, number, number, number],
       texture: readImage(json, bin, pbr.baseColorTexture?.index),
     };
   });
@@ -217,16 +217,16 @@ export function readGlb(buf: Uint8Array): GlbMesh {
       const I = prim.indices !== undefined ? readAccessor(json, bin, prim.indices).data : null;
       const base = pos.length / 3;
       for (let i = 0; i < P.count; i++) {
-        const x = P.data[i * 3], y = P.data[i * 3 + 1], z = P.data[i * 3 + 2];
-        pos.push(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]);
+        const x = P.data[i * 3]!, y = P.data[i * 3 + 1]!, z = P.data[i * 3 + 2]!;
+        pos.push(m[0]! * x + m[4]! * y + m[8]! * z + m[12]!, m[1]! * x + m[5]! * y + m[9]! * z + m[13]!, m[2]! * x + m[6]! * y + m[10]! * z + m[14]!);
         if (N) {
-          const a = N.data[i * 3], b = N.data[i * 3 + 1], c = N.data[i * 3 + 2];
-          let nx = m[0] * a + m[4] * b + m[8] * c, ny = m[1] * a + m[5] * b + m[9] * c, nz = m[2] * a + m[6] * b + m[10] * c;
+          const a = N.data[i * 3]!, b = N.data[i * 3 + 1]!, c = N.data[i * 3 + 2]!;
+          let nx = m[0]! * a + m[4]! * b + m[8]! * c, ny = m[1]! * a + m[5]! * b + m[9]! * c, nz = m[2]! * a + m[6]! * b + m[10]! * c;
           const l = Math.hypot(nx, ny, nz) || 1;
           if (flip) { nx = -nx; ny = -ny; nz = -nz; }
           nrm.push(nx / l, ny / l, nz / l);
         } else nrm.push(0, 0, 0);
-        if (T) uv.push(T.data[i * 2], T.data[i * 2 + 1]);
+        if (T) uv.push(T.data[i * 2]!, T.data[i * 2 + 1]!);
         else uv.push(0, 0);
       }
       anyNormals ||= !!N; allNormals &&= !!N;
@@ -235,7 +235,7 @@ export function readGlb(buf: Uint8Array): GlbMesh {
       const n = I ? I.length : P.count;
       const tri = n - (n % 3);
       for (let t = 0; t < tri; t += 3) {
-        const a = I ? I[t] : t, b = I ? I[t + 1] : t + 1, c = I ? I[t + 2] : t + 2;
+        const a = I ? I[t]! : t, b = I ? I[t + 1]! : t + 1, c = I ? I[t + 2]! : t + 2;
         if (a >= P.count || b >= P.count || c >= P.count) throw new GlbError('index out of range');
         if (flip) idx.push(base + a, base + c, base + b);
         else idx.push(base + a, base + b, base + c);
@@ -264,8 +264,8 @@ export function bounds(p: Float32Array): { min: [number, number, number]; max: [
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) {
-    if (p[i + k] < min[k]) min[k] = p[i + k];
-    if (p[i + k] > max[k]) max[k] = p[i + k];
+    if (p[i + k]! < min[k]!) min[k] = p[i + k]!;
+    if (p[i + k]! > max[k]!) max[k] = p[i + k]!;
   }
   return { min, max };
 }

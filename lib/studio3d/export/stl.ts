@@ -20,19 +20,19 @@ export function meshToStl(mesh: GlbMesh, heightMm?: number): StlResult {
   const src = mesh.positions;
   const p = new Float32Array(src.length);
   for (let i = 0; i < src.length; i += 3) {
-    p[i] = src[i];
-    p[i + 1] = -src[i + 2];
-    p[i + 2] = src[i + 1];
+    p[i] = src[i]!;
+    p[i + 1] = -src[i + 2]!;
+    p[i + 2] = src[i + 1]!;
   }
   const { min, max } = bounds(p);
-  const height = max[2] - min[2];
+  const height = max[2]! - min[2]!;
   const scale = height > 0 ? h / height : 1;
-  const cx = (min[0] + max[0]) / 2;
-  const cy = (min[1] + max[1]) / 2;
+  const cx = (min[0]! + max[0]!) / 2;
+  const cy = (min[1]! + max[1]!) / 2;
   for (let i = 0; i < p.length; i += 3) {
-    p[i] = (p[i] - cx) * scale;
-    p[i + 1] = (p[i + 1] - cy) * scale;
-    p[i + 2] = (p[i + 2] - min[2]) * scale;
+    p[i] = (p[i]! - cx) * scale;
+    p[i + 1] = (p[i + 1]! - cy) * scale;
+    p[i + 2] = (p[i + 2]! - min[2]!) * scale;
   }
 
   const tris = mesh.indices.length / 3;
@@ -44,16 +44,16 @@ export function meshToStl(mesh: GlbMesh, heightMm?: number): StlResult {
   let o = 84;
   const I = mesh.indices;
   for (let t = 0; t < I.length; t += 3) {
-    const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+    const a = I[t]! * 3, b = I[t + 1]! * 3, c = I[t + 2]! * 3;
+    const ux = p[b]! - p[a]!, uy = p[b + 1]! - p[a + 1]!, uz = p[b + 2]! - p[a + 2]!;
+    const vx = p[c]! - p[a]!, vy = p[c + 1]! - p[a + 1]!, vz = p[c + 2]! - p[a + 2]!;
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     const l = Math.hypot(nx, ny, nz);
     if (l > 0) { nx /= l; ny /= l; nz /= l; }
     dv.setFloat32(o, nx, true); dv.setFloat32(o + 4, ny, true); dv.setFloat32(o + 8, nz, true);
     o += 12;
     for (const v of [a, b, c]) {
-      dv.setFloat32(o, p[v], true); dv.setFloat32(o + 4, p[v + 1], true); dv.setFloat32(o + 8, p[v + 2], true);
+      dv.setFloat32(o, p[v]!, true); dv.setFloat32(o + 4, p[v + 1]!, true); dv.setFloat32(o + 8, p[v + 2]!, true);
       o += 12;
     }
     dv.setUint16(o, 0, true);

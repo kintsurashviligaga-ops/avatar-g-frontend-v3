@@ -22,9 +22,9 @@ export function meshToObj(mesh: GlbMesh, baseName = 'model'): ObjFiles {
   const name = baseName.replace(/[^\w-]+/g, '_').slice(0, 40) || 'model';
   const lines: string[] = ['# MyAvatar.ge 3D Studio', `mtllib ${name}.mtl`, `o ${name}`];
   const P = mesh.positions;
-  for (let i = 0; i < P.length; i += 3) lines.push(`v ${f(P[i])} ${f(P[i + 1])} ${f(P[i + 2])}`);
-  if (mesh.uvs) for (let i = 0; i < mesh.uvs.length; i += 2) lines.push(`vt ${f(mesh.uvs[i])} ${f(1 - mesh.uvs[i + 1])}`);
-  if (mesh.normals) for (let i = 0; i < mesh.normals.length; i += 3) lines.push(`vn ${f(mesh.normals[i])} ${f(mesh.normals[i + 1])} ${f(mesh.normals[i + 2])}`);
+  for (let i = 0; i < P.length; i += 3) lines.push(`v ${f(P[i]!)} ${f(P[i + 1]!)} ${f(P[i + 2]!)}`);
+  if (mesh.uvs) for (let i = 0; i < mesh.uvs.length; i += 2) lines.push(`vt ${f(mesh.uvs[i]!)} ${f(1 - mesh.uvs[i + 1]!)}`);
+  if (mesh.normals) for (let i = 0; i < mesh.normals.length; i += 3) lines.push(`vn ${f(mesh.normals[i]!)} ${f(mesh.normals[i + 1]!)} ${f(mesh.normals[i + 2]!)}`);
 
   const ref = (v: number) => {
     const k = v + 1;
@@ -37,9 +37,9 @@ export function meshToObj(mesh: GlbMesh, baseName = 'model'): ObjFiles {
   const used = new Set<number>();
   for (const g of mesh.groups) {
     used.add(g.material);
-    lines.push(`usemtl ${g.material >= 0 ? mesh.materials[g.material].name : 'default'}`);
+    lines.push(`usemtl ${g.material >= 0 ? mesh.materials[g.material]!.name : 'default'}`);
     for (let t = g.start; t < g.start + g.count; t += 3) {
-      lines.push(`f ${ref(mesh.indices[t])} ${ref(mesh.indices[t + 1])} ${ref(mesh.indices[t + 2])}`);
+      lines.push(`f ${ref(mesh.indices[t]!)} ${ref(mesh.indices[t + 1]!)} ${ref(mesh.indices[t + 2]!)}`);
     }
   }
 
