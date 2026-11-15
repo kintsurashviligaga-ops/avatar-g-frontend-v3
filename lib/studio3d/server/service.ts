@@ -15,7 +15,7 @@ import {
 } from '../pipeline';
 import { validateStudio3d, type Studio3dRequest } from '../spec';
 import { journeyQuote, quote3d, type MarginGate } from '../price';
-import { referencePrompt, retexturePrompt, safetyCheckPrompt, parseSafetyAnswer } from '../prompts';
+import { referencePrompt, retexturePrompt, safetyCheckPrompt, parseSafetyAnswer, photoCheckPrompt, parsePhotoAnswer } from '../prompts';
 import { buildSpec, parseManifest, type Studio3dEngine, type WorkerSpec } from '../engine';
 
 export interface JobRow {
@@ -55,6 +55,8 @@ export interface Studio3dDeps {
   gemini: {
     image(prompt: string, refs?: string[]): Promise<{ base64: string; mimeType: string } | null>;
     text(prompt: string): Promise<string | null>;
+    /** Gemini (Vertex) looks at one of OUR storage images with this prompt; null on any failure (read as a refusal). */
+    vision(prompt: string, imageUrl: string): Promise<string | null>;
   };
   engine: Studio3dEngine | null;
   /** File a delivered model in the Library (once). Optional: tests and old wiring may leave it out. */
@@ -211,7 +213,15 @@ export async function createJob(deps: Studio3dDeps, userId: string, body: unknow
   // Gemini safety pre-check on the user's words (image mode: only when there is a note). Fails closed.
   const words = req.prompt;
   const verdict = words ? parseSafetyAnswer((await deps.gemini.text(safetyCheckPrompt(words))) ?? '') : 'allow';
-  row = await step(deps, row, { type: 'safety', verdict });
+  if (verdict === 'block') {
+    row = await step(deps, row, { type: 'safety', verdict });
+  } else if (req.mode === 'image') {
+    // D4: the uploaded photo itself — no photos of other real people or minors; selfies only with the user's tick.
+    const photo = parsePhotoAnswer((await deps.gemini.vision(photoCheckPrompt(), req.imageUrl!).catch(() => null)) ?? '', req.selfie === true);
+    row = await step(deps, row, photo.verdict === 'allow' ? { type: 'safety', verdict: 'allow' } : { type: 'safety', verdict: 'block', reason: photo.reason });
+  } else {
+    row = await step(deps, row, { type: 'safety', verdict });
+  }
   row = await tryAdmit(deps, row);
   return view(deps, row);
 }

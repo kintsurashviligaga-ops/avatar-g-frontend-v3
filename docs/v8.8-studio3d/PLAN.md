@@ -2,6 +2,15 @@
 
 Plan doc (gap analysis, UI/UX, viewer, prices, infra, decisions D1–D6): https://claude.ai/artifact/LcmMkvp7x8Mhm6vLFr6oro
 
+## GG decisions (2026-11-15, all approved)
+- D1 engine: TRELLIS.2 on our own Cloud Run GPU job (RTX PRO 6000, europe-west4).
+- D2 prices: photo → 3D ✦14, text → 3D ✦8 + ✦14, high detail ✦20, new look ✦8 + ✦13.
+- D3 deploy + paid probe (~$2, 5 test models): only after Supabase is back and the launch runbook runs.
+- D4 uploads of people: Gemini (Vertex) looks at the photo first. Objects pass; a selfie passes only with the user's
+  "This photo is of me" tick; other real people, more than one person, anyone who looks under 18, or unsafe content
+  are refused before any charge or GPU second. Any unclear answer or error refuses (`lib/studio3d/prompts.ts`).
+- D5 viewer: extend the R3F viewer, no AR this phase. D6 STL: 100 mm default with the "not guaranteed printable" note.
+
 ## Why this engine
 - Vertex AI has **no 3D model** (checked 2026-11-15). Google bought CSM (Jan 2026) but there is no API yet.
 - Imagen is retired on Vertex; pictures come from **gemini-3.1-flash-image** (Vertex).

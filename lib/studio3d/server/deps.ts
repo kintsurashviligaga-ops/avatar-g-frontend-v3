@@ -11,6 +11,7 @@ import { createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/l
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { llmText } from '@/lib/ai/llmText';
+import { generateWithGemini } from '@/lib/gemini/client';
 import { getVertexAccessToken } from '@/lib/veo/vertexAuth';
 import { cloudRunEngine, engineConfig } from '../engine';
 import type { Studio3dJob } from '../pipeline';
@@ -105,6 +106,24 @@ export function studio3dDeps(): Studio3dDeps {
         return r ? { base64: r.base64, mimeType: r.mimeType } : null;
       },
       text: (prompt) => llmText({ user: prompt, maxTokens: 5, temperature: 0, timeoutMs: 10_000 }),
+      async vision(prompt, imageUrl) {
+        // The photo is read straight from our storage (never fetched from the url), at most 15 MB.
+        const loc = parseSupabaseObjectUrl(imageUrl);
+        if (!loc) return null;
+        const { data, error } = await sb.storage.from(loc.bucket).download(loc.path);
+        if (error || !data || data.size > 15 * 1024 * 1024) return null;
+        const ext = loc.path.toLowerCase().split('.').pop();
+        const mimeType = /^image\/(png|jpeg|webp)$/.test(data.type) ? data.type : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        const r = await generateWithGemini({
+          prompt,
+          attachments: [{ type: 'image', mimeType, data: Buffer.from(await data.arrayBuffer()).toString('base64') }],
+          tier: 'flash',
+          thinkingBudget: 0,
+          maxTokens: 5,
+          temperature: 0,
+        });
+        return r?.text ?? null;
+      },
     },
     library: {
       // The Library re-signs a verified storage link, so the model stays openable after this link expires.

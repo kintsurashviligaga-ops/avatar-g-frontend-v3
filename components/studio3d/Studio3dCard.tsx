@@ -53,6 +53,9 @@ const ERRORS: Record<string, Record<Lang, string>> = {
   user_busy: { ka: t('busy', 'ka'), en: t('busy', 'en'), ru: t('busy', 'ru') },
   daily_cap: { ka: t('dailyCap', 'ka'), en: t('dailyCap', 'en'), ru: t('dailyCap', 'ru') },
   blocked: { ka: t('blocked', 'ka'), en: t('blocked', 'en'), ru: t('blocked', 'ru') },
+  confirm_self: { ka: t('confirmSelf', 'ka'), en: t('confirmSelf', 'en'), ru: t('confirmSelf', 'ru') },
+  blocked_person: { ka: t('blockedPerson', 'ka'), en: t('blockedPerson', 'en'), ru: t('blockedPerson', 'ru') },
+  blocked_minor: { ka: t('blockedMinor', 'ka'), en: t('blockedMinor', 'en'), ru: t('blockedMinor', 'ru') },
   insufficient_credits: { ka: 'კრედიტი არ გყოფნის', en: 'Not enough credits', ru: 'Недостаточно кредитов' },
 };
 const chip = 'inline-flex h-9 items-center rounded-full bg-app-bg/70 px-3 text-[13px]';
@@ -81,6 +84,7 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
   const [high, setHigh] = useState(!!initial?.high);
   const [mm, setMm] = useState<number>(STL_MM.default);
   const [note, setNote] = useState('');
+  const [selfie, setSelfie] = useState(false);
   const job = state.status === 'job' ? state.job : null;
 
   const canSend = useMemo(() => {
@@ -109,6 +113,11 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
         {mode === 'image' && !initial?.imageUrl && (
           <p className="text-[13px] text-app-text/70">{l === 'ka' ? 'მიამაგრე ფოტო ჩატში' : l === 'ru' ? 'Прикрепите фото в чате' : 'Attach a photo in the chat'}</p>
         )}
+        {mode === 'image' && initial?.imageUrl && (
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={selfie} onChange={(e) => setSelfie(e.target.checked)} data-studio3d-selfie="" /> {t('selfie', l)}
+          </label>
+        )}
         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={600} rows={2}
           aria-label={t('title', l)} className="w-full resize-none rounded-xl bg-app-bg/60 p-2 text-[14px]" />
         {mode !== 'retexture' && (
@@ -119,7 +128,7 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
         <p data-studio3d-price="" className="text-[12px] text-app-text/70">{priceLine(mode, high && mode !== 'retexture', l)}</p>
         {state.status === 'error' && <p role="alert" className="text-[13px] text-red-500">{errorText(state.code, l)}</p>}
         <button type="button" disabled={!canSend} aria-busy={state.status === 'sending'}
-          onClick={() => create({ mode, prompt, ...(initial?.imageUrl ? { imageUrl: initial.imageUrl } : {}), ...(initial?.meshUrl ? { meshUrl: initial.meshUrl } : {}), detail: high ? 'high' : 'standard' })}
+          onClick={() => create({ mode, prompt, ...(initial?.imageUrl ? { imageUrl: initial.imageUrl } : {}), ...(initial?.meshUrl ? { meshUrl: initial.meshUrl } : {}), detail: high ? 'high' : 'standard', ...(mode === 'image' && selfie ? { selfie: true } : {}) })}
           className="h-11 w-full rounded-full bg-app-accent text-[14px] font-medium text-white disabled:opacity-50">
           {t('title', l)}
         </button>
