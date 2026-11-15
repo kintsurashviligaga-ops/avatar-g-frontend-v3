@@ -16,9 +16,11 @@ jest.mock('./media', () => ({
   extractFrames: jest.fn(async () => []),
   decodePeaks: jest.fn(async () => []),
 }));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockLibItems: any[] = [];
 jest.mock('./useLibrary', () => ({
   ...jest.requireActual('./useLibrary'),
-  useLibrary: () => ({ items: [], loading: false, signedOut: false }),
+  useLibrary: () => ({ items: mockLibItems, loading: false, signedOut: false }),
 }));
 
 // eslint-disable-next-line import/first
@@ -509,6 +511,62 @@ describe('the edit survives a reload (kept on this device)', () => {
       await act(async () => { fireEvent.click(screen.getByTestId('montage-export-btn')); });
       await waitFor(() => expect(renderBody()).not.toBeNull());
       expect(renderBody().smart.tracks.texts[0]).toEqual(expect.objectContaining({ text: 'სათაური', look: 'title' }));
+    });
+
+    const smartOps = [{ op: 'removeSilence', sensitivity: 'normal', fillers: true }, { op: 'captions', lang: 'ka', style: 'bold-word' }] as const;
+    const silenceAnswers = () => {
+      const base = global.fetch as jest.Mock;
+      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => (String(url).includes('/api/v2/montage/smart/silence')
+        ? { ok: true, status: 200, json: async () => ({ plan: { cuts: [{ startSec: 2, endSec: 3 }], kept: [{ startSec: 0, endSec: 2 }, { startSec: 3, endSec: 6 }], count: 1, removedSec: 1, durationSec: 6, resultSec: 5, fillers: 0, untouched: false } }) }
+        : base(url, init))) as unknown as typeof fetch;
+    };
+    const calls = (part: string) => (global.fetch as jest.Mock).mock.calls.filter(([u]) => String(u).includes(part));
+
+    it("Agent G's smart edit: pauses cut on the timeline once, the panel says so, captions prepared but not bought", async () => {
+      process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR = 'admin';
+      silenceAnswers();
+      render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/talk.mp4', kind: 'video' }]} initialSmartOps={smartOps} />);
+      await waitFor(() => expect(screen.getByTestId('smart-agent-run')).toBeInTheDocument());
+      expect(screen.getAllByTestId('montage-clip')).toHaveLength(2);
+      expect(screen.getByTestId('smart-agent-step-removeSilence')).toHaveTextContent('Pauses cut: 1');
+      expect(screen.getByTestId('smart-agent-step-captions')).toHaveAttribute('data-status', 'waits_for_tap');
+      expect(screen.getByTestId('smart-lang-ka')).toHaveAttribute('aria-pressed', 'true');
+      expect(calls('/api/v2/montage/smart/silence')).toHaveLength(1);
+      expect(calls('/api/v2/montage/smart/captions')).toHaveLength(0);
+    });
+
+    it('a Library item dragged onto the timeline goes on the end of the edit (flag on only)', async () => {
+      mockLibItems = [{ id: 'lib1', kind: 'film', url: 'https://cdn.test/lib1.mp4', prompt: null, orientation: 'vertical', createdAt: '2026-11-15' }];
+      const drop = () => fireEvent.drop(screen.getByTestId('montage-timeline-drop'), {
+        dataTransfer: { types: ['application/x-myavatar-library-item'], getData: () => 'lib1' },
+      });
+      try {
+        delete process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR;
+        const off = render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/a.mp4', kind: 'video' }]} />);
+        await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+        drop();
+        await act(async () => { await Promise.resolve(); });
+        expect(screen.getAllByTestId('montage-clip')).toHaveLength(1);
+        off.unmount();
+
+        process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR = 'everyone';
+        render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/a.mp4', kind: 'video' }]} />);
+        await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+        drop();
+        await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(2));
+      } finally {
+        mockLibItems = [];
+      }
+    });
+
+    it('the ops are ignored while the flag is off', async () => {
+      delete process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR;
+      silenceAnswers();
+      render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/talk.mp4', kind: 'video' }]} initialSmartOps={smartOps} />);
+      await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+      await act(async () => { await Promise.resolve(); });
+      expect(calls('/api/v2/montage/smart/')).toHaveLength(0);
+      expect(screen.queryByTestId('smart-agent-run')).toBeNull();
     });
   });
 });

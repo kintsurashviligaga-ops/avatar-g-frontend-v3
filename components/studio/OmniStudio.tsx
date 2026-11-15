@@ -187,6 +187,9 @@ import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import type { RunApproval } from '@/lib/agent/approval';
+import { smartEditAsk, smartEditPlanText } from '@/lib/agent/media/smartEditChat';
+import { smartEditorClientOn } from '@/lib/services/montage/smart/flag';
+import type { SmartOp } from '@/lib/services/montage/smart/ops';
 import { beatMontageAsk, errorText, readyText, runningText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, type ClientRun as MontageRun } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
@@ -1975,6 +1978,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
   // The clips a montage request brought with it (the chat's attachments) — put on the timeline when the editor opens.
   const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string; ref?: string }[] | null>(null);
+  // Agent G's smart edit (Phase 8.7 PR C): the ops for THIS seed only — any other way of opening Montage sets a new seed
+  // array, so stale ops never run on it.
+  const [montageSmart, setMontageSmart] = useState<{ seed: NonNullable<typeof montageSeed>; ops: SmartOp[] } | null>(null);
   /** A voice call's montage open (lib/voice/liveTools `montage`): the music bed and where in the song it starts, and the format. */
   const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number; ref?: string } | null>(null);
   const [montageAspectSeed, setMontageAspectSeed] = useState<'9:16' | '16:9' | '1:1' | null>(null);
@@ -6371,7 +6377,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * track is the music, and a file already uploaded is handed over by its stored path (nothing goes up twice). Answers
    * how many clips and whether a track went in.
    */
-  const seedMontageWith = useCallback(async (files: Media[]): Promise<{ clips: number; music: boolean }> => {
+  const seedMontageWith = useCallback(async (files: Media[], smartOps?: SmartOp[]): Promise<{ clips: number; music: boolean }> => {
     const visual = files.filter((a) => isVideo(a.mimeType) || isImage(a.mimeType));
     const track = files.find((a) => isAudio(a.mimeType));
     const stored = new Map<Media, string>();
@@ -6383,7 +6389,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const),
       ...(a.name ? { name: a.name } : {}), ...(stored.get(a) ? { ref: stored.get(a)! } : {}),
     }));
-    setMontageSeed(media.length ? media : null);
+    const seedList = media.length ? media : null;
+    setMontageSeed(seedList);
+    setMontageSmart(seedList && smartOps?.length ? { seed: seedList, ops: smartOps } : null);
     setMontageMusicSeed(track ? { url: track.dataUrl, name: track.name || 'Music', ...(stored.get(track) ? { ref: stored.get(track)! } : {}) } : null);
     setMontageAspectSeed(null);
     setMontageSessionKey((k) => k + 1);
@@ -6437,7 +6445,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // editor, the video remix, the MP3 extraction and the run; any other path would put it in the request body.
     if (attachments.some((a) => a.uploadOnly)) {
       const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
-      const editor = mode === 'chat' && (detectStudioIntent(text)?.service === 'montage' || multiVideoRoute(text, kinds) === 'montage_editor');
+      const editor = mode === 'chat' && (detectStudioIntent(text)?.service === 'montage' || multiVideoRoute(text, kinds) === 'montage_editor'
+        || (smartEditorClientOn(process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR) && !!smartEditAsk(text, kinds)));
       if (editor) { /* the Montage editor uses the stored track: see below */ } else {
       const montage = mode === 'chat' && agentMontageOn && beatMontageAsk(text, kinds);
       const remix = mode === 'chat' && !!text && kinds.includes('video') && isVideoEditRequest(text);
@@ -6957,6 +6966,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const follow = montageFollowUpAsk(text, kinds);
       if (follow) {
         setMessages((prev) => [...prev, { role: 'assistant', text: followUpUnsupportedText(follow, locale), notice: true }]);
+        return;
+      }
+    }
+    // ── AGENT G'S SMART EDIT (Phase 8.7 PR C; only while NEXT_PUBLIC_MONTAGE_SMART_EDITOR is on) ──
+    // „აიღე ეს კლიპები, ამოჭერი მოსაწყენი ადგილები, დაადე ქართული სუბტიტრები და მუსიკა რიტმზე დასვი": the editor opens on
+    // every file, the free steps run on the timeline, and the captions wait in the Smart panel with their price on the
+    // button (nothing paid starts from a sentence). Before Agent G's beat montage, which a „…on the beat" alone still gets.
+    if (mode === 'chat' && !chatAvatar && attachments.length > 0 && smartEditorClientOn(process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR)) {
+      const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      const smartOps = smartEditAsk(text, kinds);
+      if (smartOps) {
+        const files = attachments;
+        setBusy(true);
+        const seeded = await seedMontageWith(files, smartOps);
+        setBusy(false);
+        setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, { role: 'assistant', text: smartEditPlanText(smartOps, locale, seeded.music) }]);
+        setAttachments([]); setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         return;
       }
     }
@@ -10768,6 +10794,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {...(seed ? { initialMedia: seed } : {})}
             {...(montageMusicSeed ? { initialMusic: montageMusicSeed } : {})}
             {...(montageAspectSeed ? { initialAspect: montageAspectSeed } : {})}
+            {...(montageSmart && seed === montageSmart.seed ? { initialSmartOps: montageSmart.ops } : {})}
             onDelivered={(videoUrl, aspect) => {
               const label = serviceLabel('montage', locale);
               const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;

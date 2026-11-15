@@ -31,7 +31,7 @@ import { describeGenerationFailure, describeServiceError } from '../ui/serviceEr
 import { uploadErrorText, uploadFileToStorage } from '../ui/useUpload';
 import { montageCopy, langOf, type Copy } from './copy';
 import { ExportView, type ExportState } from './ExportView';
-import { MediaPicker } from './MediaPicker';
+import { LIBRARY_DRAG_TYPE, MediaPicker } from './MediaPicker';
 import { draftOf, loadDraft, resignDraftRefs, restoreDraft, saveDraft } from './draft';
 import { decodePeaks, extractFrames, fmtSec, fmtTime, kindOfFile, probeDuration } from './media';
 import {
@@ -57,6 +57,8 @@ import { SmartPanel } from './smart/SmartPanel';
 import { SmartLanes, smartLanesHeight } from './smart/SmartLanes';
 import { emptySmart, seqClips, smartRenderField, type SmartState } from './smart/smartEdit';
 import { FX_LABEL, SMART_COPY } from './smart/smartCopy';
+import { runSmartOps, type RunResult } from './smart/smartActions';
+import type { SmartOp } from '@/lib/services/montage/smart/ops';
 
 
 
@@ -87,6 +89,12 @@ export interface MontageStudioProps {
   onExportEnd?: (ok: boolean) => void;
   /** An export started (the chat keeps it in view if the editor is closed before it ends). */
   onExportStart?: () => void;
+  /**
+   * Agent G's smart edit (Phase 8.7 PR C): the ops one sentence asked for („ამოჭერი მოსაწყენი ადგილები, დაადე ქართული
+   * სუბტიტრები, მუსიკა რიტმზე"). Run ONCE when the clips have landed and uploaded, then the Smart panel opens with what
+   * was done and the captions ready to buy (their price on the button). Ignored while the Smart Editor flag is off.
+   */
+  initialSmartOps?: readonly SmartOp[];
 }
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -138,7 +146,7 @@ function ToolButton({ label, Icon, run, disabled, testId, active }: {
   );
 }
 
-export default function MontageStudio({ locale, onExit, initialMedia, initialMusic, initialAspect, onDelivered, onExportEnd, onExportStart }: MontageStudioProps) {
+export default function MontageStudio({ locale, onExit, initialMedia, initialMusic, initialAspect, onDelivered, onExportEnd, onExportStart, initialSmartOps }: MontageStudioProps) {
   const t = useMemo(() => montageCopy(locale), [locale]);
   const lang = langOf(locale);
   // ≥ 1024: the tools move into a right column. ≥ 1280: the media gets its own left column too — below that, beside
@@ -185,6 +193,9 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   const SMART_ON = smartEditorClientOn(process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR);
   const smartRef = useRef(smart);
   smartRef.current = smart;
+  /** What Agent G's smart edit did, shown at the top of the Smart panel. */
+  const [agentRun, setAgentRun] = useState<Pick<RunResult, 'steps' | 'captionsOp'> | null>(null);
+  const agentRunStarted = useRef(false);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   const filesById = useRef(new Map<string, File>());
   /** blob: URLs the HOST handed in (initialMusic) — theirs to revoke, never ours. */
@@ -532,6 +543,23 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   const selectedIndex = selected ? edit.clips.indexOf(selected) : -1;
   const selectedSrc = selected ? sources[selected.sourceId] : undefined;
   useEffect(() => { if (selectedId && !selected) setSelectedId(null); }, [selectedId, selected]);
+
+  // Agent G's smart edit: once, when the clips (and the song) have landed and finished uploading. Free ops run on the
+  // edit as ONE undo step; captions are only prepared — the person buys them from the panel, price on the button.
+  useEffect(() => {
+    if (!SMART_ON || !initialSmartOps?.length || agentRunStarted.current || seeding || !edit.clips.length) return;
+    const used = [...edit.clips.map((c) => c.sourceId), ...(edit.musicId ? [edit.musicId] : [])];
+    if (used.some((id) => sources[id]?.status === 'uploading')) return;
+    agentRunStarted.current = true;
+    const before = editRef.current;
+    void runSmartOps((...a: Parameters<typeof fetch>) => fetch(...a), initialSmartOps, before, sourcesRef.current, smartRef.current).then((r) => {
+      // The person changed the edit while it ran: keep their edit, still show what was found.
+      if (editRef.current === before) apply(() => r.edit);
+      setSmart(r.smart);
+      setAgentRun({ steps: r.steps, captionsOp: r.captionsOp });
+      setPanel('smart');
+    });
+  }, [SMART_ON, initialSmartOps, seeding, edit.clips, edit.musicId, sources, apply]);
   const clipUnderPlayhead = useCallback(() => {
     const at = clipAt(editRef.current.clips, timeRef.current);
     return at ? { clip: editRef.current.clips[at.index]!, ...at } : null;
@@ -735,7 +763,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
                 <X size={18} aria-hidden="true" />
               </button>
             </div>
-            <MediaPicker t={t} library={visualLib} onDevice={() => fileRef.current?.click()} onAdd={(it) => void addLibrary(it)} columns={desktop ? 3 : 4} />
+            <MediaPicker t={t} library={visualLib} onDevice={() => fileRef.current?.click()} onAdd={(it) => void addLibrary(it)} columns={desktop ? 3 : 4} draggable={SMART_ON} />
           </div>
         );
       case 'music':
@@ -822,6 +850,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
             onEdit={(fn) => apply(fn)}
             onSmart={setSmart}
             onDone={closePanel}
+            agentRun={agentRun}
           />
         ) : null;
       default:
@@ -989,7 +1018,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
           <div className="flex min-h-0 flex-1">
             {wide && (
               <aside className="flex w-[268px] shrink-0 flex-col overflow-y-auto border-r border-app-border/10 p-3" aria-label={t.media} data-testid="montage-media-column">
-                <MediaPicker t={t} library={visualLib} onDevice={() => fileRef.current?.click()} onAdd={(it) => void addLibrary(it)} columns={2} testId="montage-side-picker" />
+                <MediaPicker t={t} library={visualLib} onDevice={() => fileRef.current?.click()} onAdd={(it) => void addLibrary(it)} columns={2} testId="montage-side-picker" draggable={SMART_ON} />
               </aside>
             )}
             <div className="flex min-w-0 flex-1 flex-col">
@@ -1068,8 +1097,21 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
             )}
           </div>
 
-          {/* ── Timeline ── */}
-          <div className="shrink-0 border-t border-app-border/10 bg-[#0a0a0c] pt-1.5">
+          {/* ── Timeline ── (Smart Timeline: a library item dropped here goes on the end of the edit) */}
+          <div
+            className="shrink-0 border-t border-app-border/10 bg-[#0a0a0c] pt-1.5"
+            data-testid="montage-timeline-drop"
+            {...(SMART_ON ? {
+              onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(LIBRARY_DRAG_TYPE)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } },
+              onDrop: (e: React.DragEvent) => {
+                const id = e.dataTransfer.getData(LIBRARY_DRAG_TYPE);
+                const item = id ? visualLib.items.find((it) => it.id === id) : undefined;
+                if (!item) return;
+                e.preventDefault();
+                void addLibrary([item]);
+              },
+            } : {})}
+          >
             <Timeline
               ref={timelineRef}
               t={t}
