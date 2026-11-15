@@ -24,6 +24,9 @@ export interface PickerLibrary {
   more?: () => void;
 }
 
+/** The drag payload of a library item: its id. */
+export const LIBRARY_DRAG_TYPE = 'application/x-myavatar-library-item';
+
 export function MediaPicker(p: {
   t: Copy;
   library: PickerLibrary;
@@ -32,6 +35,8 @@ export function MediaPicker(p: {
   /** Grid columns: 3 in a phone sheet, 2 in the desktop's narrow left column. */
   columns?: 2 | 3 | 4;
   testId?: string;
+  /** Smart Timeline (Phase 8.7): a library item can be dragged onto the timeline (carries its id). */
+  draggable?: boolean;
 }) {
   const { t } = p;
   const [picked, setPicked] = useState<string[]>([]);
@@ -95,6 +100,7 @@ export function MediaPicker(p: {
                 <button
                   type="button"
                   onClick={() => toggle(it.id)}
+                  {...(p.draggable ? { draggable: true, onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(LIBRARY_DRAG_TYPE, it.id); e.dataTransfer.effectAllowed = 'copy'; } } : {})}
                   aria-pressed={on}
                   aria-label={`${video ? t.video : t.photo}${it.prompt ? ` · ${it.prompt.slice(0, 60)}` : ''}`}
                   className={`relative block aspect-square w-full overflow-hidden rounded-lg bg-app-elevated ring-2 transition focus-visible:outline-none focus-visible:ring-app-accent ${on ? 'ring-app-accent' : 'ring-transparent'}`}
