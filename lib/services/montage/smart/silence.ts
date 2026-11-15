@@ -170,3 +170,33 @@ export function masterCuts(clip: { startSec: number; endSec: number }, clipT0: n
     .filter((c) => c.endSec > c.startSec)
     .map((c) => ({ startSec: r3(clipT0 + c.startSec - clip.startSec), endSec: r3(clipT0 + c.endSec - clip.startSec) }));
 }
+
+// ── THE DETECTOR (audio only) ────────────────────────────────────────────────────────────────────────────────────
+
+/** ffmpeg's own threshold for "silence": the same level Agent G's intro/outro trim uses (segmentDetect SILENCE_DB). */
+export const DETECT_DB = -35;
+/** The shortest pause ffmpeg reports; the plan decides which of them are cut (SENSITIVITY). */
+export const DETECT_MIN_SEC = 0.3;
+
+/**
+ * One audio-only decode (`-vn`): far cheaper than segmentDetect's full pass, which also reads blacks and scene cuts.
+ * `windowSec` limits it to a clip's trim window (input seeking), so a 10 s window of a long source decodes 10 s.
+ */
+export function silenceDetectArgs(source: string, windowSec?: { startSec: number; endSec: number }): string[] {
+  const seek = windowSec ? ['-ss', windowSec.startSec.toFixed(3), '-t', Math.max(0.1, windowSec.endSec - windowSec.startSec).toFixed(3)] : [];
+  return ['-hide_banner', '-nostats', ...seek, '-i', source, '-vn', '-af', `silencedetect=noise=${DETECT_DB}dB:d=${DETECT_MIN_SEC}`, '-f', 'null', '-'];
+}
+
+/** The silences in ffmpeg's log; an open silence (no end line) runs to `durationSec`. Offsets by `offsetSec`. */
+export function parseSilenceLog(stderr: string, durationSec: number, offsetSec = 0): Span[] {
+  const out: Span[] = [];
+  let open: number | null = null;
+  for (const line of String(stderr).split('\n')) {
+    const s = /silence_start:\s*(-?\d+(?:\.\d+)?)/.exec(line);
+    if (s) { open = Math.max(0, Number(s[1])); continue; }
+    const e = /silence_end:\s*(-?\d+(?:\.\d+)?)/.exec(line);
+    if (e && open !== null) { out.push({ startSec: r3(open + offsetSec), endSec: r3(Number(e[1]) + offsetSec) }); open = null; }
+  }
+  if (open !== null && durationSec > open) out.push({ startSec: r3(open + offsetSec), endSec: r3(durationSec + offsetSec) });
+  return out.filter((x) => x.endSec > x.startSec);
+}

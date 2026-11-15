@@ -364,3 +364,24 @@ describe('caption frame SVG (FiraGO, Georgian kept as written)', () => {
     expect(blankFrameSvg(720, 1280)).toBe('<svg width="720" height="1280" viewBox="0 0 720 1280" xmlns="http://www.w3.org/2000/svg"></svg>');
   });
 });
+
+describe('audio-only silence detector', () => {
+  const { silenceDetectArgs, parseSilenceLog } = jest.requireActual('./silence') as typeof import('./silence');
+  it('decodes only the window, audio only', () => {
+    expect(silenceDetectArgs('https://x/a.mp4', { startSec: 2, endSec: 12 })).toEqual(['-hide_banner', '-nostats', '-ss', '2.000', '-t', '10.000', '-i', 'https://x/a.mp4', '-vn', '-af', 'silencedetect=noise=-35dB:d=0.3', '-f', 'null', '-']);
+  });
+  it('parses ffmpeg’s log, closes an open silence at the end and shifts by the window', () => {
+    const log = '[silencedetect @ 0x1] silence_start: 1.2\n[silencedetect @ 0x1] silence_end: 2.5 | silence_duration: 1.3\n[silencedetect @ 0x1] silence_start: 8.9\n';
+    expect(parseSilenceLog(log, 10, 2)).toEqual([{ startSec: 3.2, endSec: 4.5 }, { startSec: 10.9, endSec: 12 }]);
+    expect(parseSilenceLog('', 10)).toEqual([]);
+  });
+});
+
+describe('captions follow the cuts', () => {
+  const { wordsOnMaster } = jest.requireActual('./captions') as typeof import('./captions');
+  it('lays each clip’s own words onto the master, by its window and speed, muted clips silent', () => {
+    const words = { s1: [W('ერთი', 1, 1.5), W('ორი', 3, 3.4), W('სამი', 6, 6.5)], s2: [W('four', 0.2, 0.6)] };
+    const clips = [{ sourceId: 's1', startSec: 2.5, endSec: 4 }, { sourceId: 's2', startSec: 0, endSec: 2, speed: 2 }, { sourceId: 's1', startSec: 5, endSec: 7, muted: true }, { sourceId: 's1', startSec: 0, endSec: 2 }];
+    expect(wordsOnMaster(clips, words)).toEqual([W('ორი', 0.5, 0.9), W('four', 1.6, 1.8), W('ერთი', 5.5, 6)]);
+  });
+});

@@ -324,3 +324,34 @@ export const billedAudioSec = (chunks: readonly Span[]): number => r3(chunks.red
 
 function fin(n: unknown, d = 0): number { return typeof n === 'number' && Number.isFinite(n) ? n : d; }
 function r3(n: number): number { return Math.round(n * 1000) / 1000; }
+
+// ── SOURCE WORDS → THE EDIT ──────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Captions FOLLOW THE CUTS. Words are recognised once per source, in SOURCE seconds, and laid onto the master here:
+ * each timeline clip shows the words that fall inside its own trim window, shifted to where the clip sits on the master
+ * and scaled by its speed. Trimming, splitting, reordering or a silence cut afterwards needs no new Chirp call (and no
+ * new charge): the editor runs this again.
+ */
+export function wordsOnMaster(
+  clips: ReadonlyArray<{ sourceId: string; startSec: number; endSec: number; speed?: number; muted?: boolean }>,
+  wordsBySource: Readonly<Record<string, readonly CaptionWord[]>>,
+): CaptionWord[] {
+  const out: CaptionWord[] = [];
+  let t = 0;
+  for (const c of clips) {
+    const speed = c.speed && c.speed > 0 ? c.speed : 1;
+    const len = Math.max(0, (c.endSec - c.startSec) / speed);
+    if (!c.muted) {
+      for (const w of wordsBySource[c.sourceId] ?? []) {
+        const mid = (w.startSec + w.endSec) / 2;
+        if (mid < c.startSec || mid >= c.endSec) continue;
+        const a = t + (Math.max(w.startSec, c.startSec) - c.startSec) / speed;
+        const b = t + (Math.min(w.endSec, c.endSec) - c.startSec) / speed;
+        out.push({ text: w.text, startSec: r3(a), endSec: r3(Math.max(a, b)) });
+      }
+    }
+    t += len;
+  }
+  return out;
+}
