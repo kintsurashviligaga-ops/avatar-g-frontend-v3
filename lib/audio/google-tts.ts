@@ -229,6 +229,11 @@ export interface GoogleTtsOptions {
   variant?: number;
   /** 0.25–4.0 for a classic voice; Cloud TTS' default is 1.0. Not sent for Georgian (Gemini-TTS documents none). */
   speakingRate?: number;
+  /**
+   * A named Gemini-TTS prebuilt voice ("Algieba", "Kore") for ANY language it reads (the Virtual Studio's chosen
+   * voice). Unset = the existing choice (Georgian by gender, other languages by the best neural voice).
+   */
+  geminiVoice?: string;
   onRefusal?: TtsRefusal;
 }
 
@@ -298,6 +303,15 @@ export async function synthesizeGoogleTts(text: string, opts: GoogleTtsOptions =
   const clean = (text ?? '').trim();
   if (!clean || clean.length > GOOGLE_TTS_MAX_CHARS) return null;
   const languageCode = opts.languageCode ?? ttsLanguageCode(clean);
+
+  if (opts.geminiVoice && /^[A-Z][a-z]{2,20}$/.test(opts.geminiVoice)) {
+    const voice = opts.geminiVoice;
+    return joinParts(
+      await Promise.all(
+        splitSpokenText(clean, GEMINI_TTS_PART_CHARS).map((p) => synthesizePart(p, languageCode, voice, 1, opts.onRefusal, GEMINI_TTS_MODEL)),
+      ),
+    );
+  }
 
   if (readsWithGeminiTts(languageCode)) {
     // Cloud TTS lists no Georgian voice, so there is nothing to look up: Gemini-TTS reads it with a prebuilt voice.

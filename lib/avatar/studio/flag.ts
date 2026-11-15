@@ -16,3 +16,12 @@ export function studioAllowed(isAdmin: boolean, env: Record<string, string | und
   const a = studioAudience(env);
   return a === 'everyone' || (a === 'admin' && isAdmin);
 }
+
+/**
+ * The chat's Agent G hook (a presentation asked in the chat): the browser only knows NEXT_PUBLIC_AVATAR_STUDIO_V2, so it
+ * shows the card when that says 'admin' or 'everyone'; the server's AVATAR_STUDIO_V2 still decides per user (404).
+ */
+export function studioChatClientOn(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  return v === 'admin' || v === 'everyone';
+}

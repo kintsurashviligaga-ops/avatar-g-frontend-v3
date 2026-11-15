@@ -2,7 +2,8 @@
 
 /**
  * Virtual Studio (Phase 8.6): paste a script → the storyboard of ~30 s scenes with each scene's price → Make (one scene)
- * or Make all → a Presenter Card per scene → Join into one presentation (+ SRT). AVATAR_STUDIO_V2 only.
+ * or Make all → a Presenter Card per scene → Join into one presentation (+ SRT, filed in the Library) → Use in Video
+ * (Montage, or a ready scene for the Director's Workflow). AVATAR_STUDIO_V2 only.
  *
  * The plan and every price are computed here with the SAME pure code the server runs (buildStudioPlan / sceneToMake);
  * the server rebuilds them and refuses a price that moved (409, nothing charged). Network calls go through `api`, so
@@ -15,6 +16,9 @@ import { BACKGROUND_CREDITS, type StudioBook } from '@/lib/avatar/studio/price';
 import { LIVE_PRESENTERS, presenterById, type VoiceId } from '@/lib/avatar/studio/catalog';
 import { PresenterCard, type PresenterCardScene } from './PresenterCard';
 import { StudioControls } from './StudioControls';
+import { UseInVideoSheet } from './UseInVideoSheet';
+import { stashPendingEdit } from '@/lib/studio/pendingEdit';
+import type { StudioClip } from '@/lib/avatar/studio/videoHandoff';
 import { t, type StudioLang } from './labels';
 
 export interface ApiResult { status: number; data: Record<string, unknown> }
@@ -38,7 +42,13 @@ interface SceneSlot {
   error?: string;
 }
 
-interface Final { url: string; srt: string; durationSec: number }
+interface Final { url: string; srt: string; durationSec: number; savedToLibrary: boolean }
+
+/** The studio page's Montage: the clip rides over in this tab (lib/studio/pendingEdit) and the studio opens it once. */
+export function openMontageInStudio(url: string, lang: StudioLang) {
+  stashPendingEdit(url, 'video');
+  window.location.assign(`/${lang}/dashboard`);
+}
 
 const newProjectId = () => `vs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -58,17 +68,24 @@ const fileToDataUrl = (f: File) => new Promise<string>((resolve, reject) => {
   r.readAsDataURL(f);
 });
 
-export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initialScript = '', onUseInVideo }: {
+export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initialScript = '', initialRequest, compact = false, onOpenMontage, onCharged }: {
   lang: StudioLang;
   book: StudioBook;
   api?: StudioApi;
   pollMs?: number;
   initialScript?: string;
-  /** PR C wires this into the Director's Workflow. */
-  onUseInVideo?: (job: PublicSceneJob) => void;
+  /** Agent G's card: the request it read from the chat line (script, presenter, voice, format). */
+  initialRequest?: StudioRequest;
+  /** Inside a chat bubble: no page title. */
+  compact?: boolean;
+  /** "Use in Video" → Montage. The chat opens its own Montage; the page hands the clip to the studio. */
+  onOpenMontage?: (url: string) => void;
+  /** A scene was accepted and charged (the chat's credit toast). */
+  onCharged?: (credits: number) => void;
 }) {
   const first = LIVE_PRESENTERS[0]!;
-  const [req, setReq] = useState<StudioRequest>({ script: initialScript, presenterId: first.id, voiceId: first.defaultVoice, tone: 'friendly', pace: 'natural' });
+  const [req, setReq] = useState<StudioRequest>(initialRequest ?? { script: initialScript, presenterId: first.id, voiceId: first.defaultVoice, tone: 'friendly', pace: 'natural' });
+  const [using, setUsing] = useState<Omit<StudioClip, 'at'> | null>(null);
   const [slots, setSlots] = useState<Record<number, SceneSlot>>({});
   const [final, setFinal] = useState<Final | null>(null);
   const [joining, setJoining] = useState(false);
@@ -131,10 +148,11 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
     const res = await api.post('/api/avatar/studio/scene', { projectId: projectId.current, request: r, sceneIndex: i, expectedCredits: scene.credits, text, take });
     if (res.status !== 200 || !res.data.job) { patchSlot(i, { busy: false, error: errorText(res, lang) }); return; }
     const job = res.data.job as PublicSceneJob;
+    onCharged?.(job.credits);
     patchSlot(i, { job });
     setFinal(null);
     await poll(i, job);
-  }, [slots, book, api, lang, ensureBackground, patchSlot, poll]);
+  }, [slots, book, api, lang, ensureBackground, patchSlot, poll, onCharged]);
 
   const makeAll = async () => {
     if (!plan) return;
@@ -148,7 +166,7 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
     setJoining(true);
     const res = await api.post('/api/avatar/studio/stitch', { projectId: projectId.current, jobIds: ids });
     setJoining(false);
-    if (res.status === 200 && typeof res.data.url === 'string') setFinal({ url: res.data.url, srt: String(res.data.srt ?? ''), durationSec: Number(res.data.durationSec ?? 0) });
+    if (res.status === 200 && typeof res.data.url === 'string') setFinal({ url: res.data.url, srt: String(res.data.srt ?? ''), durationSec: Number(res.data.durationSec ?? 0), savedToLibrary: res.data.savedToLibrary === true });
     else setNotice(errorText(res, lang));
   };
 
@@ -158,7 +176,8 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
 
   return (
     <section data-testid="virtual-studio" className="mx-auto max-w-4xl space-y-5 p-4">
-      <h1 className="text-[20px] font-semibold text-app-text">{t('title', lang)}</h1>
+      {!compact && <h1 className="text-[20px] font-semibold text-app-text">{t('title', lang)}</h1>}
+      {!req.script.trim() && initialRequest && <p data-testid="vs-no-script" className="text-[13px] text-app-muted">{t('noScript', lang)}</p>}
       <label className="block text-[12px] text-app-muted">{t('script', lang)}
         <textarea data-testid="vs-script" value={req.script} rows={8} placeholder={t('scriptHint', lang)}
           onChange={(e) => changeRequest({ ...req, script: e.target.value })}
@@ -187,7 +206,7 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
             const presenter = presenterById(job?.presenterId ?? plan.presenter.id) ?? plan.presenter;
             const card: PresenterCardScene | null = job?.state === 'ready' && job.url ? {
               sceneIndex: s.index, url: job.url, text: job.text, timings: job.timings, timingSource: job.timingSource,
-              warnings: job.warnings, durationSec: job.durationSec, engine: job.engine, voiceId: job.voiceId,
+              warnings: job.warnings, durationSec: job.durationSec, engine: job.engine, voiceId: job.voiceId, dub: job.dub,
             } : null;
             return (
               <div key={s.index} data-testid={`vs-scene-${s.index}`} className="space-y-2 rounded-2xl border border-app-border p-3">
@@ -209,7 +228,7 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
                     onRegenerate={() => makeScene(s.index, { take: (slot?.take ?? 0) + 1 })}
                     onChangeVoice={(v: VoiceId) => { const r = { ...req, voiceId: v }; setReq(r); void makeScene(s.index, { take: (slot?.take ?? 0) + 1, request: r }); }}
                     onEditScript={(text) => makeScene(s.index, { take: (slot?.take ?? 0) + 1, text })}
-                    onUseInVideo={onUseInVideo ? () => onUseInVideo(job) : undefined} />
+                    onUseInVideo={() => setUsing({ key: `${projectId.current}:${s.index}`, url: job.url!, durationSec: job.durationSec ?? s.estSec, title: `${t('scene', lang)} ${s.index + 1}`, text: job.text, format: plan.format })} />
                 )}
               </div>
             );
@@ -228,8 +247,14 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
             <a data-testid="vs-srt" download="presentation.srt" href={`data:application/x-subrip;charset=utf-8,${encodeURIComponent(final.srt)}`}
               className="inline-block rounded-full border border-app-border px-3 py-1.5 text-[13px] text-app-text">{t('srt', lang)}</a>
           )}
+          {plan && (
+            <button type="button" data-testid="vs-final-use" onClick={() => setUsing({ key: `${projectId.current}:all`, url: final.url, durationSec: final.durationSec, title: t('wholePresentation', lang), text: plan.scenes.map((x) => x.text).join(' '), format: plan.format })}
+              className="ml-2 inline-block rounded-full bg-app-accent/15 px-3 py-1.5 text-[13px] font-semibold text-app-accent">{t('useInVideo', lang)}</button>
+          )}
+          {final.savedToLibrary && <p data-testid="vs-in-library" className="text-[12px] text-app-muted">{t('library', lang)}</p>}
         </div>
       )}
+      {using && <UseInVideoSheet clip={using} lang={lang} onOpenMontage={(u) => { setUsing(null); (onOpenMontage ?? ((x: string) => openMontageInStudio(x, lang)))(u); }} onClose={() => setUsing(null)} />}
     </section>
   );
 }

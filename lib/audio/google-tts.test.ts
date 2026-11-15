@@ -109,6 +109,22 @@ describe('Georgian reads with Gemini-TTS (Cloud TTS lists no ka-GE voice)', () =
     noKeyAnywhere();
   });
 
+  test('a named Gemini voice (Virtual Studio) reads any language with that voice and no voices list', async () => {
+    fetchMock.mockResolvedValueOnce(audio());
+    const out = await tts.synthesizeGoogleTts('Hello and welcome.', { languageCode: 'en-US', geminiVoice: 'Algieba' });
+    expect(out?.byteLength).toBe(512);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, Init])[1].body));
+    expect(body.voice).toEqual({ languageCode: 'en-US', name: 'Algieba', modelName: 'gemini-2.5-flash-tts' });
+  });
+
+  test('a malformed voice name is ignored (the usual choice reads it)', async () => {
+    fetchMock.mockResolvedValueOnce(audio());
+    await tts.synthesizeGoogleTts('გამარჯობა', { geminiVoice: 'x"; drop' });
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, Init])[1].body));
+    expect(body.voice.name).toBe('Kore');
+  });
+
   test('the declared locale decides, even for Latin text; gender and variant pick the voice, wrapping round', async () => {
     fetchMock.mockImplementation(async () => audio());
     await tts.synthesizeGoogleTts('Gamarjoba', { languageCode: 'ka-GE', gender: 'MALE', variant: 1 });

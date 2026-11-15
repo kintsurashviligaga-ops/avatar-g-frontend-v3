@@ -20,13 +20,16 @@ import { omniTurnPrompt, type StudioBackground } from './prompts';
 import { StudioError } from './errors';
 import type { StudioPlan } from './plan';
 import { estimateSeconds, omniTurns, splitScript, type ScriptLang } from './scriptScenes';
-import { quoteScene, type MarginGate, type StudioBook } from './price';
+import { dubCredits, quoteScene, type MarginGate, type StudioBook } from './price';
 import { alignTimings, checkTake, estimateWordTimings, fromChunks, scriptWords, type RecognizedWord, type WordTiming } from './timing';
 import type { Pace, Tone } from './catalog';
+import { NO_ADJUST, type VoiceAdjust } from './voiceAdjust';
 
 export interface OmniSubmitArgs { prompt: string; aspect: '16:9' | '9:16'; resolution: '720p' | '1080p'; seconds: number; face: string; previous?: { id: string; model: string } }
 export type OmniStart = { ok: true; id: string; model: string } | { ok: false; reason: string };
 export type OmniPoll = { state: 'processing' } | { state: 'delivering' } | { state: 'ready'; url: string } | { state: 'failed'; reason: string };
+
+export interface DubArgs { clip: Buffer; text: string; voiceId: string; lang: ScriptLang; adjust: VoiceAdjust; durationSec: number }
 
 export interface SceneDeps {
   hold(userId: string, credits: number): Promise<boolean>;
@@ -42,6 +45,11 @@ export interface SceneDeps {
   measure(bytes: Buffer): Promise<number>;
   /** Chirp 3 word offsets on the clip's audio. null = no words (the card falls back to estimated timing). */
   words(bytes: Buffer, lang: ScriptLang): Promise<{ words: RecognizedWord[]; heard: string } | null>;
+  /**
+   * The Studio voice (D3): `text` read by the named Gemini-TTS voice, speed/pitch applied, laid phrase by phrase onto
+   * where the Omni presenter's mouth speaks (lib/avatar/speechMatch.planDub). The clip with the new voice; null = miss.
+   */
+  dub(args: DubArgs): Promise<Buffer | null>;
   save(userId: string, path: string, bytes: Buffer, mime: string): Promise<string>;
   saveJob(userId: string, job: SceneJob): Promise<void>;
   loadJob(userId: string, id: string): Promise<SceneJob | null>;
@@ -59,6 +67,11 @@ export interface SceneJob {
   engine: 'live' | 'omni';
   presenterId: string;
   voiceId: string | null;
+  /** Omni + a named voice: the Studio voice is laid over the clip (lips approximate). */
+  dub?: boolean;
+  voiceAdjust?: VoiceAdjust;
+  /** What the dub costs inside `credits` (refunded alone when only the dub misses). */
+  dubCredits?: number;
   text: string;
   direction: string;
   turns: string[];
@@ -146,7 +159,7 @@ export interface StartInput {
   sceneIndex: number;
   take: number;
   plan: StudioPlan;
-  scene: { text: string; direction: string; turns: string[] };
+  scene: { text: string; direction: string; turns: string[]; estSec: number };
   credits: number;
   /** A signed URL of the background image (upload or generated), when the plan has one. */
   backgroundUrl: string | null;
@@ -158,12 +171,12 @@ export async function startScene(deps: SceneDeps, userId: string, input: StartIn
   const job: SceneJob = {
     v: 1, kind: 'avatar-studio-scene', id: deps.newId(), projectId: input.projectId, sceneIndex: input.sceneIndex, take: input.take,
     engine: plan.presenter.engine, presenterId: plan.presenter.id, voiceId: plan.voice?.id ?? null,
+    ...(plan.dub ? { dub: true, voiceAdjust: plan.voiceAdjust, dubCredits: dubCredits(input.scene.estSec) } : {}),
     text: input.scene.text, direction: input.scene.direction, turns: input.scene.turns, turn: 0, interaction: null,
     tone: plan.tone, pace: plan.pace, lang: plan.lang, format: plan.format, resolution: plan.resolution,
     background: plan.background, backgroundUrl: input.backgroundUrl, compose: plan.compose,
     credits: input.credits, ref, retaken: false, state: 'processing', warnings: [...plan.warnings], createdAt: deps.now().toISOString(),
   };
-  if (plan.dub) throw new StudioError('not_configured', 'The studio voice for cinematic presenters comes in the next update.', 501);
   if (!(await deps.hold(userId, input.credits))) throw new StudioError('insufficient_credits', 'Not enough credits for this scene.', 402);
   if (!(await deps.charge(userId, input.credits, ref))) throw new StudioError('insufficient_credits', 'Not enough credits for this scene.', 402);
 
@@ -233,9 +246,20 @@ export async function pollScene(deps: SceneDeps, userId: string, job: SceneJob):
   let bytes: Buffer;
   try { bytes = await deps.fetchBytes(p.url); } catch { return job; } // a transient miss: the next poll retries
   const durationSec = (await deps.measure(bytes)) || job.turns.reduce((s, t) => s + estimateSeconds(t, job.pace, job.lang), 0);
+  if (job.dub && job.voiceId) {
+    // The Studio voice reads the script word for word, so there is no retake: the words are timed on the dubbed clip.
+    const dubbed = await deps.dub({ clip: bytes, text: job.text, voiceId: job.voiceId, lang: job.lang, adjust: job.voiceAdjust ?? NO_ADJUST, durationSec }).catch(() => null);
+    if (dubbed) bytes = dubbed;
+    else {
+      // The picture is made and kept in Omni's own voice; only the dub's part of the price goes back.
+      job.warnings.push('dub_failed');
+      if (job.dubCredits) await deps.refund(userId, job.dubCredits, `${job.ref}:dub-refund`);
+      job.voiceId = null;
+    }
+  }
   const heard = await deps.words(bytes, job.lang).catch(() => null);
   const verdict = checkTake(job.text, heard?.heard ?? null);
-  if (!verdict.ok && heard && !job.retaken) {
+  if (!verdict.ok && heard && !job.retaken && !job.dub) {
     // One free retake of the whole chain.
     job.retaken = true;
     job.turn = 0;
@@ -265,7 +289,7 @@ export function publicJob(job: SceneJob) {
     id: job.id, sceneIndex: job.sceneIndex, take: job.take, engine: job.engine, state: job.state, text: job.text,
     turn: job.turn, turns: job.turns.length, url: job.url ?? null, durationSec: job.durationSec ?? null,
     timings: job.timings ?? null, timingSource: job.timingSource ?? null, warnings: job.warnings, reason: job.reason ?? null,
-    credits: job.credits, voiceId: job.voiceId, presenterId: job.presenterId,
+    credits: job.credits, voiceId: job.voiceId, presenterId: job.presenterId, dub: !!job.dub && !!job.voiceId,
   };
 }
 export type PublicSceneJob = ReturnType<typeof publicJob>;
