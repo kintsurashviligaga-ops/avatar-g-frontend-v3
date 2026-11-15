@@ -24,3 +24,22 @@ Full gap analysis and UI/UX plan: https://claude.ai/artifact/7KfeZugtvUWc9ZPxtwk
 - B: quote + run + extend routes on the existing music charge path (Vertex Lyria only), Producer controls, Music Card.
 - C: Agent G "add it to Scene N" plan card, Use in Video (Director's Workflow / Montage), Library metadata.
 - Paid check (~$0.30) only after Supabase is back and with GG's OK.
+
+## GG decisions (2026-11-15 06:34Z)
+
+1. "Add 30 s (new section, same style)" approved. 2. "Restyle (new take)" approved. 3. Stems rejected for now: no Demucs,
+no stems control anywhere (revisit after launch). 4. 1 min / 2 min / full song at a flat ✦11 approved. 5. Georgian vocals
+enabled with a small "Beta" tag.
+
+## PR B (routes + UI) — built
+
+- `POST /api/music/producer` (generate / restyle / extend) and `POST /api/music/producer/quote` (free), both 404 unless
+  MUSIC_PRODUCER_V2 allows the user. Vertex Lyria only (`lyriaRequest`), platform budget asked first.
+- Billing: balance check → one Lyria call → charge ONCE only after the track arrived (`music-producer:<id>`) → save;
+  a save miss refunds (`:refund`). A Lyria miss or a failed join is never charged. Uses the existing ledger RPCs only.
+- Extend: parent recipe + MP3 read back from the caller's own `renders/music-producer/<uid>/`, new Clip, ffmpeg join on a
+  bar with a crossfade, parent's lyric lines kept up to the cut, new lines shifted to cut − crossfade. Cap 8 min.
+- Restyle: parent's lyrics (word for word, even when Lyria wrote them), tempo, length and vocals kept; new genre/mood/instruments.
+- Sung language picker (Auto + Lyria's 8 + Georgian "Beta"). Spec field `language` (optional, default auto).
+- UI: ProducerControls, WaveformPlayer (Web Audio peaks, click/arrow-key seek), LyricsPane ("Synced by section",
+  active line lit, click to seek), MusicCard, MusicProducerPanel; admin page `/{locale}/admin/music-producer`.

@@ -80,6 +80,25 @@ export const CUSTOM_INSTRUMENT_MAX = 40;
 
 export type ProducerVoice = 'auto' | 'female' | 'male' | 'duet';
 
+/**
+ * The language the song is sung in. 'auto' = from the script of the lyrics / description (Georgian or Russian), else the
+ * model's choice. Lyria 3 lists en/de/es/fr/hi/ja/ko/pt; Georgian is NOT on Google's list but GG's 2026-10-26 test
+ * passed, so it is offered with a small "Beta" tag (GG 2026-11-15).
+ */
+export const SING_LANGUAGES = [
+  { id: 'auto', name: '', beta: false, label: { ka: 'ავტო', en: 'Auto', ru: 'Авто' } },
+  { id: 'ka', name: 'Georgian', beta: true, label: { ka: 'ქართული', en: 'Georgian', ru: 'Грузинский' } },
+  { id: 'en', name: 'English', beta: false, label: { ka: 'ინგლისური', en: 'English', ru: 'Английский' } },
+  { id: 'es', name: 'Spanish', beta: false, label: { ka: 'ესპანური', en: 'Spanish', ru: 'Испанский' } },
+  { id: 'fr', name: 'French', beta: false, label: { ka: 'ფრანგული', en: 'French', ru: 'Французский' } },
+  { id: 'de', name: 'German', beta: false, label: { ka: 'გერმანული', en: 'German', ru: 'Немецкий' } },
+  { id: 'pt', name: 'Portuguese', beta: false, label: { ka: 'პორტუგალიური', en: 'Portuguese', ru: 'Португальский' } },
+  { id: 'ja', name: 'Japanese', beta: false, label: { ka: 'იაპონური', en: 'Japanese', ru: 'Японский' } },
+  { id: 'ko', name: 'Korean', beta: false, label: { ka: 'კორეული', en: 'Korean', ru: 'Корейский' } },
+  { id: 'hi', name: 'Hindi', beta: false, label: { ka: 'ჰინდი', en: 'Hindi', ru: 'Хинди' } },
+] as const;
+export type SingLanguage = (typeof SING_LANGUAGES)[number]['id'];
+
 export interface ProducerSpec {
   /** The user's own description, verbatim. May be empty when chips say enough. */
   brief: string;
@@ -94,6 +113,8 @@ export interface ProducerSpec {
   lyrics: string;
   autoLyrics: boolean;
   voice: ProducerVoice;
+  /** Optional on the wire (default 'auto'). */
+  language?: SingLanguage;
   lengthSec: ProducerLength;
   /** Things to keep out ("no drums"). Sent as an "Avoid:" line: Lyria 3 has no negative-prompt field. */
   avoid: string;
@@ -101,7 +122,7 @@ export interface ProducerSpec {
 
 export const DEFAULT_SPEC: ProducerSpec = {
   brief: '', genre: null, moods: [], instruments: [], bpm: null, vocals: false, lyrics: '', autoLyrics: true,
-  voice: 'auto', lengthSec: 30, avoid: '',
+  voice: 'auto', language: 'auto', lengthSec: 30, avoid: '',
 };
 
 export const presetOf = (list: readonly Preset[], id: string | null | undefined): Preset | null =>
@@ -143,6 +164,8 @@ export function parseProducerSpec(raw: unknown): SpecCheck {
   const autoLyrics = r.autoLyrics !== false;
   const voice = (['auto', 'female', 'male', 'duet'] as const).find((v) => v === (r.voice ?? 'auto'));
   if (!voice) errors.push('voice: auto, female, male or duet');
+  const language = SING_LANGUAGES.find((l) => l.id === (r.language ?? 'auto'))?.id;
+  if (!language) errors.push(`language: one of ${SING_LANGUAGES.map((l) => l.id).join(', ')}`);
   const lengthSec = PRODUCER_LENGTHS.find((l) => l === r.lengthSec);
   if (!lengthSec) errors.push(`lengthSec: one of ${PRODUCER_LENGTHS.join(', ')}`);
   const avoid = tidy(r.avoid, AVOID_MAX);
@@ -161,7 +184,7 @@ export function parseProducerSpec(raw: unknown): SpecCheck {
       brief: brief as string, genre: genre as string | null, moods: moods as string[],
       instruments: (instruments as string[]).map((i) => i.trim()), bpm: bpm as number | null, vocals,
       lyrics: vocals ? (lyrics as string) : '', autoLyrics: vocals ? autoLyrics || !lyrics : false,
-      voice: vocals ? (voice as ProducerVoice) : 'auto', lengthSec: lengthSec as ProducerLength, avoid: avoid as string,
+      voice: vocals ? (voice as ProducerVoice) : 'auto', language: vocals ? (language as SingLanguage) : 'auto', lengthSec: lengthSec as ProducerLength, avoid: avoid as string,
     },
   };
 }
