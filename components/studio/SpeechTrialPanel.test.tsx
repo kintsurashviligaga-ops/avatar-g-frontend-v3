@@ -76,3 +76,31 @@ test('GG 2026-11-06: under the first chunks, where the time went (Google, our se
   // Only the first three rows carry it: the card stays small on a phone.
   expect(screen.queryByText('Google 3.9 s (4×) · სერვერი 0.6 s · ქსელი 0.3 s')).toBeNull();
 });
+
+test('GG 2026-11-06: rows are numbered by their place in the read, not by the order the answers came in', () => {
+  window.history.replaceState({}, '', '/ka/studio?tts=gemini-2.5-flash-preview-tts');
+  render(<SpeechTrialPanel locale="ka" />);
+  const rec = speechTrialRecorder();
+  act(() => {
+    rec.onState({ status: 'loading', owner: 'omni:c:7', index: 0 });
+    rec.onChunk({ index: 1, chars: 61, synthMs: 6_400, audioMs: 4_700 });
+    rec.onChunk({ index: 0, chars: 43, synthMs: 7_900, audioMs: 4_600 });
+  });
+  const rows = screen.getAllByText(/^#\d/).map((el) => el.textContent ?? '');
+  expect(rows[0]).toMatch(/^#1 43 სიმბ\. → 7\.9 s/);
+  expect(rows[1]).toMatch(/^#2 61 სიმბ\. → 6\.4 s/);
+});
+
+test('a chunk served by a fresh instance says how long the route took to load, inside the network figure', () => {
+  window.history.replaceState({}, '', '/ka/studio?tts=gemini-2.5-flash-preview-tts');
+  render(<SpeechTrialPanel locale="ka" />);
+  const rec = speechTrialRecorder();
+  const timing = { googleMs: 3_200, attempts: 1, oursMs: 900, networkMs: 2_900, steps: [] };
+  act(() => {
+    rec.onState({ status: 'loading', owner: 'omni:c:8', index: 0 });
+    rec.onChunk({ index: 0, chars: 43, synthMs: 7_000, audioMs: 4_600, timing: { ...timing, coldMs: 1_200 } });
+    rec.onChunk({ index: 1, chars: 61, synthMs: 6_400, audioMs: 4_700, timing });
+  });
+  expect(screen.getByText('Google 3.2 s · სერვერი 0.9 s · ქსელი 2.9 s (ცივი სტარტი 1.2 s)')).toBeTruthy();
+  expect(screen.getByText('Google 3.2 s · სერვერი 0.9 s · ქსელი 2.9 s')).toBeTruthy();
+});
