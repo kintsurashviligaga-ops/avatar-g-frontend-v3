@@ -7,11 +7,10 @@
  * node Jest env) so the policy that decides whether the LAST-dispatched clips
  * (4 & 5) survive a provider rate-limit window is independently unit-testable.
  *
- * Why this exists: the 5 clips used to fan out via a single `Promise.all`. When
- * LTX is out of funds each leg fails over to a fresh Replicate prediction, so 5
- * `createPrediction` calls fired in the same instant and tripped the account
- * rate limit (observed live: storyboard + 3 clips queued fine, the last 2
- * failed). Three independent dials defend against that:
+ * Why this exists: the 5 clips used to fan out via a single `Promise.all`, so 5
+ * creates fired in the same instant and tripped the provider's rate limit
+ * (observed live: storyboard + 3 clips queued fine, the last 2 failed). The film
+ * renders on Veo only now (v5.1 M-14), and the same three dials still defend it:
  *
  *   1. CLIP_DISPATCH_CONCURRENCY + mapWithConcurrency — never more than N clip
  *      dispatches are in flight at once, so the burst is capped at the source
@@ -35,37 +34,9 @@
 export const MAX_CLIP_DISPATCH_ATTEMPTS = 4;
 
 /**
- * PHASE 23 — ENGINE DOWN-SHIFT threshold. Attempt 1..N try the premium i2v engine (Kling v2.1)
- * FIRST; execute() already falls over to LTX-2 WITHIN an attempt if Kling's CREATE fails. But when
- * the Kling cluster is timing out / 429-saturated, retrying Kling-first on EVERY attempt burns the
- * dispatch-time budget on wasted create-timeouts (the observed "cluster saturation during dispatch"
- * failure). So once the attempt index EXCEEDS this threshold — i.e. Kling has already had its shots
- * and a full attempt still failed — the retry FORCES the proven secondary LTX-2 engine, skipping the
- * premium create entirely. With the default MAX_CLIP_DISPATCH_ATTEMPTS=4 this makes attempts 1-2
- * Kling-first and attempts 3-4 clean LTX-only: a guaranteed, fast last-resort landing on the engine
- * that isn't saturated. ENV-TUNABLE; clamped ≥1 so the premium engine is never skipped on attempt 1.
- */
-export const LTX_DOWNSHIFT_AFTER_ATTEMPT = Math.max(
-  1,
-  Math.round(Number(process.env.LTX_DOWNSHIFT_AFTER_ATTEMPT) || 2),
-);
-
-/**
- * Should this dispatch attempt SKIP the premium i2v engine (Kling) and go straight to LTX-2?
- * True once the 1-based attempt index is PAST LTX_DOWNSHIFT_AFTER_ATTEMPT — Kling has already tried
- * and a full attempt failed — so a scene stuck behind a saturated Kling cluster deterministically
- * down-shifts to the secondary engine instead of burning every remaining retry re-hitting the same
- * premium cluster. LTX still honours the character/image anchor + the in-prompt drift clause, so
- * identity continuity holds across the down-shift. Pure → unit-testable off-network.
- */
-export function shouldDownshiftToLtx(attempt: number, after: number = LTX_DOWNSHIFT_AFTER_ATTEMPT): boolean {
-  return Number.isFinite(attempt) && attempt > after;
-}
-
-/**
- * Max number of clip dispatches in flight at once. PHASE 60 — the live provider
- * (Replicate, < $5 credit) throttles createPrediction to "6/min, BURST OF 1":
- * two simultaneous calls → one 201, one 429. So we SERIALIZE dispatch (default
+ * Max number of clip dispatches in flight at once. PHASE 60 — the provider of the
+ * time throttled creates to "6/min, BURST OF 1": two simultaneous calls → one
+ * 201, one 429. So we SERIALIZE dispatch (default
  * 1); combined with the throttle-aware retry backoff below, every clip gets its
  * own slot instead of 4-of-5 failing. The renders still run in parallel on the
  * provider once accepted — this caps only the create fan-out.
@@ -87,26 +58,14 @@ export const CLIP_DISPATCH_CONCURRENCY = Math.max(
 );
 
 /**
- * Provider-aware create-fan-out concurrency. The ONLY reason this is serialised
- * to 1 is Replicate's free-tier "burst of 1" throttle on createPrediction. When
- * the FUNDED direct LTX key (api.ltx.video) is configured, the film renders
- * through it — which is NOT burst-1 limited — so a small wave of creates (3) is
- * safe and trims the per-clip create overhead off the film's start. The
- * Replicate-only fallback path stays at 1. An explicit CLIP_DISPATCH_CONCURRENCY
- * env always wins (set it to 1 to force serial everywhere, or 5 to max out).
- *
- * This caps ONLY the create wave — the clips still render in parallel on the
- * provider once accepted. Downside is bounded by the per-leg retry/backoff: even
- * if the direct API momentarily 429s, that single clip retries on its own slot.
- * Clamped 1..5. Reads env at call time so it reflects the live deployment.
+ * Create-fan-out concurrency, read at call time so it reflects the live deployment. Serial (1) by default; an explicit
+ * CLIP_DISPATCH_CONCURRENCY env wins, clamped 1..5. This caps ONLY the create wave — the clips still render in
+ * parallel once accepted. (The old "3 when a direct LTX key is set" branch went with LTX, v5.1 M-14.)
  */
 export function clipDispatchConcurrency(env: NodeJS.ProcessEnv = process.env): number {
   const override = Number(env.CLIP_DISPATCH_CONCURRENCY);
   if (Number.isFinite(override) && override >= 1) return Math.max(1, Math.min(5, Math.round(override)));
-  const hasDirectLtx = ['LTX_API_KEY', 'LTX2_API_KEY', 'LTX_VIDEO_API_KEY'].some(
-    (k) => typeof env[k] === 'string' && (env[k] as string).trim().length > 0,
-  );
-  return hasDirectLtx ? 3 : 1;
+  return 1;
 }
 
 /** Random 0..this delay before each dispatch so a wave's calls de-sync (ms). */
