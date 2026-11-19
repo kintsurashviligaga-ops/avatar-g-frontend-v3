@@ -25,7 +25,7 @@ import { deductCreditsOnce, hasSufficientBalance, refundCredits } from '@/lib/or
 import { loadCuratedFace } from '@/lib/avatar/curatedFace';
 import { submitOmniClip, submitOmniEdit, pollOmniClip, type OmniModel } from '@/lib/video/omniClip';
 import { liveTokenMinter } from '@/lib/voice/liveMint';
-import { parseLiveServerMessage } from '@/lib/voice/geminiLive';
+import { parseLiveServerMessage } from '@/lib/voice/liveServerMessage';
 import { buildProbeArgs, parseProbe } from '@/lib/video/longform/stitch';
 import { getVertexAccessToken, vertexAiConfig } from '@/lib/veo/vertexAuth';
 import { chirpWordsBody, parseChirpWords } from './chirpWords';
