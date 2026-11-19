@@ -4,6 +4,8 @@
 **Covers:** Master Task v3.1 Phases 0 to 6, v5.1 Phases 0 to 9, and Phases 7.5 to 8.9
 **Status:** docs only. This file changes no code and turns on no flags.
 
+**Update 2026-11-19, later the same day:** the runbook now covers Phases 8.2 to 8.9 and the stacked-PR plan (`docs/launch/LAUNCH_COMMANDS.md`, Steps 6 to 8). The 24 old PRs have a proposed list in `CLEANUP.md`, which waits for GG's approval. #274 has main merged in and its conflict fixed (f234ae4), and its CI is running. Sections 4 and 5 below are the state as it was at 09:20 UTC.
+
 This summary states what was checked and how. Where the facts differ from the plan, it says so. Each fact was checked against one of these sources:
 
 - `gh api` (open PRs, check runs, mergeable state), read on 2026-11-19
@@ -221,7 +223,7 @@ How to read the CI column:
 | 8.5 Music Producer | #359 → #360 → #361 | #359 green (10); **#360, #361 Vercel only** | `MUSIC_PRODUCER_V2`, `NEXT_PUBLIC_MUSIC_PRODUCER_V2` | ~$0.30 paid check; the `registerFilmTarget` line in #355 after the merges |
 | 8.6 Virtual Studio | #362 → #363 → #364 | #362 green (10); **#363, #364 Vercel only** | `AVATAR_STUDIO_V2`, `NEXT_PUBLIC_AVATAR_STUDIO_V2` | ~$1 paid check |
 | 8.7 Smart Editor | #365 → #368 → #370 | #365 green (10); **#368, #370 Vercel only** | `MONTAGE_SMART_EDITOR`, `NEXT_PUBLIC_MONTAGE_SMART_EDITOR` | ~$0.10 Chirp check |
-| 8.8 3D Studio | #366 → #367 → #369 | #366 green (10); **#367, #369 Vercel only** | `NEXT_PUBLIC_STUDIO_3D_V2` | Deploy the GPU worker, apply migration 20261115a, ~$2 probe |
+| 8.8 3D Studio | #366 → #367 → #369 | #366 green (10); **#367, #369 Vercel only** | `STUDIO_3D_V2`, `NEXT_PUBLIC_STUDIO_3D_V2` | Deploy the GPU worker, apply migration 20261115a, ~$2 probe |
 | 8.9 Lifecycle | #371, #372 | **still running at 09:20 UTC** (#371 8 of 10 done; #372 3 of 9) | `SAFETY_IDENTIFIER` (+ `SAFETY_IDENTIFIER_SALT`, at least 16 chars, never changed once on) | CI result; GG listens to the lite-TTS clips |
 | v5.1 Phase 4 | #312 | green (10) | `AGENT_BROWSER_AGENT`, `AGENT_SANDBOX_PACKAGES`, `AGENT_APP_BUILDER` | Not wired; app-preview domain |
 | v5.1 Phase 8 QA | #315 | green (10) | — | The Georgian QC corpus has not been run |
