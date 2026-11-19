@@ -138,8 +138,8 @@ describe('start_generation: the model named the price itself before the card (GG
 
 describe('judgeRun: the words that answer a start', () => {
   const heard = [{ text: 'Yes.', at: 1200 }];
-  it('a yes after the spoken price, before the card, answers it', () => {
-    expect(judgeRun(heard, { since: 1500, spokenSince: 1100 })).toEqual({ verdict: 'yes', said: 'Yes.' });
+  it('a yes before the prepared quote cannot authorize it even when the spoken price matches', () => {
+    expect(judgeRun(heard, { since: 1500, spokenSince: 1100 })).toEqual({ verdict: 'unclear', said: '' });
   });
   it('without a spoken price the same yes is too early', () => {
     expect(judgeRun(heard, { since: 1500 }).verdict).toBe('unclear');
@@ -400,7 +400,7 @@ describe('useLiveActions: the countdown runs only on the user\'s own yes', () =>
     jest.advanceTimersByTime(400);
   });
 
-  it('GG 08:17Z: the model said the card\'s price, the user said yes, THEN the card came → the yes counts', async () => {
+  it('a pre-card yes cannot record approval or start a new operation at the same price', async () => {
     const { env, runs } = hookEnv();
     const { result } = renderHook(() => useLiveActions(env));
     tell(result, "Lo-fi rain music. It'll cost you 4 credits. Shall we proceed?");
@@ -411,8 +411,25 @@ describe('useLiveActions: the countdown runs only on the user\'s own yes', () =>
     expect(result.current.pendingRun?.state).toBe('counting');
     await act(async () => { jest.advanceTimersByTime(3100); });
     await flush();
-    expect(env.recordApproval).toHaveBeenCalledWith({ tool: 'music', said: 'Yes.', credits: 4 });
-    expect(runs).toEqual([{ target: { kind: 'studio', tool: 'music' }, approval: { channel: 'voice-transcript', said: 'Yes.' } }]);
+    expect(env.recordApproval).not.toHaveBeenCalled();
+    expect(runs).toEqual([]);
+    expect(result.current.pendingRun?.state).toBe('not_heard');
+  });
+
+  it('a fresh yes after the prepared card authorizes the operation despite an earlier spoken price', async () => {
+    const { env, runs } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    tell(result, 'That costs 4 credits.');
+    hear(result, 'Yes.');
+    act(() => { jest.advanceTimersByTime(500); });
+    prepare(result);
+    act(() => { jest.advanceTimersByTime(500); });
+    hear(result, 'Yes, go ahead.');
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(env.recordApproval).toHaveBeenCalledWith({ tool: 'music', said: 'Yes, go ahead.', credits: 4 });
+    expect(runs).toHaveLength(1);
     expect(result.current.pendingRun?.state).toBe('started');
   });
 
