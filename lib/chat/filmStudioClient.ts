@@ -765,19 +765,9 @@ async function assembleMaster(
   myVoiceNarration?: boolean,
   signal?: AbortSignal,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number; sceneQa?: SceneQaEntry[] } | { url: null; error: string } | null> {
-  // Optionally re-voice the narration in the user's TRAINED voice before the stitch
-  // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
-  let finalVoiceUrl = matrix.voiceUrl ?? null;
-  if (myVoiceNarration && finalVoiceUrl) {
-    try {
-      const cr = await fetch('/api/video/voice-narration', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-        body: JSON.stringify({ voiceoverUrl: finalVoiceUrl }),
-      });
-      const cj = (await cr.json().catch(() => null)) as { url?: string } | null;
-      if (cj?.url) finalVoiceUrl = cj.url;
-    } catch { /* keep the original TTS narration */ }
-  }
+  // The trained-voice re-voicing (RVC) was removed in v5.1 M-14: the film keeps its own narration.
+  void myVoiceNarration;
+  const finalVoiceUrl = matrix.voiceUrl ?? null;
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

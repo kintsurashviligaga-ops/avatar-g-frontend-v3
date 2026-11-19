@@ -23,6 +23,7 @@ import { fitAspect, kenBurnsClip, mixMontageSound, muxAudioOntoVideo } from '@/l
 import { uploadBufferAndSign, reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { updateJobStage } from '@/lib/orchestrator/jobs';
 import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
+import { overlayInserts } from '@/lib/video/insertOps';
 import { reportError } from '@/lib/observability/report-error';
 import {
   ASPECT_DIMS,
@@ -36,9 +37,9 @@ import {
 
 const WEEK_SEC = 604_800;
 
-export type MontageStep = 'resolve' | 'bridge' | 'normalize' | 'stitch' | 'music';
+export type MontageStep = 'resolve' | 'bridge' | 'normalize' | 'stitch' | 'inserts' | 'music';
 
-const PCT: Record<MontageStep, number> = { resolve: 6, bridge: 26, normalize: 58, stitch: 88, music: 96 };
+const PCT: Record<MontageStep, number> = { resolve: 6, bridge: 26, normalize: 58, stitch: 84, inserts: 92, music: 96 };
 
 export interface MontageResult {
   videoUrl: string;
@@ -51,6 +52,8 @@ export interface MontageResult {
   /** The narration was laid over the master (only ever true when the request had one). */
   hasVoice: boolean;
   stepsRun: MontageStep[];
+  /** Generated cutaways the render could not make (the edit kept the speaker there; the worker pays their price back). */
+  veoMissed?: number;
 }
 
 export type MontageOutcome =
@@ -68,6 +71,12 @@ export interface MontageRunOptions {
   signal?: AbortSignal;
   /** Reports each leg instead of writing the job row directly (a queued job writes only while it holds its lease). */
   onStage?: (step: MontageStep, pct: number) => Promise<unknown>;
+  /**
+   * Makes a generated (`veo`) cutaway from its prompt: a playable URL in our storage, or null when it could not be
+   * made. Started when the render starts, so the clips render while the shots are cut. Absent = no generated cutaway
+   * is laid (each counts as missed).
+   */
+  makeCutaway?: (prompt: string, k: number) => Promise<string | null>;
 }
 
 async function stage(opts: MontageRunOptions, step: MontageStep): Promise<void> {
@@ -95,6 +104,14 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
   const { w, h } = ASPECT_DIMS[req.aspect];
   const halted = async (): Promise<boolean> =>
     opts.signal?.aborted === true || (opts.shouldContinue ? !(await opts.shouldContinue().catch(() => true)) : false);
+
+  // Generated cutaways take a minute or two each: they start now, in parallel, and are awaited at their leg.
+  const generated = new Map<number, Promise<string | null>>();
+  (req.inserts ?? []).forEach((x, k) => {
+    if (x.source !== 'veo') return;
+    generated.set(k, opts.makeCutaway && x.prompt ? opts.makeCutaway(x.prompt, k).catch(() => null) : Promise.resolve(null));
+  });
+  let veoMissed = 0;
 
   try {
     // ── LEG 1 · resolve ────────────────────────────────────────────────────────────────────────────
@@ -185,15 +202,41 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
     if (!master) return { ok: false, step: 'stitch', error: 'the shots could not be stitched together' };
     stepsRun.push('stitch');
 
-    // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
+    // ── LEG 4b · cutaways ──────────────────────────────────────────────────────────────────────────
+    // The footage over the speaker in a split screen (./insertCompose). Like a shot, a cutaway the render cannot lay is
+    // a wrong edit (FAIL POLICY): the job fails rather than delivering the speaker alone.
     let videoUrl = master;
+    if (req.inserts?.length) {
+      if (await halted()) return { ok: false, step: 'inserts', error: 'cancelled' };
+      await stage(opts, 'inserts');
+      const ins = [];
+      for (const [k, x] of req.inserts.entries()) {
+        if (x.source === 'veo') {
+          // A shot Veo could not make (refused, filtered, timed out) leaves the speaker on that line, not a failed edit.
+          const made = await generated.get(k)!;
+          if (made) ins.push({ ...x, url: made });
+          else veoMissed += 1;
+          continue;
+        }
+        const url = (await reSignIfInternal(x.url, WEEK_SEC).catch(() => x.url)) || x.url;
+        ins.push({ ...x, url });
+      }
+      if (ins.length) {
+        const laid = await overlayInserts(master, ins, { w, h });
+        if (!laid) return { ok: false, step: 'inserts', error: 'the cutaway footage could not be laid over the edit' };
+        videoUrl = laid;
+        stepsRun.push('inserts');
+      }
+    }
+
+    // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
     let hasVoice = false;
     if (voiceUrl || (musicUrl && req.musicGainDb !== undefined)) {
       // Agent G's own mix (lib/services/montage/montageSound): music at the quoted level, the narration over it. Unlike
       // the editor's bed below, a mix that fails fails the job: the user started an edit with this sound.
       if (await halted()) return { ok: false, step: 'music', error: 'cancelled' };
       await stage(opts, 'music');
-      const mixed = await mixMontageSound(master, {
+      const mixed = await mixMontageSound(videoUrl, {
         ...(musicUrl ? { musicUrl, musicStartSec: req.musicStartSec ?? 0, musicGainDb: req.musicGainDb ?? 0 } : {}),
         ...(voiceUrl ? { voiceUrl, voiceStartSec: req.voiceStartSec ?? 0 } : {}),
       });
@@ -211,7 +254,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       // `musicStartSec` is where in the song the first frame lands (the editor's „start at"); it seeks the song's input
       // in whichever branch runs, so the picture's length still decides the end.
       const mixed = await muxAudioOntoVideo(
-        master,
+        videoUrl,
         musicUrl,
         req.musicOnly ? 'bed' : 'under',
         Math.abs(req.musicDuckDb),
@@ -236,6 +279,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
         hasMusic: Boolean(musicUrl) && stepsRun.includes('music'),
         hasVoice,
         stepsRun,
+        ...(veoMissed ? { veoMissed } : {}),
       },
     };
   } catch (err) {

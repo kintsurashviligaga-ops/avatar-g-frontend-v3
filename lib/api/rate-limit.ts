@@ -147,6 +147,13 @@ export const RATE_LIMITS = {
   READ:      { maxRequests: 100, windowMs: 60_000,       keyPrefix: 'rl:read'  } as const,
   WRITE:     { maxRequests: 20,  windowMs: 60_000,       keyPrefix: 'rl:write' } as const,
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
+  // Uploads (/api/upload/sign, /api/upload/verify), PER ACCOUNT after auth. They used to draw on WRITE / READ per IP, which
+  // every other route also spends, and a phone on a carrier network shares its IP with strangers: GG's two montage clips
+  // (2026-11-05) were both refused "too many uploads" with nothing uploaded. 60/min per user is a twelve-clip montage
+  // five times over; the IP guard only stops a flood of unauthenticated calls from reaching the auth lookup.
+  UPLOAD:    { maxRequests: 60,  windowMs: 60_000,       keyPrefix: 'rl:upload' } as const,
+  UPLOAD_VERIFY: { maxRequests: 60, windowMs: 60_000,   keyPrefix: 'rl:upload-vf' } as const,
+  UPLOAD_IP: { maxRequests: 300, windowMs: 60_000,       keyPrefix: 'rl:upload-ip' } as const,
   // Music Studio edits (free ffmpeg trim / fade / volume / convert / join): per user, apart from paid starts.
   MUSIC_EDIT: { maxRequests: 20, windowMs: 60_000,       keyPrefix: 'rl:mus-ed' } as const,
   // Stopping a paid job: its own bucket, so quotes, commands and other WRITE routes can never use up the allowance a
@@ -235,6 +242,14 @@ export const RATE_LIMITS = {
   // CODE_RUN_BURST — the code-run route's own per-minute bucket (quote + run = 2 calls a block). Not EXPENSIVE: that
   // bucket is shared with the chat turn and 20 other routes, so a second block in the same minute was refused.
   CODE_RUN_BURST:    { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:coderun:min' } as const,
+  // BROWSER_RUN_USER / BROWSER_RUN_BURST — Agent G browser tasks (lib/agent/browser/quote): each task is a 2-vCPU
+  // sandbox in the same $20 ledger as code runs, so fewer per day than code runs.
+  BROWSER_RUN_USER:  { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:browser:user' } as const,
+  BROWSER_RUN_BURST: { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:browser:min' } as const,
+  // SITE_STEP_* — Agent G acting on myavatar.ge in the user's tab (/api/agent/site/step): one flash call per step, a task is
+  // at most 25 steps, so 60 a minute and 1500 a day.
+  SITE_STEP_BURST:   { maxRequests: 60,  windowMs: 60_000,           keyPrefix: 'rl:sitestep:min' } as const,
+  SITE_STEP_USER:    { maxRequests: 1500, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:sitestep:user' } as const,
   // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
   // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
   // than any person writes to support.

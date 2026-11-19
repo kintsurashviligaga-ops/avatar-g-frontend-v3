@@ -8,6 +8,7 @@ import {
   parseDetectLog,
   speechSpans,
   splitIntroOutro,
+  transitionSpans,
   trimmedWindow,
   type ClipSignals,
 } from './segmentDetect';
@@ -92,5 +93,39 @@ describe('splitIntroOutro (one clip that carries both)', () => {
   });
   test('nothing to split by → refused, never guessed', () => {
     expect(splitIntroOutro(sig({}))).toEqual({ ok: false, error: 'no_boundary' });
+  });
+});
+
+describe('transitionSpans (dissolves the scene filter cannot see)', () => {
+  const S = 32 * 32;
+  /** 30 fps grey frames: `still` value with a little motion noise, a 0.3 s dissolve to `to` at `atSec`. */
+  function clip(sec: number, cuts: Array<{ atSec: number; to: number }>, start = 40): Uint8Array {
+    const n = Math.round(sec * 30);
+    const out = new Uint8Array(n * S);
+    let level = start;
+    for (let f = 0; f < n; f += 1) {
+      const t = f / 30;
+      let v = level;
+      for (const c of cuts) {
+        if (t >= c.atSec && t < c.atSec + 0.3) v = level + (c.to - level) * ((t - c.atSec) / 0.3);
+        if (t >= c.atSec + 0.3) v = c.to;
+      }
+      if (cuts.some((c) => Math.abs(t - (c.atSec + 0.3)) < 1e-9)) level = v;
+      for (let p = 0; p < S; p += 1) out[f * S + p] = Math.max(0, Math.min(255, Math.round(v + ((p + f) % 5) - 2)));
+    }
+    return out;
+  }
+
+  test('finds an intro and an outro dissolve, and nothing in a still body', () => {
+    const spans = transitionSpans(clip(12, [{ atSec: 1.1, to: 140 }, { atSec: 10.9, to: 20 }]));
+    expect(spans).toHaveLength(2);
+    expect(spans[0]!.startSec).toBeGreaterThanOrEqual(1.0);
+    expect(spans[0]!.endSec).toBeLessThanOrEqual(1.5);
+    expect(spans[1]!.startSec).toBeGreaterThanOrEqual(10.8);
+    expect(spans[1]!.endSec).toBeLessThanOrEqual(11.3);
+  });
+
+  test('no change → no spans', () => {
+    expect(transitionSpans(clip(6, []))).toEqual([]);
   });
 });

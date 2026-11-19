@@ -1,0 +1,16 @@
+{
+  "name": "adk-pilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MASTER TASK v3.1 Phase 5: the Google ADK read-only pilot. Isolated from the app's dependency tree and from production routing.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node ../../node_modules/jest/bin/jest.js -c jest.config.cjs",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@google/adk": "2.3.0"
+  }
+}

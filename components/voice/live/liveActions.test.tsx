@@ -985,6 +985,25 @@ describe('ask_agent_g', () => {
     expect(r.response).toMatchObject({ ok: false, error: 'no_answer', plan: expect.any(String) });
   });
 
+  // GG 2026-11-07 07:38Z (in a call: „open google — you click"): the browser plan the run made reaches the chat's Start card.
+  const BPLAN = { quote: { jobId: 'b1', hosts: ['www.google.com'], steps: 3, screenshots: 1, credits: 0 }, request: { steps: [] }, token: 'bt1' };
+  test('fetchAgentRun keeps the browser plan (browserQuote), and only an object one', async () => {
+    const withPlan = await fetchAgentRun('x', { fetchImpl: fakeFetch(200, { ...RUN, browserQuote: BPLAN }).fetchImpl });
+    expect(withPlan).toMatchObject({ ok: true, browserQuote: BPLAN });
+    const junk = await fetchAgentRun('x', { fetchImpl: fakeFetch(200, { ...RUN, browserQuote: 'nope' }).fetchImpl });
+    expect(junk).not.toHaveProperty('browserQuote');
+  });
+
+  test('a browser plan goes to the chat as its Start card, and the model hears to point at Start (not open_url), even with no answer', async () => {
+    const seen: LiveAgentAnswerDetail[] = [];
+    const h = agentEnv({ ok: true, answer: null, stopReason: 'final', steps: [], browserQuote: BPLAN });
+    h.env.postAgentAnswer = (d) => { seen.push(d); };
+    const r = await executeLiveToolCall(call('gb', 'ask_agent_g', { task: 'Open google.com and search for MyAvatar' }), h.env).pending!;
+    expect(seen).toEqual([{ task: 'Open google.com and search for MyAvatar', answer: null, sources: [], browserQuote: BPLAN }]);
+    expect(r.response).toMatchObject({ ok: true, browser: expect.stringMatching(/Start card.*Do not call open_url/) });
+    expect(r.response).not.toHaveProperty('error');
+  });
+
   test('nothing is posted for a failed run or a run with neither an answer nor a plan; a throwing post never breaks the answer', async () => {
     const posted: LiveAgentAnswerDetail[] = [];
     for (const r of [{ ok: false, error: 'timeout' }, { ok: true, answer: null, stopReason: 'max_steps', steps: [] }] as AgentRunAnswer[]) {

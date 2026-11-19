@@ -8,6 +8,7 @@
  * returned steps. Social publishing is prepare-only end-to-end — the UI surfaces that explicitly.
  */
 import { useEffect, useState } from 'react';
+import { PlanStartCard, type SignedPlan } from './PlanStartCard';
 
 interface Step {
   thought?: string;
@@ -20,6 +21,10 @@ interface RunResult {
   answer: string | null;
   steps: Step[];
   stopReason: 'final' | 'max_steps' | 'llm_error';
+  /** A browser plan Agent G signed (lib/agent/browser/quote): runs only on the card's Start. */
+  browserQuote?: SignedPlan;
+  /** A program plan Agent G signed (lib/agent/sandbox/codeQuote): runs only on the card's Start. */
+  codeQuote?: SignedPlan;
 }
 
 const SUGGESTIONS = [
@@ -33,6 +38,8 @@ const TOOL_META: Record<string, { label: string; color: string }> = {
   scrape_webpage: { label: 'scrape page', color: '#22d3ee' },
   prepare_instagram_post: { label: 'prepare post ⛔', color: '#a855f7' },
   orchestrate_media: { label: 'orchestrate media', color: '#f97316' },
+  quote_browser_task: { label: 'browser plan', color: '#38bdf8' },
+  quote_code_run: { label: 'program plan', color: '#38bdf8' },
 };
 
 function pretty(v: unknown, max = 1200): string {
@@ -195,6 +202,10 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
               <div style={{ fontSize: 14.5, lineHeight: 1.6, color: 'rgba(255,255,255,0.92)', whiteSpace: 'pre-wrap' }}>{result.answer}</div>
             </div>
           )}
+
+          {/* Plans Agent G signed: each runs only on its own Start (nothing ran yet). */}
+          {result.browserQuote && <PlanStartCard key={`b-${result.browserQuote.token.slice(-12)}`} kind="browser" plan={result.browserQuote} locale={locale} />}
+          {result.codeQuote && <PlanStartCard key={`c-${result.codeQuote.token.slice(-12)}`} kind="code" plan={result.codeQuote} locale={locale} />}
 
           {/* Status footer */}
           {stopBadge && (

@@ -27,9 +27,7 @@
  *  - Studio music (app/api/ai/music) Auto = Lyria 3 ALONE, no failover (R7). A FILM's score is Lyria 3 too, at
  *    /api/video/assemble (lib/audio/lyriaBed) — a miss ships the film without music; ElevenLabs Music, Udio and
  *    MusicGen are gone.
- *  - Lip-sync: film masters (kind:'film') → sync/lipsync-2 on Replicate only (lib/ai/lipsync filmLipsyncCreate);
- *    avatar talking-photo → HeyGen, or SadTalker on Replicate when HeyGen is off — one engine per job, a HeyGen miss is
- *    not re-run on SadTalker (2026-10-09). (The assemble-stage FILM_LIPSYNC_ENABLED pass is a DB/env flag, off by default.)
+ *  - Lip-sync is gone (v5.1 M-14, #296): no row is reported for it.
  *  - Subtitles burn via ffmpeg-static + SVG→PNG (resvg) — Vercel's Linux ffmpeg-static
  *    has NO libfreetype/libass, so drawtext/subtitles filters are unavailable; Georgian
  *    glyphs come from the bundled FiraGO font. See lib/pipeline/compositing/caption-burn.ts.
@@ -69,9 +67,6 @@ export interface PipelineHealth {
 const dot = (avail: boolean, tier: ServiceTier): string =>
   !avail || tier === 'unavailable' ? '🔴' : tier === 'high' ? '🟢' : tier === 'medium' ? '🟡' : '🟠';
 
-/** Presence only — a trimmed non-empty value. Never returns or logs the value itself. */
-const present = (v: string | undefined): boolean => !!v && v.trim().length > 0;
-const mark = (on: boolean): string => (on ? '✅' : '·');
 
 /**
  * Build the pipeline health snapshot. Pure env inspection (sync under the hood, async
@@ -82,8 +77,6 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     const env = process.env;
     const services: ServiceStatus[] = [];
     const warnings: string[] = [];
-
-    const hasReplicate = present(env.REPLICATE_API_TOKEN);
 
     // Vertex AI, the only Google model transport under v3.1, which the frame model and Lyria call through. A
     // GEMINI_TRANSPORT other than vertex/unset throws there and fails closed — reported here as a name, never thrown.
@@ -135,23 +128,6 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
           ? `${defaultRefused} — default-tier clips are refused before any call (no other model, no other engine)${refusedNote}`
           : `${veoModel} (default tier ${STUDIO_DEFAULT_VEO_TIER}) — Google-only: a Veo miss is a failed leg, no other engine${refusedNote}`,
       icon: dot(videoAvail, videoTier),
-    });
-
-    // 3 · LIP-SYNC — film masters: sync/lipsync-2 on Replicate (filmLipsyncCreate — the only engine for kind:'film').
-    //     Avatar talking-photo: HeyGen, or SadTalker on Replicate when HeyGen is off (lipsyncCreate, one engine per job).
-    //     Both vendors are legacy (neither Google nor ElevenLabs); their removal awaits the owner.
-    const hasHeygen = present(env.HEYGEN_API_KEY);
-    const lipsyncAvail = hasReplicate || hasHeygen;
-    const lipsyncTier: ServiceTier = hasReplicate ? 'high' : hasHeygen ? 'medium' : 'unavailable';
-    services.push({
-      service: 'ლიპ-სინქი',
-      provider: hasReplicate ? 'sync/lipsync-2 (Replicate)' : hasHeygen ? 'HeyGen (avatar only)' : '—',
-      available: lipsyncAvail,
-      tier: lipsyncTier,
-      note: !lipsyncAvail
-        ? 'no REPLICATE_API_TOKEN / HEYGEN_API_KEY'
-        : `film: sync/lipsync-2${mark(hasReplicate)} · avatar: ${hasHeygen ? `HeyGen${mark(hasHeygen)}` : `SadTalker${mark(hasReplicate)} (Replicate)`} — legacy vendors`,
-      icon: dot(lipsyncAvail, lipsyncTier),
     });
 
     // 4 · TTS VOICE — Google Cloud TTS only (lib/audio/google-tts, MASTER TASK v3.1 PR 5d), on the Vertex Workload

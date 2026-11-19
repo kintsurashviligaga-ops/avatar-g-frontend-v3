@@ -85,7 +85,8 @@ export const LIVE_ACTION_NAMES = [
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
 /** The studios a call may prepare — each one is also a lib/studio/tools.ts ToolId (OmniStudio's selectTool). */
-export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar', 'presentation', 'model3d'] as const;
+// model3d is gone (GG 2026-11-13: keep 3D off; its Replicate engine is refused in production).
+export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar', 'presentation'] as const;
 export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
 
 /**
@@ -94,7 +95,7 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
  */
 export const LIVE_OPEN_TOOLS = [
   'chat', 'video', 'image', 'interior', 'music', 'avatar',
-  'vfx', 'montage', 'model3d',
+  'vfx', 'montage',
 ] as const;
 export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
 
@@ -261,8 +262,8 @@ function deepFreeze<T>(value: T): T {
 const TOOL_PARAM: LiveSchema = {
   type: 'STRING',
   enum: [...LIVE_STUDIO_TOOLS],
-  description: 'Which studio: video, image, music, avatar (a photo that talks), presentation (a slide deck on a topic) or model3d '
-    + '(a 3D model from a description). presentation and model3d are created with the Create button in their panel.',
+  description: 'Which studio: video, image, music, avatar (a photo that talks) or presentation (a slide deck on a topic). '
+    + 'presentation is created with the Create button in its panel.',
 };
 
 const ASPECT_PARAM: LiveSchema = {
@@ -344,7 +345,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'open_studio',
     description: 'Switch the app to a current menu tool without preparing anything in it: chat, video, image, '
-      + 'interior, music, avatar, vfx, montage (video editor), model3d.',
+      + 'interior, music, avatar, vfx, montage (video editor).',
     parameters: {
       type: 'OBJECT',
       properties: { tool: { type: 'STRING', enum: [...LIVE_OPEN_TOOLS], description: 'The tool to open.' } },
@@ -564,8 +565,8 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
     description:
       'Read a public web page: you get its title, its text and its links. Use it to answer about a site, to follow a link '
       + '(read_webpage again with that link\'s url — that is how you "click" a link on another site), or to put a page on the '
-      + 'user\'s screen with open_url. You cannot press buttons, fill in forms, sign in or buy on other websites: say so '
-      + 'plainly when asked, and offer to read the page or open it for the user.',
+      + 'user\'s screen with open_url. To press buttons or search on another site, hand the task to ask_agent_g (its own '
+      + 'browser, after the user\'s Start). Nobody signs in or buys on other websites.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -582,7 +583,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       + 'searches, comparing sources, a short report). Also for ANY question about the user\'s Google Drive („რა წერია ჩემ '
       + 'დრაივზე?", "what is in my Drive / that PDF"): only Agent G can list and read the files they picked there — never '
       + 'answer that you cannot see their Drive. It can take up to about a minute, so tell the user you are on it. '
-      + 'It cannot render media, spend credits, sign in, buy or press buttons on other sites.',
+      + 'When the user wants a site opened and something done ON it (click, search there, type, a screenshot) — or says '
+      + '"you open it", "you click" — hand that here too: Agent G plans the steps in its own cloud browser and a Start card '
+      + 'appears in the chat. It cannot render media, spend credits, sign in or buy.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -688,6 +691,8 @@ export const LIVE_ACTIONS_RULE = [
   'screen instead of reading it aloud; show_code for code.',
   'To open a website, a video or search results in the browser, call open_url, e.g. with',
   'https://www.google.com/search?q=... or https://www.youtube.com/results?search_query=...; it shows a link the user taps.',
+  'When the user wants YOU to open a site and click, search or look around on it, call ask_agent_g with the whole task',
+  '(the site and the steps) instead: Agent G does it in its own browser after the user taps Start on its card.',
   'open_studio, new_chat, set_chat_model, stop, scroll_chat,',
   'open_panel, close_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
   'When the user asks you to be, become or switch to a persona or role, call set_persona (never only open the persona',
@@ -704,7 +709,7 @@ export const LIVE_ACTIONS_RULE = [
   'Messages that start with [App] come from the app, not the user: they say when a generation finished or failed —',
   'continue the plan with the next step, or tell the user in one sentence.',
   'read_webpage reads a public page (title, text, links) so you can answer about it or follow its links; you cannot press',
-  'buttons, fill forms, sign in or pay on other websites — say so honestly and offer to read or open the page instead.',
+  'buttons yourself — Agent G can (ask_agent_g, above); you never sign in or pay on other websites.',
   'When one search or one page is not enough, call ask_agent_g with the whole task: Agent G searches and reads pages and',
   'returns a written answer with sources. Tell the user you are on it first (it can take up to a minute), then give the',
   'answer briefly in their language.',
@@ -902,6 +907,8 @@ export interface LiveAgentAnswerDetail {
   sources: Array<{ title: string; url: string }>;
   /** The signed MP3 plan the run made (/api/agent/run `audioQuote`), unchecked: the studio validates it. */
   audioQuote?: unknown;
+  /** Agent G's signed browser plan (/api/agent/run `browserQuote`), unchecked: the studio checks its shape. */
+  browserQuote?: unknown;
 }
 
 /** The `myavatar:open-artifact` detail (the canvas contract — nothing more, nothing less). */
@@ -968,7 +975,6 @@ const TOOL_ALIASES: Readonly<Record<string, LiveStudioTool>> = {
   music: 'music', song: 'music', track: 'music', audio: 'music',
   avatar: 'avatar', lipsync: 'avatar', talking_avatar: 'avatar', 'talking avatar': 'avatar',
   presentation: 'presentation', slides: 'presentation', deck: 'presentation', slideshow: 'presentation',
-  model3d: 'model3d', '3d': 'model3d', '3d_model': 'model3d', '3d model': 'model3d',
 };
 
 const ASPECT_ALIASES: Readonly<Record<string, LiveAspectRatio>> = {
@@ -1022,7 +1028,7 @@ const OPEN_TOOL_ALIASES: Readonly<Record<string, string>> = {
   chat: 'chat', text: 'chat', photographer: 'photoshoot', photoshoot: 'photoshoot', interior: 'interior',
   interior_designer: 'interior', product: 'product', product_ad: 'product', swap: 'swap',
   character_swap: 'swap', vfx: 'vfx', motion: 'motion', montage: 'montage', editor: 'montage', video_editor: 'montage',
-  dubbing: 'dubbing', dub: 'dubbing', model3d: 'model3d', '3d': 'model3d', presentation: 'presentation', slides: 'presentation',
+  dubbing: 'dubbing', dub: 'dubbing', presentation: 'presentation', slides: 'presentation',
   // Keep the old Photo tool distinct from the prepare-generation synonym for Image.
   deck: 'presentation', photo: 'photo', culling: 'photo', photo_culling: 'photo',
 };

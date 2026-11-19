@@ -31,7 +31,7 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(async () => true), failJob: jest.fn(async () => undefined) }));
 jest.mock('../../../../lib/video/clipSpeech', () => ({ readClipPrompt: jest.fn() }));
 jest.mock('../../../../lib/server/serviceSwitches', () => ({ serviceOffResponse: jest.fn(async () => null) }));
-jest.mock('../../../../lib/video/omniClip', () => ({ submitOmniClip: jest.fn() }));
+jest.mock('../../../../lib/video/omniClip', () => ({ submitOmniClip: jest.fn(), OMNI_MODEL: 'gemini-omni-1.2-flash' }));
 jest.mock('../../../../lib/veo/engine', () => ({ veoModelProblem: jest.fn(() => null) }));
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -80,7 +80,7 @@ beforeEach(() => {
   (readClipPrompt as jest.Mock).mockResolvedValue(EN);
   (hasSufficientBalance as jest.Mock).mockResolvedValue(true);
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
-  (submitOmniClip as jest.Mock).mockResolvedValue({ ok: true, id: 'v1_ChBqT21uaVByb2JlMDAx' });
+  (submitOmniClip as jest.Mock).mockResolvedValue({ ok: true, id: 'v1_ChBqT21uaVByb2JlMDAx', model: 'gemini-omni-1.2-flash' });
 });
 afterAll(() => { process.env = ENV; });
 
@@ -186,12 +186,12 @@ test('two photos are reference images, and reference mode is 8 s whatever was as
 
 // ─── A Georgian line is Gemini Omni Flash at every length (GG card 2026-10-26 10:55Z) ──────────────────────────────
 
-test('8 s with a Georgian line: Omni says it itself at 1080p for ✦82 — no Cloud TTS, no Veo, no narrator', async () => {
+test('8 s with a Georgian line: Omni says it itself at 1080p for ✦57 — no Cloud TTS, no Veo, no narrator', async () => {
   (readClipPrompt as jest.Mock).mockResolvedValue(KA);
-  const res = await POST(post({ prompt: `მოხუცი აივანზე ჭიქას სწევს და ამბობს: „${KA_LINE}“`, speech: 'ka', expectedCredits: 82 }));
+  const res = await POST(post({ prompt: `მოხუცი აივანზე ჭიქას სწევს და ამბობს: „${KA_LINE}“`, speech: 'ka', expectedCredits: 57 }));
   expect(res.status).toBe(202);
   const j = await res.json();
-  expect(j).toMatchObject({ seconds: 8, resolution: '1080p', engine: 'Gemini Omni Flash', credits: 82, speech: 'ka' });
+  expect(j).toMatchObject({ seconds: 8, resolution: '1080p', engine: 'Gemini Omni Flash', credits: 57, speech: 'ka' });
   expect(j.credits).toBe(omniClipCredits('1080p', 8));
   expect(j.voice).toBeUndefined();
   expect(submitScene).not.toHaveBeenCalled();
@@ -201,13 +201,13 @@ test('8 s with a Georgian line: Omni says it itself at 1080p for ✦82 — no Cl
   expect(sub.prompt).toContain(`"${KA_LINE}"`);
   expect(sub.prompt).not.toContain('gamarjoba');
   expect(sub.prompt).toContain('The old man (male voice) says the words on screen, once, exactly as written, in natural Georgian, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.');
-  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ engine: 'omni', seconds: 8, resolution: '1080p', speech: 'ka', _reserve: { credits: 82 } });
+  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ engine: 'omni', seconds: 8, resolution: '1080p', speech: 'ka', _reserve: { credits: 57 } });
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', clipSec: 8, voiced: false, omniOp: 'clip' });
 });
 
 test('each length is priced from the approved Omni rows; a picked 720p stays 720p', async () => {
   (readClipPrompt as jest.Mock).mockResolvedValue(KA);
-  for (const [seconds, resolution, credits] of [[4, '1080p', 42], [6, '1080p', 62], [10, '1080p', 102], [6, '720p', 42], [10, '720p', 69]] as const) {
+  for (const [seconds, resolution, credits] of [[4, '1080p', 29], [6, '1080p', 43], [10, '1080p', 71], [6, '720p', 29], [10, '720p', 47]] as const) {
     jest.clearAllMocks();
     (readClipPrompt as jest.Mock).mockResolvedValue(KA);
     const body = { prompt: `მოხუცი ამბობს: „${KA_LINE}“`, seconds, speech: 'ka', expectedCredits: credits, ...(resolution === '720p' ? { resolution } : {}) };
@@ -223,7 +223,7 @@ test('a Georgian line the card missed is refused free with the new price, engine
   const veo8 = quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' });
   const res = await POST(post({ prompt: 'მოხუცი ამბობს გამარჯობა', expectedCredits: veo8 }));
   expect(res.status).toBe(409);
-  expect(await res.json()).toMatchObject({ error: 'price_changed', credits: 82, speech: 'ka', engine: 'Gemini Omni Flash', resolution: '1080p', seconds: 8 });
+  expect(await res.json()).toMatchObject({ error: 'price_changed', credits: 57, speech: 'ka', engine: 'Gemini Omni Flash', resolution: '1080p', seconds: 8 });
   expect(createJob).not.toHaveBeenCalled();
   expect(deductCredits).not.toHaveBeenCalled();
   expect(submitScene).not.toHaveBeenCalled();
@@ -254,7 +254,7 @@ test('GG\'s three lines (~11.8 s) do not fit 8 s or 10 s: refused with the estim
 
   jest.clearAllMocks();
   (readClipPrompt as jest.Mock).mockResolvedValue(GG(2));
-  const res = await POST(post({ prompt: 'იგივე პოდკასტი', seconds: 6, speech: 'ka', expectedCredits: 62 }));
+  const res = await POST(post({ prompt: 'იგივე პოდკასტი', seconds: 6, speech: 'ka', expectedCredits: 43 }));
   expect(res.status).toBe(202);
   const { prompt } = (submitOmniClip as jest.Mock).mock.calls[0][0];
   // Two people, each in their own voice, in the order they speak: never one narrator for both.
@@ -322,41 +322,47 @@ test('the reservation is never taken when the ledger refuses it, and no clip is 
   expect(failJob).toHaveBeenCalled();
 });
 
-// ─── 10 s on Gemini Omni Flash (GG card 2026-10-25 16:51Z: 720p ✦69, 1080p ✦102) ─────────────────────────────────
+// ─── 10 s on Gemini Omni Flash (Omni 1.2, GG card 2026-11-12 14:22Z: 720p ✦47, 1080p ✦71) ─────────────────────────────────
 
-test('10 s, text only: ONE Omni clip at 720p for ✦69, never Veo; the job id names the interaction and the engine', async () => {
+test('10 s, text only: ONE Omni clip at 720p for ✦47, never Veo; the job id names the interaction and the engine', async () => {
   const res = await POST(post({ prompt: 'მელია თოვლში მირბის განთიადისას', seconds: 10 }));
   expect(res.status).toBe(202);
   const j = await res.json();
-  expect(j).toMatchObject({ success: true, op: 'clip', seconds: 10, resolution: '720p', engine: 'Gemini Omni Flash', credits: 69 });
+  expect(j).toMatchObject({ success: true, op: 'clip', seconds: 10, resolution: '720p', engine: 'Gemini Omni Flash', credits: 47 });
   expect(j.voice).toBeUndefined();
   expect(submitScene).not.toHaveBeenCalled();
   expect(submitOmniClip).toHaveBeenCalledTimes(1);
   const sub = (submitOmniClip as jest.Mock).mock.calls[0][0];
   // Omni takes no negative prompt: on-screen text is ruled out in words.
   expect(sub).toEqual({ prompt: `${EN.english} No dialogue, no voices. No subtitles, captions or on-screen text.`, aspect: '9:16', resolution: '720p', seconds: 10, userId: UID });
-  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ engine: 'omni', seconds: 10, resolution: '720p', _reserve: { credits: 69 } });
+  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ engine: 'omni', seconds: 10, resolution: '720p', _reserve: { credits: 47 } });
   const order = [(createJob as jest.Mock).mock.invocationCallOrder[0]!, (deductCredits as jest.Mock).mock.invocationCallOrder[0]!, (submitOmniClip as jest.Mock).mock.invocationCallOrder[0]!];
   expect(order).toEqual([...order].sort((a, b) => a - b));
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({
-    operation: 'v1_ChBqT21uaVByb2JlMDAx', aspect: '9:16', clipSec: 10, engine: 'omni', voiced: false,
+    operation: 'v1_ChBqT21uaVByb2JlMDAx', aspect: '9:16', clipSec: 10, engine: 'omni', voiced: false, omni12: true,
   });
 });
 
-test('10 s with one photo at 1080p: the photo is Omni\'s first frame, priced ✦102', async () => {
-  const res = await POST(post({ prompt: 'ის იღიმის', photos: [JPEG], seconds: 10, resolution: '1080p', aspect: '16:9', expectedCredits: 102 }));
+test('on the 1.1 rollback the clip\'s id carries no `m2`, so a continuation stays on 1.1', async () => {
+  (submitOmniClip as jest.Mock).mockResolvedValueOnce({ ok: true, id: 'v1_ChBqT21uaVByb2JlMDAx', model: 'gemini-omni-1.1-flash-preview' });
+  const j = await (await POST(post({ prompt: 'მელია თოვლში მირბის განთიადისას', seconds: 10 }))).json();
+  expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', omni12: false });
+});
+
+test('10 s with one photo at 1080p: the photo is Omni\'s first frame, priced ✦71', async () => {
+  const res = await POST(post({ prompt: 'ის იღიმის', photos: [JPEG], seconds: 10, resolution: '1080p', aspect: '16:9', expectedCredits: 71 }));
   expect(res.status).toBe(202);
-  expect(await res.json()).toMatchObject({ seconds: 10, resolution: '1080p', credits: 102 });
+  expect(await res.json()).toMatchObject({ seconds: 10, resolution: '1080p', credits: 71 });
   const sub = (submitOmniClip as jest.Mock).mock.calls[0][0];
   expect(sub.firstFrame).toEqual({ base64: JPEG.split(',')[1], mimeType: 'image/jpeg' });
   expect(sub).toMatchObject({ aspect: '16:9', resolution: '1080p', seconds: 10 });
   expect(sub.prompt).toMatch(/^Start exactly from the first frame/);
 });
 
-test('10 s with a Georgian line the card did not flag starts at 1080p (✦102): Omni says it in Georgian, with no narrator and no subtitles', async () => {
+test('10 s with a Georgian line the card did not flag starts at 1080p (✦71): Omni says it in Georgian, with no narrator and no subtitles', async () => {
   (readClipPrompt as jest.Mock).mockResolvedValue(KA);
   const j = await (await POST(post({ prompt: `მოხუცი აივანზე ჭიქას სწევს და ამბობს: „${KA_LINE}“`, seconds: 10 }))).json();
-  expect(j).toMatchObject({ seconds: 10, resolution: '1080p', credits: 102, speech: 'ka' });
+  expect(j).toMatchObject({ seconds: 10, resolution: '1080p', credits: 71, speech: 'ka' });
   expect(j.voice).toBeUndefined();
   const { prompt } = (submitOmniClip as jest.Mock).mock.calls[0][0];
   expect(prompt).toContain(`"${KA_LINE}"`);
@@ -374,12 +380,12 @@ test('10 s with two photos is Veo\'s 8 s reference clip, never Omni', async () =
   expect((submitScene as jest.Mock).mock.calls[0][0]).toMatchObject({ durationSec: 8 });
 });
 
-test('Omni refuses the submit → the ✦69 reservation is refunded BY REF and the row closed under its engine', async () => {
+test('Omni refuses the submit → the ✦47 reservation is refunded BY REF and the row closed under its engine', async () => {
   (submitOmniClip as jest.Mock).mockResolvedValue({ ok: false, reason: 'safety', retryable: false });
   const res = await POST(post({ prompt: 'a fox', seconds: 10 }));
   expect(res.status).toBe(422);
   expect(await res.json()).toMatchObject({ error: 'content_rejected', refunded: true });
-  expect(refundDebitByRef).toHaveBeenCalledWith(UID, expect.stringMatching(/^genjutsu:reserve:/), 69);
+  expect(refundDebitByRef).toHaveBeenCalledWith(UID, expect.stringMatching(/^genjutsu:reserve:/), 47);
   expect(failJob).toHaveBeenCalledWith(expect.any(String), 'omni safety');
 
   (submitOmniClip as jest.Mock).mockResolvedValue({ ok: false, reason: 'budget', retryable: false });

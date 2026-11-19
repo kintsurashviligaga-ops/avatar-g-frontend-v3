@@ -8,9 +8,11 @@
  * already used by four other pipelines here.
  *
  * TEXT MODE IS TWO HOPS. The strong open 3D models on Replicate are IMAGE-to-3D; there is no text-to-3D
- * worth shipping. So a text prompt goes Imagen 4 → reference image → image-to-3D. That is a real
+ * worth shipping. So a text prompt goes text-to-image → reference image → image-to-3D. That is a real
  * improvement rather than a workaround: the user sees and can regenerate the reference image before
  * spending a 3D generation on it.
+ * ⚠️ /api/v2/model3d/create refuses every request in production (503 google_only: TRELLIS has no Google engine,
+ * lib/providers/mediaPolicy); only /status stays open for jobs started before that.
  */
 
 export type Model3dMode = 'text' | 'image';

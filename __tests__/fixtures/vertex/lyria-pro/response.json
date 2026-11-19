@@ -1,0 +1,41 @@
+{
+  "status": 200,
+  "body": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "[[A0]]\n[[B1]]\n[[C2]]"
+            },
+            {
+              "text": "mosic: 4.5\nbpm: 120.0\nduration_secs: 60.0\ngood_crop: 1.0\n[[A0]]\n[0.0:] A warm, serene Acoustic Instrumental sound defined by a sense of calm and clarity, characteristic of Modern Classical and Ambient Folk. The segment is anchored by a solo steel-string acoustic guitar playing an intricate fingerpicked melody in a bright major key. The rhythm is steady but gentle, kept entirely by the rhythmic plucking of the guitar strings without any percussion. The instrumentation is sparse, featuring only the dry, resonant woodiness of the acoustic guitar with no other melodic layers or digital effects. There are no vocals in this segment. The melodic structure is simple and ascending, creating a sense of forward-looking optimism through arpeggiated chords that focus on the higher registers of the instrument. The interaction is focused entirely on the clarity of the single instrument as it sets the foundation. The atmosphere is quiet and domestic, evoking a peaceful morning or a moment of deep focus, typical of a 'cinematic opening' style.\n[[B1]]\n[20.0:] A warm, serene Acoustic Instrumental sound defined by a lush, cinematic sense of hope, characteristic of Contemporary Chamber Folk and Orchestral Folk. The segment is anchored by the addition of a rich string section, featuring deep cellos providing a resonant, supportive foundation. The rhythm remains beatless but is driven by the steady, 120 BPM rolling pace of the fingerpicked steel-string acoustic guitar. The instrumentation features the continued clarity of the acoustic guitar layered with swelling violas and violins that play long, legato notes in a bright major key to create a sense of breath. There are no vocals in this segment. The melodic structure is soaring and continuous, utilizing a call-and-response pattern between the rhythmic guitar and the melodic strings. The interaction between the intricate guitar and the expansive strings creates a full, enveloping texture that fills the audio spectrum. The atmosphere is triumphant and sunny, evocative of a journey toward a positive destination, reminiscent of a hopeful film score.\n[[C2]]\n[40.0:] A warm, serene Acoustic Instrumental sound defined by a gradual thinning of textures and a peaceful resolution, characteristic of Neo-Classical Acoustic music. The segment is anchored by a solo steel-string acoustic guitar that continues its intricate fingerpicked pattern, slowly reducing in volume and rhythmic complexity. The rhythm maintains its 120 BPM pulse before naturally slowing down into a soft, held final chord. The instrumentation includes soft string pads that sustain a warm major chord in the background, providing a faint, shimmering harmonic bed before the section concludes. There are no vocals in this segment. The melodic structure settles back into the home key, resolving all harmonic tension and concluding with a series of deliberate, ringing guitar strums. The interaction focuses on the final decay of the acoustic guitar’s resonance and the fading strings. The atmosphere is reflective and tranquil, evoking the feeling of a quiet ending or a long-awaited homecoming."
+            },
+            {
+              "inlineData": {
+                "mimeType": "audio/mpeg",
+                "data": "<media bytes=1420210 sha256=28f7bc73eace96b528b9cb0df338576eac3f168981d8486b04dddc87b4fd0937>"
+              }
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "candidatesTokenCount": 3199,
+      "totalTokenCount": 3199,
+      "trafficType": "ON_DEMAND",
+      "candidatesTokensDetails": [
+        {
+          "modality": "AUDIO",
+          "tokenCount": 3199
+        }
+      ]
+    },
+    "modelVersion": "lyria-3-pro-preview",
+    "createTime": "2026-11-06T05:54:22.367498Z",
+    "responseId": "jmvtaoq3Fvjn-eQPy4iqiQc"
+  }
+}

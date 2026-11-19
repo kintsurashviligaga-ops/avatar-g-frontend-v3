@@ -97,6 +97,27 @@ async function verifyStored(path: string, kind: NonNullable<UploadOptions['verif
  */
 export const MAX_UPLOAD_BYTES = UPLOAD_MAX_BYTES;
 
+/** How many times a refused (429) sign request is asked again before the error shows. */
+const SIGN_RETRIES = 3;
+/** Never wait longer than this for one retry, whatever Retry-After says. */
+const MAX_RETRY_WAIT_MS = 15_000;
+
+/** The wait before retry `attempt`: the server's Retry-After (seconds) when it sends one, else 1 s, 2 s, 4 s. */
+export function retryAfterMs(header: string | null, attempt: number): number {
+  const sec = header === null ? Number.NaN : Number(header);
+  const ms = Number.isFinite(sec) && sec >= 0 ? sec * 1000 : 1000 * 2 ** attempt;
+  return Math.min(MAX_RETRY_WAIT_MS, Math.max(250, ms));
+}
+
+/** Resolves true after `ms`, or false at once when the upload is cancelled. */
+function waitFor(ms: number, signal?: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(false); return; }
+    const t = setTimeout(() => resolve(true), ms);
+    signal?.addEventListener('abort', () => { clearTimeout(t); resolve(false); }, { once: true });
+  });
+}
+
 export async function uploadFileToStorage(file: File, opts: UploadOptions = {}): Promise<UploadOutcome> {
   if (file.size > MAX_UPLOAD_BYTES) return { error: 'too-large' };
   // Images, video and audio only — the bucket refuses anything else. A file the browser could not type (an empty
@@ -104,13 +125,21 @@ export async function uploadFileToStorage(file: File, opts: UploadOptions = {}):
   const contentType = allowedUploadMime(file.type, file.name);
   if (!contentType) return { error: 'type' };
   try {
-    const signRes = await fetch('/api/upload/sign', {
+    const signOnce = () => fetch('/api/upload/sign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ contentType, size: file.size, name: file.name }),
       signal: opts.signal ?? AbortSignal.timeout(60_000),
     });
+    // A 429 is a busy minute, not a bad file: wait what the server says (Retry-After, capped) and ask again before the
+    // tray shows „too many uploads". Several clips dropped at once used to fail together on the first refusal.
+    let signRes = await signOnce();
+    for (let attempt = 0; signRes.status === 429 && attempt < SIGN_RETRIES; attempt++) {
+      const waited = await waitFor(retryAfterMs(signRes.headers.get('retry-after'), attempt), opts.signal);
+      if (!waited) return { error: 'aborted' };
+      signRes = await signOnce();
+    }
     if (signRes.status === 401) return { error: 'auth' };
     if (signRes.status === 429) return { error: 'rate' };
     if (signRes.status === 413) return { error: 'too-large' };

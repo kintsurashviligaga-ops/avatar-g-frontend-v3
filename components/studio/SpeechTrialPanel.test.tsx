@@ -54,3 +54,25 @@ test('the labels follow the studio language', () => {
   render(<SpeechTrialPanel locale="en" />);
   expect(screen.getByText(/^Voice trial:/)).toBeTruthy();
 });
+
+test('GG 2026-11-06: under the first chunks, where the time went (Google, our server, the network, our slow steps)', () => {
+  window.history.replaceState({}, '', '/ka/dashboard?tts=gemini-2.5-flash-preview-tts');
+  render(<SpeechTrialPanel locale="ka" />);
+  const rec = speechTrialRecorder();
+  const timing = {
+    googleMs: 3_900,
+    attempts: 1,
+    oursMs: 640,
+    networkMs: 260,
+    steps: [{ phase: 'budget' as const, ms: 320 }, { phase: 'auth' as const, ms: 180 }],
+  };
+  act(() => {
+    rec.onState({ status: 'loading', owner: 'omni:c:3', index: 0 });
+    for (let i = 0; i < 4; i++) rec.onChunk({ chars: 23, synthMs: 4_800, audioMs: 2_100, timing: { ...timing, attempts: i + 1 } });
+  });
+  expect(screen.getByText('Google 3.9 s · სერვერი 0.6 s · ქსელი 0.3 s')).toBeTruthy();
+  expect(screen.getByText('Google 3.9 s (2×) · სერვერი 0.6 s · ქსელი 0.3 s')).toBeTruthy();
+  expect(screen.getAllByText('budget 0.3 · auth 0.2')).toHaveLength(3);
+  // Only the first three rows carry it: the card stays small on a phone.
+  expect(screen.queryByText('Google 3.9 s (4×) · სერვერი 0.6 s · ქსელი 0.3 s')).toBeNull();
+});

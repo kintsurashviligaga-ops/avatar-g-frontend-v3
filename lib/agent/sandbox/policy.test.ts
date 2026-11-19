@@ -14,10 +14,11 @@ test('a plain job gets the maximum limits, no network and an empty environment',
   });
 });
 
-test('only python or node, and real code of bounded size', () => {
+test('only python, node or shell, and real code of bounded size', () => {
   for (const language of ['bash', 'sh', 'ruby', undefined, 'Python']) {
-    expect(checkSandboxJob({ ...job, language })).toEqual({ ok: false, error: 'language: python or node only' });
+    expect(checkSandboxJob({ ...job, language })).toEqual({ ok: false, error: 'language: python, node or shell only' });
   }
+  expect(checkSandboxJob({ ...job, language: 'shell' })).toMatchObject({ ok: true, plan: { language: 'shell', egress: [], env: {} } });
   expect(checkSandboxJob({ ...job, code: '  ' })).toMatchObject({ ok: false });
   expect(checkSandboxJob({ ...job, code: 'x'.repeat(64 * 1024 + 1) })).toMatchObject({ ok: false, error: expect.stringMatching(/^code: over/) });
 });

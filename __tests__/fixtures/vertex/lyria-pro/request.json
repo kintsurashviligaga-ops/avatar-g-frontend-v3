@@ -1,0 +1,22 @@
+{
+  "method": "POST",
+  "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/lyria-3-pro-preview:generateContent",
+  "body": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "About 60 seconds long, with a complete structure and a real ending. Calm acoustic guitar and soft strings, warm and hopeful. Instrumental, no vocals."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "responseModalities": [
+        "AUDIO",
+        "TEXT"
+      ]
+    }
+  }
+}

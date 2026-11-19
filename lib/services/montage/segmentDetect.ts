@@ -53,6 +53,12 @@ export interface ClipSignals {
   silences: Span[];
   /** Times of hard cuts in the picture, ascending. */
   scenes: number[];
+  /**
+   * Where the picture changes to something else over a few frames (a dissolve, a wipe, a zoom-through), as the span from
+   * the first changed frame to the first clean frame of what follows (./segmentDetect transitionSpans). A hard cut is one
+   * here too. Absent = not read (older callers).
+   */
+  changes?: Span[];
 }
 
 const r3 = (n: number) => Number(n.toFixed(3));
@@ -106,6 +112,72 @@ export function parseDetectLog(stderr: string, durationSec: number, hasAudio: bo
     silences: silences.sort((x, y) => x.startSec - y.startSec),
     scenes: [...new Set(scenes)].sort((x, y) => x - y),
   };
+}
+
+/** The picture signature the change detector reads: SIG_SIZE×SIG_SIZE grey frames at DETECT_FPS. */
+export const SIG_SIZE = 32;
+/** How far back a frame is compared to (0.5 s): a dissolve is small frame to frame and large across this gap. */
+const LONG_GAP = 15;
+
+/** The argv of the picture-signature pass (no shell): tiny grey frames on the master's grid, raw, to `out`. */
+export function buildSignatureArgs(source: string, out: string, maxSec = MAX_DETECT_SEC): string[] {
+  return [
+    '-hide_banner', '-nostats', '-i', source, '-t', String(maxSec), '-map', '0:v:0', '-an',
+    '-vf', `fps=${DETECT_FPS},scale=${SIG_SIZE}:${SIG_SIZE}:flags=area,format=gray`, '-f', 'rawvideo', '-y', out,
+  ];
+}
+
+const median = (xs: number[]): number => {
+  if (!xs.length) return 0;
+  const a = [...xs].sort((x, y) => x - y);
+  return a[Math.floor(a.length / 2)]!;
+};
+
+/**
+ * Where the picture becomes something else (GG 2026-11-05 10:32Z, a news reel whose logo intro and logo end card DISSOLVE
+ * into and out of the presenter: no black frame, and no frame-to-frame jump big enough for a scene cut, so nothing was
+ * found). A frame compared with the one 0.5 s before it is far apart only across such a change; talking, gestures and an
+ * animated logo stay well under it. Within that stretch, the frames that move most frame to frame are the change itself.
+ * Pure: `gray` is the raw output of buildSignatureArgs.
+ */
+export function transitionSpans(gray: Uint8Array, size = SIG_SIZE * SIG_SIZE, fps = DETECT_FPS): Span[] {
+  const n = Math.floor(gray.length / size);
+  if (n <= LONG_GAP + 2) return [];
+  const diff = (i: number, j: number) => {
+    let sum = 0;
+    const a = i * size, b = j * size;
+    for (let p = 0; p < size; p += 1) sum += Math.abs(gray[a + p]! - gray[b + p]!);
+    return sum / size;
+  };
+  const short: number[] = [0], long: number[] = new Array(LONG_GAP).fill(0);
+  for (let i = 1; i < n; i += 1) short.push(diff(i, i - 1));
+  for (let i = LONG_GAP; i < n; i += 1) long.push(diff(i, i - LONG_GAP));
+  const thrLong = Math.max(28, 3 * median(long.slice(LONG_GAP)));
+  const thrShort = Math.max(5, 4 * median(short.slice(1)));
+  const spans: Span[] = [];
+  for (let i = LONG_GAP; i < n; i += 1) {
+    if (!(long[i]! > thrLong)) continue;
+    let i1 = i;
+    while (i1 + 1 < n && long[i1 + 1]! > thrLong) i1 += 1;
+    // The frames that change most, inside the stretch whose ends differ: the change itself.
+    let j0 = -1, j1 = -1;
+    for (let j = Math.max(1, i - LONG_GAP + 1); j <= i1; j += 1) {
+      if (short[j]! > thrShort) { if (j0 < 0) j0 = j; j1 = j; }
+    }
+    // A dissolve too slow to show frame to frame: the whole stretch is the change.
+    const a = j0 >= 0 ? j0 : Math.max(0, i - LONG_GAP);
+    const b = j0 >= 0 ? j1 + 1 : i1;
+    spans.push({ startSec: r3(a / fps), endSec: r3(Math.min(n, b) / fps) });
+    i = i1;
+  }
+  // One change, never two halves of it.
+  const out: Span[] = [];
+  for (const sp of spans) {
+    const last = out[out.length - 1];
+    if (last && sp.startSec - last.endSec < 0.2) last.endSec = Math.max(last.endSec, sp.endSec);
+    else out.push({ ...sp });
+  }
+  return out;
 }
 
 /** Where sound is heard (the voice activity): the complement of the silences, gaps under 0.15 s dropped. */
@@ -180,7 +252,8 @@ interface Break extends Span {
 }
 
 /**
- * The breaks INSIDE the clip (not at its edges), strongest kind first: black runs, else hard cuts, else long silences.
+ * The breaks INSIDE the clip (not at its edges), strongest kind first: black runs, else picture changes (dissolves and
+ * cuts), else hard cuts, else long silences.
  * Only one kind is used, so a cut inside the intro's own animation never outranks the black that ends it.
  */
 export function interiorBreaks(sig: ClipSignals): Break[] {
@@ -188,6 +261,9 @@ export function interiorBreaks(sig: ClipSignals): Break[] {
   const inside = (s: Span) => s.startSec >= lo && s.endSec <= hi;
   const blacks = sig.blacks.filter((x) => x.startSec > EDGE_SEC && inside(x)).map((x): Break => ({ ...x, by: 'black' }));
   if (blacks.length) return blacks;
+  // A dissolve or wipe into the next part, measured from its first changed frame to the first clean one after it.
+  const changes = (sig.changes ?? []).filter(inside).map((x): Break => ({ ...x, by: 'scene' }));
+  if (changes.length) return changes;
   const scenes = sig.scenes.filter((t) => t >= lo && t <= hi).map((t): Break => ({ startSec: t, endSec: t, by: 'scene' }));
   if (scenes.length) return scenes;
   return sig.hasAudio

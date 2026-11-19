@@ -5,7 +5,7 @@
  */
 let mockUser: { id: string } | null = { id: 'u1' };
 const mockSignedPaths: string[] = [];
-jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { WRITE: {} } }));
+jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), checkRateLimitByKey: jest.fn(async () => null), RATE_LIMITS: { UPLOAD: {}, UPLOAD_VERIFY: {}, UPLOAD_IP: {} } }));
 jest.mock('../../../../lib/supabase/server', () => ({
   authedClientFromRequest: async () => ({ user: mockUser }),
   createServiceRoleClient: () => ({
@@ -72,4 +72,15 @@ test('no declared size (or an empty file) → 400, no token minted: every browse
   expect((await POST(req({ contentType: 'audio/mpeg', size: 0 }))).status).toBe(400);
   expect((await POST(req({ contentType: 'audio/mpeg', size: 'big' }))).status).toBe(400);
   expect(mockSignedPaths).toEqual([]);
+});
+
+test('the limit is per account (not the shared per-IP WRITE bucket), checked after auth', async () => {
+  const rl = jest.requireMock('../../../../lib/api/rate-limit') as { checkRateLimitByKey: jest.Mock };
+  rl.checkRateLimitByKey.mockClear();
+  await POST(req({ contentType: 'video/mp4', size: 1000, name: 'a.mp4' }));
+  expect(rl.checkRateLimitByKey).toHaveBeenCalledWith('u1', expect.anything());
+  rl.checkRateLimitByKey.mockClear();
+  mockUser = null;
+  await POST(req({ contentType: 'video/mp4', size: 1000 }));
+  expect(rl.checkRateLimitByKey).not.toHaveBeenCalled();
 });

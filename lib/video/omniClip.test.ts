@@ -35,7 +35,8 @@ jest.mock('../veo/vertexAuth', () => ({
 import { BudgetExceededError } from '../services/billing/guardedCall';
 import { VertexAuthError } from '../veo/vertexAuth';
 import {
-  OMNI_INPUT_VIDEO_USD_PER_SEC, OMNI_MODEL, OMNI_USD_PER_SEC, isOmniInteractionId, omniEditListUsd, omniEditRequestBody, omniRequestBody,
+  OMNI_INPUT_VIDEO_USD_PER_SEC, OMNI_LEGACY_MODEL, OMNI_MODEL, OMNI_USD_PER_SEC, isOmniInteractionId, omniEditListUsd, omniEditRequestBody, omniModel, omniModelOfJob,
+  omniRequestBody, omniUsdPerSec,
   omniMissDetail, pollOmniClip, readInteraction, submitOmniClip, submitOmniEdit,
 } from './omniClip';
 
@@ -73,9 +74,28 @@ test('the body: an image part then `<FIRST_FRAME>` and the prompt; 10 s at the p
   expect((omniRequestBody({ prompt: 'x', aspect: '16:9', resolution: '720p', seconds: 1 }).response_format as { duration: string }).duration).toBe('3s');
 });
 
-test('list prices a second: 5,792 video tokens at 720p, 8,688 at 1080p, $17.50 per 1M', () => {
-  expect(OMNI_USD_PER_SEC['720p']).toBeCloseTo(0.10136, 6);
-  expect(OMNI_USD_PER_SEC['1080p']).toBeCloseTo(0.15204, 6);
+test('list prices a second: 5,792 video tokens at 720p, 8,688 at 1080p; 1.2 Flash $12.00 per 1M, 1.1 $17.50', () => {
+  expect(OMNI_MODEL).toBe('gemini-omni-1.2-flash');
+  expect(OMNI_USD_PER_SEC['720p']).toBeCloseTo(0.069504, 6);
+  expect(OMNI_USD_PER_SEC['1080p']).toBeCloseTo(0.104256, 6);
+  expect(omniUsdPerSec('720p', OMNI_LEGACY_MODEL)).toBeCloseTo(0.10136, 6);
+  expect(omniUsdPerSec('1080p', OMNI_LEGACY_MODEL)).toBeCloseTo(0.15204, 6);
+});
+
+test('the model: 1.2 by default, 1.1 only when the rollback env names exactly it; a job id says which made a clip', () => {
+  const was = process.env.VERTEX_OMNI_MODEL;
+  try {
+    delete process.env.VERTEX_OMNI_MODEL;
+    expect(omniModel()).toBe(OMNI_MODEL);
+    process.env.VERTEX_OMNI_MODEL = ' gemini-omni-1.1-flash-preview ';
+    expect(omniModel()).toBe(OMNI_LEGACY_MODEL);
+    process.env.VERTEX_OMNI_MODEL = 'gemini-omni-9-anything';
+    expect(omniModel()).toBe(OMNI_MODEL);
+  } finally {
+    if (was === undefined) delete process.env.VERTEX_OMNI_MODEL; else process.env.VERTEX_OMNI_MODEL = was;
+  }
+  expect(omniModelOfJob(true)).toBe(OMNI_MODEL);
+  expect(omniModelOfJob(false)).toBe(OMNI_LEGACY_MODEL);
 });
 
 test('an interaction id becomes a URL segment, so only its own alphabet passes', () => {
@@ -136,7 +156,7 @@ test('reading an interaction: the model\'s clip, never the photo sent; usage num
 test('submit: one POST to the global Interactions endpoint, inside the guard at Omni\'s price; the id comes back', async () => {
   fetchMock.mockResolvedValue(json(200, { id: ID, status: 'in_progress' }));
   const r = await submitOmniClip({ prompt: 'p', aspect: '9:16', resolution: '1080p', seconds: 10, userId: 'u-1' });
-  expect(r).toEqual({ ok: true, id: ID });
+  expect(r).toEqual({ ok: true, id: ID, model: OMNI_MODEL });
   expect(fetchMock).toHaveBeenCalledTimes(1);
   const [url, init] = fetchMock.mock.calls[0]!;
   expect(url).toBe('https://aiplatform.googleapis.com/v1beta1/projects/gen-lang-client-0671348730/locations/global/interactions');
@@ -240,7 +260,9 @@ test('the edit body: the video part then the words as typed; the task; no aspect
 });
 
 test('a clip Omni made is continued by its interaction, as Google\'s Omni script does: no video, no task, its own frame', () => {
-  expect(omniEditRequestBody({ op: 'extend', prompt: 'ის კარს აღებს', previous: { id: ID, aspect: '9:16' }, seconds: 8, resolution: '1080p' })).toEqual({
+  // It stays on the model that made the clip: a 1.1 clip from before M-3 is continued on 1.1.
+  expect(omniEditRequestBody({ op: 'extend', prompt: 'x', previous: { id: ID, aspect: '9:16', model: OMNI_LEGACY_MODEL }, seconds: 8, resolution: '1080p' }).model).toBe(OMNI_LEGACY_MODEL);
+  expect(omniEditRequestBody({ op: 'extend', prompt: 'ის კარს აღებს', previous: { id: ID, aspect: '9:16', model: OMNI_MODEL }, seconds: 8, resolution: '1080p' })).toEqual({
     model: OMNI_MODEL,
     previous_interaction_id: ID,
     input: [{ type: 'text', text: 'ის კარს აღებს' }],
@@ -264,16 +286,18 @@ test('a finished interaction without a clip is described for the log: status, Go
 
 test('the edit list price: the seconds rendered and the input video\'s own tokens (5,826 a second, $1.50 per 1M)', () => {
   expect(OMNI_INPUT_VIDEO_USD_PER_SEC).toBeCloseTo(0.008739, 6);
-  expect(omniEditListUsd({ seconds: 8, inputSec: 6, resolution: '720p' })).toBeCloseTo(8 * 0.10136 + 6 * 0.008739, 6);
-  expect(omniEditListUsd({ seconds: 4, inputSec: 10, resolution: '1080p' })).toBeCloseTo(4 * 0.15204 + 10 * 0.008739, 6);
+  expect(omniEditListUsd({ seconds: 8, inputSec: 6, resolution: '720p' })).toBeCloseTo(8 * 0.069504 + 6 * 0.008739, 6);
+  expect(omniEditListUsd({ seconds: 4, inputSec: 10, resolution: '1080p' })).toBeCloseTo(4 * 0.104256 + 10 * 0.008739, 6);
   // The input is capped where the route refuses a longer one.
-  expect(omniEditListUsd({ seconds: 4, inputSec: 60, resolution: '720p' })).toBeCloseTo(4 * 0.10136 + 10.25 * 0.008739, 6);
+  expect(omniEditListUsd({ seconds: 4, inputSec: 60, resolution: '720p' })).toBeCloseTo(4 * 0.069504 + 10.25 * 0.008739, 6);
+  // A 1.1 continuation is priced at 1.1's rate.
+  expect(omniEditListUsd({ seconds: 8, inputSec: 6, resolution: '720p' }, OMNI_LEGACY_MODEL)).toBeCloseTo(8 * 0.10136 + 6 * 0.008739, 6);
 });
 
 test('edit submit: one POST inside the guard, booked as the seconds rendered at a rate that carries the input video', async () => {
   fetchMock.mockResolvedValue(json(200, { id: ID, status: 'in_progress' }));
   const r = await submitOmniEdit({ op: 'extend', prompt: 'He walks away.', video: VIDEO, inputSec: 5, seconds: 8, resolution: '720p', userId: 'u-1' });
-  expect(r).toEqual({ ok: true, id: ID });
+  expect(r).toEqual({ ok: true, id: ID, model: OMNI_MODEL });
   expect(fetchMock).toHaveBeenCalledTimes(1);
   const [url, init] = fetchMock.mock.calls[0]!;
   expect(url).toBe('https://aiplatform.googleapis.com/v1beta1/projects/gen-lang-client-0671348730/locations/global/interactions');

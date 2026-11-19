@@ -17,7 +17,7 @@ describe('switches', () => {
     for (const v of ['0', 'off', 'FALSE', ' no ']) expect(unpolledSettleEnabled({ UNPOLLED_SETTLE: v } as NodeJS.ProcessEnv)).toBe(false);
   });
   test('a row with a readable `_settle` belongs to the sweep (the age-based reaper must leave it alone)', () => {
-    expect(isSettleOwned({ params: settleParams({ kind: 'motion', job: 'p', ref: 'r', credits: 15 }) })).toBe(true);
+    expect(isSettleOwned({ params: settleParams({ kind: 'model3d', job: 'p', ref: 'r', credits: 15 }) })).toBe(true);
     expect(isSettleOwned({ params: { _reserve: { ref: 'r', credits: 15 } } })).toBe(false);
     expect(isSettleOwned({})).toBe(false);
   });
@@ -28,7 +28,7 @@ const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 function row(over: Partial<SettleRow> & { settle?: Record<string, unknown> | null } = {}): SettleRow {
   const settle = over.settle === undefined
-    ? settleParams({ kind: 'lipsync', job: 'heygen:vid-1', ref: 'avatar:lipsync:u1:user-1', credits: 20 })
+    ? settleParams({ kind: 'model3d', job: 'heygen:vid-1', ref: 'avatar:lipsync:u1:user-1', credits: 20 })
     : over.settle === null ? {} : { _settle: over.settle };
   return { id: over.id ?? 'lipsync:heygen:vid-1', user_id: over.user_id === undefined ? 'user-1' : over.user_id, status: 'processing', created_at: over.created_at ?? ago(45 * 60_000), params: over.params ?? settle };
 }
@@ -53,12 +53,14 @@ describe('readSettle — never guesses a ref, an amount or a kind', () => {
       .toEqual({ v: 1, kind: 'model3d', job: 'pred-1', ref: 'model3d:charge:j1', credits: 5 });
   });
   test.each([
-    [null], [[]], [{}], [{ _settle: null }], [{ _settle: { v: 2, kind: 'lipsync', job: 'j', ref: 'r', credits: 1 } }],
+    [null], [[]], [{}], [{ _settle: null }], [{ _settle: { v: 2, kind: 'model3d', job: 'j', ref: 'r', credits: 1 } }],
     [{ _settle: { v: 1, kind: 'film', job: 'j', ref: 'r', credits: 1 } }],
-    [{ _settle: { v: 1, kind: 'lipsync', job: '', ref: 'r', credits: 1 } }],
-    [{ _settle: { v: 1, kind: 'lipsync', job: 'j', ref: ' ', credits: 1 } }],
-    [{ _settle: { v: 1, kind: 'lipsync', job: 'j', ref: 'r', credits: 0 } }],
-    [{ _settle: { v: 1, kind: 'lipsync', job: 'j', ref: 'r', credits: '20' } }],
+    // Removed kinds (v5.1 M-14): a stray row of one is malformed, never acted on.
+    [{ _settle: { v: 1, kind: 'lipsync', job: 'j', ref: 'r', credits: 1 } }], [{ _settle: { v: 1, kind: 'motion', job: 'j', ref: 'r', credits: 1 } }],
+    [{ _settle: { v: 1, kind: 'model3d', job: '', ref: 'r', credits: 1 } }],
+    [{ _settle: { v: 1, kind: 'model3d', job: 'j', ref: ' ', credits: 1 } }],
+    [{ _settle: { v: 1, kind: 'model3d', job: 'j', ref: 'r', credits: 0 } }],
+    [{ _settle: { v: 1, kind: 'model3d', job: 'j', ref: 'r', credits: '20' } }],
   ])('rejects %j', (params) => {
     expect(readSettle(params)).toBeNull();
   });

@@ -5,7 +5,7 @@
  * What GG asked for, and what each rule below is for:
  *   · „სტანდარტული დრო 8 წამი" — one clip of 4, 6, 8 or 10 s, 8 by default; nothing grows it on its own (the old chat path
  *     guessed 16 or 24 s from the prompt's word count) and longer films are not offered here (GG's card 16:21Z, „და 10").
- *   · 4 / 6 / 8 s are Veo 3.1 (its own grid); 10 s is Gemini Omni Flash on Vertex (GG's card 16:51Z: 720p ✦69, 1080p ✦102).
+ *   · 4 / 6 / 8 s are Veo 3.1 (its own grid); 10 s is Gemini Omni Flash on Vertex (Omni 1.2, GG card 2026-11-12 14:22Z: 720p ✦47, 1080p ✦71).
  *   · „პერსონაჟებს ერთი ხმა ახმოვანებდა" (GG 2026-10-26 10:44Z) — a clip in which a character says a GEORGIAN line is
  *     Gemini Omni Flash's at every length (`speech: 'ka'`): Omni says it in that character's own voice, lips in sync. Veo
  *     cannot say Georgian, and the one Cloud TTS voice that used to be laid over its mouth spoke for every character. Its

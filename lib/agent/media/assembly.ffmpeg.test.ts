@@ -150,7 +150,7 @@ test('A + B + A: the parts cut where they really start and end, frame-exact, the
   expect([parts[1]!.startBy, parts[1]!.endBy]).toEqual(['speech', 'speech']);
   expect(q.request.shots.map((s) => [s.source, s.muted])).toEqual([[0, false], [1, false], [0, false]]);
   // The card says what was found, in Georgian by default.
-  expect(quoteText(q.quote, ['A.mp4', 'B.mp4'], 'ka')).toMatch(/ინტრო: 0–2 წმ \(.*შავი კადრით\).*ძირითადი:.*ხმით.*აუტრო:/);
+  expect(quoteText(q.quote, ['A.mp4', 'B.mp4'], 'ka')).toMatch(/ინტრო \(ვიდეო 1\): 0–2 წმ \(.*შავი კადრით\).*ძირითადი \(ვიდეო 2\):.*ხმით.*აუტრო \(ვიდეო 1\):/);
 
   const queued = await enqueueMontageJob(d, { userId: 'u', request: q.request, token: q.token });
   if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
@@ -184,6 +184,23 @@ test('A + B + A: the parts cut where they really start and end, frame-exact, the
   expect(changes.some((t) => Math.abs(t - flashAt) <= 1 / 30 + 1e-3)).toBe(true);
   expect(audits).toEqual(['quote:ok', 'run:ok:queued', 'run:ok:started', 'run:ok:delivered']);
 });
+
+test("GG's own sentence, no roles sent (the chat's path): video 2 gives the intro and the logo outro, video 1 is the body", async () => {
+  const B = file('body.mp4', makeB());
+  const A = file('bumper.mp4', makeA());
+  const store = memoryLeaseStore();
+  const d = deps(store, []);
+  const prompt = 'პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო და ბოლო ლოგოს სცენა ამოიღე და პირველი ვიდეო დაამონტაჟე სწორედ';
+  const q = await quoteMontage(d, { userId: 'u', files: [B, A], prompt });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  expect(q.quote.cutting).toBe('assembly');
+  expect(q.quote.assembly!.parts.map((p) => [p.role, p.file])).toEqual([['intro', 1], ['body', 0], ['outro', 1]]);
+  expect(q.quote.selection).toBeUndefined();
+  const queued = await enqueueMontageJob(d, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error}`);
+  const r = await workMontageJob(d, { jobId: queued.jobId, worker: 'w-gg' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+}, 120_000);
 
 test('one clip with no break inside cannot be split into intro and outro: refused, with the times as the way out', async () => {
   const out = join(dir, 'flat.mp4');

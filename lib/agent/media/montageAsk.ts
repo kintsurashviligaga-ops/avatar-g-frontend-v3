@@ -490,7 +490,19 @@ export function clipCheckPoints(request: AgentMontageRequest): ClipProbePoint[] 
     // A transition into the shot blends it with the one before: a photo is looked for just after it, never inside it.
     const prev = timeline[best.shot - 1];
     const inSec = prev ? Math.max(0, prev.outEndSec - best.outStartSec) : 0;
-    const into = item.kind === 'image' ? Math.min(inSec + STILL_QC_OFFSET_SEC, inSec + len / 4) : len / 2;
+    let into = item.kind === 'image' ? Math.min(inSec + STILL_QC_OFFSET_SEC, inSec + len / 4) : len / 2;
+    // A cutaway covers the speaker there (a split screen): the check reads the middle of the longest stretch of this
+    // shot with no cutaway over it instead. Cutaways always leave the speaker on screen between them (./insertPlan).
+    const covered = (request.inserts ?? []).filter((x) => x.endSec > best.outStartSec && x.startSec < best.outEndSec);
+    if (covered.length && item.kind === 'video') {
+      let gapStart = best.outStartSec, bestGap: [number, number] | null = null;
+      for (const x of [...covered].sort((a, b) => a.startSec - b.startSec)) {
+        if (x.startSec - gapStart > (bestGap ? bestGap[1] - bestGap[0] : 0)) bestGap = [gapStart, x.startSec];
+        gapStart = Math.max(gapStart, x.endSec);
+      }
+      if (best.outEndSec - gapStart > (bestGap ? bestGap[1] - bestGap[0] : 0)) bestGap = [gapStart, best.outEndSec];
+      if (bestGap && bestGap[1] > bestGap[0]) into = (bestGap[0] + bestGap[1]) / 2 - best.outStartSec;
+    }
     points.push({
       index: item.index, name: item.name, url: request.shots[best.shot]!.url, shot: best.shot,
       // A ramped shot shows `speed` seconds of its source per second of the master.

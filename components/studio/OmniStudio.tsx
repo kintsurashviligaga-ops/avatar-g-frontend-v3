@@ -50,7 +50,7 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
 import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { FilmQaBadge } from './FilmQaBadge';
@@ -152,6 +152,7 @@ import {
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
+import { GenTaskCard } from './GenTaskCard';
 import { SpeechTrialPanel } from './SpeechTrialPanel';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // The catalogue says which studios are live (a „მალე" tag otherwise); the tool list itself is lib/studio/tools.
@@ -189,13 +190,13 @@ import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import type { RunApproval } from '@/lib/agent/approval';
-import { beatMontageAsk, doneText, errorText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
+import { beatMontageAsk, errorText, readyText, runningText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, type ClientRun as MontageRun } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
 import { AgentRunCard } from '@/components/studio/AgentRunCard';
 import { AgentAnalyzeCard } from '@/components/studio/AgentAnalyzeCard';
-import { unplannedAsks, unplannedText } from '@/lib/agent/media/askCoverage';
+import { montageUnplanned, unplannedText } from '@/lib/agent/media/askCoverage';
 import { chainSpec, runChainAsk, runDoneText, runErrorText, runPartialText, runPlanText, runReadingText, type RunChain } from '@/lib/agent/run/runChat';
 import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, startRunClient, uploadAll } from '@/lib/agent/run/runClient';
 import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
@@ -207,12 +208,19 @@ import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, an
 import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
+import { continueGoal, openSiteAsk, openSiteGoal, pageFollowUp } from '@/lib/agent/browser/openSiteAsk';
+import { type SignedPlan } from '@/components/agent/PlanStartCard';
+import { AutoTaskCard, startsByItself } from '@/components/agent/AutoTaskCard';
+import { onSiteTaskResult, startSiteTask } from '@/components/agent/SiteAgentHost';
+import { siteAsk } from '@/lib/agent/site/siteAsk';
+import { ConnectorsButton } from '@/components/studio/ConnectorsButton';
 import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
 import { peekTask, type FollowDeps } from '@/lib/agent/media/jobFollow';
+import { watchTask } from '@/lib/agent/media/taskStream';
 import { notStartedText, persistAudio, persistEdit, persistMontage, persistRun, restoreAgentCards } from '@/lib/agent/media/cardPersist';
 import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
 import { newestWorkingCard } from '@/lib/agent/media/workingCard';
@@ -619,10 +627,7 @@ const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', st
 /** The composer's format pill, both ways: a video's orientation ⇄ the ratio label the pill shows. */
 const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portrait'> = { '9:16': 'vertical', '16:9': 'landscape', '1:1': 'square', '4:5': 'portrait' };
 
-// P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
-// with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
-// keying the singer's mouth to the master's embedded Georgian vocal. Returns the synced
-// URL or null (caller keeps the un-synced master — fail-open).
+// The film's lip-sync pass was removed in v5.1 M-14 (GG 2026-11-12); the Lip-Sync card only says it did not run.
 // PHASE 20 — LIP-SYNC OBSERVABILITY. The music-video singer-performance sync is the CORRECT
 // approach (per-shot HeyGen close-ups composited into the montage — NOT whole-master
 // sync/lipsync-2, which warps wide shots and was reverted twice: 8d72d47 reverts 64a9c93 +
@@ -631,7 +636,7 @@ const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portr
 // was the real "lips don't track the vocal" symptom. These short localized lines surface WHY
 // on the Director's Console Lip-Sync card so a skip is never mysterious.
 type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'no_credits' | 'short_result' | 'no_clips' | 'composite_failed' | 'not_requested';
-/** `saved` — the lip-sync job itself delivered (and was charged): /api/video/lipsync filed that clip in the Library, so the
+/** `saved` — the lip-sync job itself delivered (and was charged): the old lip-sync route filed that clip in the Library, so the
  *  line says where the paid clip went when the montage around it could not use it. */
 function lipsyncSkipReason(reason: LipSkipReason, locale: string, opts: { saved?: boolean } = {}): string {
   const M: Record<LipSkipReason, { en: string; ru: string; ka: string }> = {
@@ -649,227 +654,6 @@ function lipsyncSkipReason(reason: LipSkipReason, locale: string, opts: { saved?
   const line = locale === 'ru' ? m.ru : locale === 'ka' ? m.ka : m.en;
   if (!opts.saved) return line;
   return `${line} · ${locale === 'ru' ? 'клип с липсинком сохранён в Библиотеке' : locale === 'ka' ? 'ლიპსინკის კლიპი ბიბლიოთეკაშია' : 'the lip-synced clip is in your Library'}`;
-}
-
-/**
- * One /api/video/lipsync job, start to end: the clip's URL, or null on any miss (fail-open). The route reserves the
- * avatar price when it hands out a job id and refunds it when the render fails, so the header balance is re-read at
- * both ends; a 402 comes back as `noCredits` (nothing was charged) so the card names the balance, not the engine.
- */
-type LipsyncOutcome = { url: string | null; noCredits?: boolean };
-async function runLipsyncJob(body: Record<string, unknown>, signal: AbortSignal, mine: () => boolean): Promise<LipsyncOutcome> {
-  const balanceMoved = () => { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } };
-  let jobId: string | null = null;
-  try {
-    const r = await fetch('/api/video/lipsync', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      credentials: 'include', signal,
-    });
-    const j = (await r.json().catch(() => ({}))) as { jobId?: string | null; code?: string };
-    if (r.status === 402 || j.code === 'insufficient_credits') return { url: null, noCredits: true };
-    jobId = j.jobId ?? null;
-  } catch { return { url: null }; }
-  if (!jobId) return { url: null };
-  balanceMoved();
-  try {
-    for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
-      await new Promise((res) => setTimeout(res, 6000));
-      try {
-        const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
-        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-        if (pj.done) return { url: pj.url ?? null };
-      } catch { /* transient poll error — keep polling */ }
-    }
-    return { url: null };
-  } finally {
-    balanceMoved(); // a failed render was refunded by the poll that saw it
-  }
-}
-
-// MUSIC-VIDEO lip-sync — generate a clean HeyGen SINGER PERFORMANCE: a close-up storyboard
-// face lip-synced to the song's vocal (the talking-photo path, which tries HeyGen first).
-// This replaces the old whole-master relip (sync/lipsync-2 warped the montage's wide/aerial
-// shots). Fail-open: a miss returns url null so the caller just omits the companion clip.
-function heygenSingerPerformance(faceUrl: string, audioUrl: string, orientation: 'landscape' | 'vertical', signal: AbortSignal, mine: () => boolean): Promise<LipsyncOutcome> {
-  // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the
-  // vocal. `characterRef` (the CLEAN portrait) is the preferred face — HeyGen needs a
-  // front-facing portrait, not a stylized scene frame.
-  return runLipsyncJob({ videoUrl: faceUrl, characterRef: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }, signal, mine);
-}
-
-// Stage 2b — COMPOSITE the HeyGen close-ups INTO the cinematic montage. Face-forward beats
-// (Medium / Arc / Close-Up) take a 5s window of the continuous HeyGen performance at their
-// timeline position (so lips match the song there); wide beats (Establishing / Wide / Reso-
-// lution) keep the cinematic LTX clip. Re-assembles with the SONG as the master audio.
-// Fail-open: a miss returns null and the caller keeps the cinematic + companion clips.
-async function compositeMusicVideo(
-  heygenUrl: string,
-  matrix: FilmStudioMatrix,
-  storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
-  musicUrl: string,
-  orientation: 'landscape' | 'vertical',
-  transition: Transition,
-  signal: AbortSignal,
-  mine: () => boolean,
-  filmTokenId: string | null,
-): Promise<string | null> {
-  try {
-    // The film's REAL per-scene length (4–8s). A hardcoded 8 here made the re-stitch declare 8s segments
-    // for a film rendered on a 6s grid, and the assembler then pad-froze 2s of every clip (tpad clone) —
-    // 8s of frozen frames in a 24s film. Older tokens carry no clipSec → the 8s default, as before.
-    const clipSec = matrix.clipSec ?? FILM_CLIP_SEC;
-    const ltxByOrd = new Map<number, string>();
-    for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
-    const beatByOrd = new Map<number, string>();
-    for (const s of storyboardScenes ?? []) beatByOrd.set(s.ordinal, (s.beat ?? '').toLowerCase());
-    const ordinals = [...ltxByOrd.keys()].sort((a, b) => a - b);
-    if (ordinals.length < 2) return null;
-    const FACE = /close|medium|arc/;
-    const segs: { url: string; durationSec: number }[] = [];
-    for (const ord of ordinals) {
-      // Keep the cinematic INTRO (drone over the city → into the venue: scenes 1-2 of a
-      // 4+ scene music video) as the LTX clip — never lip-sync a shot with no singer.
-      const isIntro = ordinals.length >= 4 && ord <= 2;
-      const isFace = !isIntro && FACE.test(beatByOrd.get(ord) ?? '');
-      let url = ltxByOrd.get(ord) as string;
-      if (isFace && mine()) {
-        try {
-          const r = await fetch('/api/video/trim', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-            body: JSON.stringify({ videoUrl: heygenUrl, startSec: (ord - 1) * clipSec, durationSec: clipSec }),
-          });
-          const seg = ((await r.json().catch(() => ({}))) as { url?: string | null }).url ?? null;
-          if (seg) url = seg; // else keep the LTX clip for this scene
-        } catch { /* keep LTX */ }
-      }
-      segs.push({ url, durationSec: clipSec });
-    }
-    if (segs.length < 2 || !mine()) return null;
-    const r = await fetch('/api/video/assemble', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-      body: JSON.stringify({
-        segments: segs,
-        musicUrl,
-        musicVideoMode: true,
-        // Re-stitch of an already-billed film → same token so assemble skips the second charge.
-        ...(filmTokenId ? { filmTokenId } : {}),
-        ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
-        ...(transition ? { globalRender: { transition } } : {}),
-      }),
-    });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { url?: unknown } | null;
-    return j && typeof j.url === 'string' && j.url.length > 0 ? j.url : null;
-  } catch {
-    return null;
-  }
-}
-
-// DOCUMENTARY talking head — lip-sync the CLEAN portrait to the spoken DIALOGUE. Same
-// talking-photo engine as the singer (HeyGen first), but the audio is ElevenLabs TTS of the
-// dialogue text in the narrator gender — the route's `text`+`gender` path does the TTS
-// internally, so the returned clip already carries the narration in its audio track.
-// Fail-open: any miss → null.
-function heygenSpeakingHead(
-  portrait: string,
-  dialogue: string,
-  gender: 'male' | 'female',
-  orientation: 'landscape' | 'vertical',
-  signal: AbortSignal,
-  mine: () => boolean,
-): Promise<LipsyncOutcome> {
-  // No `kind:'film'` → talking-photo (HeyGen first) animates the portrait. `text`+`gender`
-  // → the route synthesizes the narrator voice (ElevenLabs) and keys the mouth to it.
-  return runLipsyncJob({ characterRef: portrait, videoUrl: portrait, text: dialogue, gender, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }, signal, mine);
-}
-
-// DOCUMENTARY composite — narrate the film in the character's OWN voice + face. Mirrors
-// compositeMusicVideo, but: (1) the audio source is the spoken DIALOGUE (not a song vocal),
-// (2) ElevenLabs TTS of that dialogue drives the lip-sync (narrator gender per the panel),
-// (3) the CLEAN portrait is lip-synced via talking-photo, (4) the talking head is composited
-// at the CLOSE-UP beat (cameraShot 'close-up' / beat /close/) — (5) or scene 3 by default if
-// no close-up exists. The talking-head clip carries the narration, so we re-assemble with that
-// clip itself as the master audio bed (ffmpeg maps its audio stream) → the documentary is
-// narrated in the synced voice. Fail-open: any miss → null and the caller keeps the base master.
-/** compositeDocumentary's answer when the lip-sync was refused for the balance (never a URL: those are https). */
-const NO_LIPSYNC_CREDITS = 'no_credits' as const;
-async function compositeDocumentary(
-  portrait: string,
-  matrix: FilmStudioMatrix,
-  storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
-  dialogue: string,
-  gender: 'male' | 'female',
-  orientation: 'landscape' | 'vertical',
-  transition: Transition,
-  signal: AbortSignal,
-  mine: () => boolean,
-  filmTokenId: string | null,
-): Promise<string | null | typeof NO_LIPSYNC_CREDITS> {
-  try {
-    // 1+2+3. ElevenLabs TTS of the dialogue + lip-sync the CLEAN portrait to it (talking-photo).
-    const head = await heygenSpeakingHead(portrait, dialogue, gender, orientation, signal, mine);
-    if (head.noCredits) return NO_LIPSYNC_CREDITS;
-    const talkingHead = head.url;
-    if (!talkingHead || !mine()) return null;
-
-    // 4+5. Choose the scene that hosts the talking head: a CLOSE-UP beat, else scene 3, else
-    // the middle scene of the montage.
-    const ltxByOrd = new Map<number, string>();
-    for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
-    const beatByOrd = new Map<number, string>();
-    for (const s of storyboardScenes ?? []) beatByOrd.set(s.ordinal, (s.beat ?? '').toLowerCase());
-    const ordinals = [...ltxByOrd.keys()].sort((a, b) => a - b);
-    if (ordinals.length < 2) return null;
-    const closeUpOrd =
-      ordinals.find((o) => /close/.test(beatByOrd.get(o) ?? '')) ??
-      (ordinals.includes(3) ? 3 : ordinals[Math.min(2, ordinals.length - 1)]);
-
-    // Swap the close-up scene's cinematic clip for the talking head; keep every other scene.
-    // durationSec must be the film's REAL grid (4–8s) or the assembler pad-freezes every clip up to 8s.
-    const segs: { url: string; durationSec: number }[] = ordinals.map((ord) => ({
-      url: ord === closeUpOrd ? talkingHead : (ltxByOrd.get(ord) as string),
-      durationSec: matrix.clipSec ?? FILM_CLIP_SEC,
-    }));
-    if (segs.length < 2 || !mine()) return null;
-
-    // Re-assemble the documentary — the talking-head clip is the master audio bed so the film
-    // is narrated in the synced voice (NOT musicVideoMode → narration-forward documentary mix).
-    const r = await fetch('/api/video/assemble', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-      body: JSON.stringify({
-        segments: segs,
-        musicUrl: talkingHead,
-        // Re-stitch of an already-billed film → same token so assemble skips the second charge.
-        ...(filmTokenId ? { filmTokenId } : {}),
-        ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
-        ...(transition ? { globalRender: { transition } } : {}),
-      }),
-    });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { url?: unknown } | null;
-    return j && typeof j.url === 'string' && j.url.length > 0 ? j.url : null;
-  } catch {
-    return null;
-  }
-}
-
-// Reject a lip-sync result that isn't a sane full-length master (e.g. a 5s talking-head
-// SadTalker mangled from a multi-shot film) so a good 30s master is never replaced by
-// garbage. Resolves false on any load error/timeout.
-function videoDurationAtLeast(url: string, minSec: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof document === 'undefined') { resolve(false); return; }
-    try {
-      const v = document.createElement('video');
-      v.preload = 'metadata';
-      v.muted = true;
-      const to = setTimeout(() => resolve(false), 12000);
-      v.onloadedmetadata = () => { clearTimeout(to); resolve(Number.isFinite(v.duration) && v.duration >= minSec); };
-      v.onerror = () => { clearTimeout(to); resolve(false); };
-      v.src = url;
-    } catch { resolve(false); }
-  });
 }
 
 // P10 — best-effort client preview of which scenes a remix edit will re-render
@@ -1149,6 +933,10 @@ interface FilmSnap {
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Persisted with the clip (here and in its saved row): the chat opened again continues it too. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; /** A PDF Agent G wrote (app/api/documents/create): its link, storage path, file name and facts (pages · size). Persisted when the link is https (a device-only blob: copy is not). */ docUrl?: string; docPath?: string; docName?: string; docInfo?: string; /** The PDF is being written now: a spinner and the seconds so far, no reply buttons (GG 2026-10-31 11:23Z). Never persisted. */ docWorking?: number; engine?: string;
+  /** A browser plan Agent G signed for an „open this site" ask typed in the chat (lib/agent/browser/openSiteAsk): its Start card; nothing opens before Start. Never persisted. */
+  browserPlan?: SignedPlan;
+  /** The task Agent G carries on its own once started (components/agent/AutoTaskCard). Never persisted. */
+  browserGoal?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -2514,6 +2302,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
   // render can be retried in one click without the user re-typing or re-uploading.
+  /**
+   * When each image / music / video / avatar bubble started and ended, as this tab watched it: the clock of its
+   * timeline card (components/studio/GenTaskCard). Keyed by the bubble's id (its index when it has none). A bubble
+   * this tab did not watch (a reopened chat) shows its result with no card.
+   */
+  const genClockRef = useRef(new Map<string, { from: number; to?: number }>());
+  const genClock = (key: string, live: boolean): { from: number; to?: number } | null => {
+    const map = genClockRef.current;
+    let c = map.get(key);
+    if (!c) {
+      if (!live) return null;
+      c = { from: Date.now() };
+      map.set(key, c);
+    } else if (!live && c.to === undefined) {
+      c = { ...c, to: Date.now() };
+      map.set(key, c);
+    }
+    return c;
+  };
   const lastVideoReqRef = useRef<{ filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' } | null>(null);
   // When the current generation started: a foreground film stamps its log lines against it.
   const genStartRef = useRef(0);
@@ -2586,7 +2393,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [voiceRecSec, setVoiceRecSec] = useState(0);
   // Trained RVC voice (faithful) — set by the in-chat VoiceTrainer once a model is ready,
   // and a toggle to sing with it instead of a one-shot upload.
-  const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
+  // RVC voice training was removed (v5.1 M-14, GG 2026-11-12): no user has a trained voice, so its toggles never show.
+  const hasTrainedVoice: boolean = false;
   const [useMyVoice, setUseMyVoice] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
   // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
@@ -3063,12 +2871,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // DAY-6 — an optional full TIMECODED Master Production Script (SCENE/VOICE/DIALOGUE sheets). When filled it
   // drives the structured storyboard + multi-voice casting (parseMasterScript) instead of the single-prompt path.
   const [videoMasterScript, setVideoMasterScript] = useState('');
-  // P1 — Music Video: after the master assembles, sync the singer's mouth to the
-  // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
-  // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
-  // (prediction q9m5k5nexdrmr0cyyhnt2ca090, ~113s, output mp4). Default ON; fail-open
-  // to the un-synced master if anything misses.
-  const [videoLipsync] = useState(true);
+  // The film's lip-sync pass (HeyGen / sync on Replicate) was removed in v5.1 M-14 (GG 2026-11-12): always off.
+  const videoLipsync = false;
   // PHASE 2 L6 — Smart ducking (default ON): in documentary mode the music bed
   // auto-ducks under the dialogue via the assembler's 3-track sidechain. The slider
   // sets the duck depth (−6…−18 dB). Only affects films that carry voice + music +
@@ -4183,22 +3987,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         finalUrl = url;
         patchFilmBubbleBy((m) => !!m && m.role === 'assistant' && !!m.videoUrl, (m) => ({ ...m, videoUrl: url }));
       };
-      // A CLEAN front-facing face for any talking-head lip-sync — HeyGen's talking_photo
-      // needs a clear portrait, not a stylized scene frame (that was the null bug). Prefer
-      // the threaded anchor/selfie; generate one on-demand; last resort a close scene frame.
-      const resolveCleanFace = async (): Promise<string | null> => {
-        if (characterPortrait && /^https?:/i.test(characterPortrait)) return characterPortrait;
-        if (mine()) {
-          try {
-            const sc = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
-            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true, musicVideoMode: isMusicVideo }) });
-            const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
-            if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
-          } catch { /* fall through */ }
-        }
-        return (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
-          ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
-      };
       // Patch the Lip-Sync card on whichever bubble carries the Director's Console roster.
       // PHASE 20 — accepts an optional `note` (a localized reason) so a skip is never silent:
       // the reason lands on the card AND a console breadcrumb, turning the old mysterious
@@ -4214,99 +4002,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // GRAPHICS INPUT — defaults to the base master so the Graphics agent ALWAYS runs, even
       // when Lip-Sync is skipped (FIX 1: never break the graphics chain). Each lip-sync leg
       // below upgrades it to the lip-synced video.
-      let graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
+      const graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
       if (res.ok && res.masterUrl && mine()) {
-        // PHASE 22 (VECTOR 3) — PRE-FLIGHT HeyGen HEALTH GATE. Both lip-sync legs below drive HeyGen
-        // (talking_photo). If the key is expired/credit-blocked/throttled, HeyGen accepts the create
-        // then stalls, and the client polls ~8 min before giving up — a silent freeze. A cached,
-        // fail-open readiness probe lets us skip that doomed poll and surface a reason in ~ms instead.
-        // Only a DEFINITIVE {ok:false} blocks (see heygenHealthCheck); any flaky/uncertain result lets
-        // the render proceed exactly as before.
-        let heygenReady = true;
-        if (wantsLipsync) {
-          try {
-            const hr = await fetch('/api/video/lipsync?health=heygen', { credentials: 'include', signal });
-            const hj = (await hr.json().catch(() => ({}))) as { ok?: boolean };
-            heygenReady = hj?.ok !== false;
-          } catch { /* fail-open — a failed health check never blocks a render */ }
-        }
-        if (wantsLipsync && !heygenReady) {
-          patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
-        } else if (isMusicVideo && wantsLipsync && res.musicUrl) {
-          // MUSIC VIDEO → the singer-performance sync (close-up HeyGen head composited into the
-          // montage). PHASE 20: staged so every bail surfaces WHICH step failed (the render was
-          // shipping un-synced lips with a bare "skipped"). Still fail-open → base master + graphics.
-          patchLipsyncCard('processing');
-          const songUrl: string = res.musicUrl;
-          let vocalForSync: string = songUrl;
-          try {
-            const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
-            const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
-            if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
-            else { try { console.info('[lipsync] isolate: no vocalUrl → syncing to the full mix'); } catch { /* ignore */ } }
-          } catch { try { console.info('[lipsync] isolate failed → syncing to the full mix'); } catch { /* ignore */ } }
-          // #1 root cause of un-synced lips: no clean face → HeyGen never runs. Surface it (and
-          // hint the fix: attach a reference photo) instead of a silent skip over the wide montage.
-          const face = await resolveCleanFace();
-          if (!face) {
-            patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
-          } else {
-            const sung = await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine);
-            const perf = sung.url;
-            if (sung.noCredits) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('no_credits', locale));
-            } else if (!perf) {
-              // HeyGen returned nothing (no provider key / credit block / timeout / down).
-              patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
-            } else if (!(await videoDurationAtLeast(perf, 8))) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('short_result', locale, { saved: true }));
-            } else if (!res.matrix || !mine()) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale, { saved: true }));
-            } else {
-              const composited = await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine, res.filmTokenId ?? null);
-              if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
-              else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale, { saved: true })); }
-            }
-          }
-        } else if (isMusicVideo && wantsLipsync && !res.musicUrl) {
-          // Music video wanted lip-sync but no song track landed → nothing to sync the mouth to.
-          patchLipsyncCard('skipped', lipsyncSkipReason('no_song', locale));
-        } else if (!isMusicVideo && wantsLipsync) {
-          // DOCUMENTARY with dialogue → compositeDocumentary: ElevenLabs TTS of the dialogue
-          // drives a talking-photo lip-sync of the CLEAN portrait, composited into the montage
-          // at the close-up beat (or scene 3), narrated in the synced voice. Replaces the old
-          // video-input sync/lipsync-2 pass (which warped the multi-shot master, returning null
-          // on a montage with no consistent on-screen head). Fail-open → base master + graphics.
-          // PHASE 22 (VECTOR 2) — staged like the music-video branch so a documentary skip is NEVER
-          // a bare "skipped": surface no_face (resolveCleanFace null) / no_clips / composite_failed.
-          patchLipsyncCard('processing');
-          const face = await resolveCleanFace();
-          if (!face) {
-            patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
-          } else if (!res.matrix || !mine()) {
-            patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale));
-          } else {
-            const composited = await compositeDocumentary(
-              face,
-              res.matrix,
-              storyboardScenes,
-              videoSpeech.trim(),
-              videoVocalGender === 'male' ? 'male' : 'female',
-              orientation === 'vertical' ? 'vertical' : 'landscape',
-              videoTransition,
-              signal,
-              mine,
-              res.filmTokenId ?? null,
-            );
-            if (composited === NO_LIPSYNC_CREDITS) { patchLipsyncCard('skipped', lipsyncSkipReason('no_credits', locale)); }
-            else if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
-            else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale)); }
-          }
-        } else {
-          // PHASE 22 (VECTOR 2) — the not-wanted fallthrough (lip-sync toggle off, or documentary with
-          // no dialogue): say so explicitly instead of a bare, ambiguous "skipped".
-          patchLipsyncCard('skipped', lipsyncSkipReason('not_requested', locale));
-        }
+        // The lip-sync pass (HeyGen talking photo / sync on Replicate) was removed in v5.1 M-14 (GG 2026-11-12): the
+        // film keeps its master, and the card says the pass did not run.
+        patchLipsyncCard('skipped', lipsyncSkipReason('not_requested', locale));
       }
 
       // ── GRAPHICS AGENT — a MUSIC VIDEO's overlay, on graphicsInput (lip-synced if it ran, else base master).
@@ -6115,7 +5815,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => { mountedRef.current = false; };
   }, []);
   const newAgentMontageBubble = useCallback((text: string, files: Media[]): Msg => ({
-    role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale),
+    role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale, files.map((f) => f.name ?? '')),
     montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? ''), uploaded: 0, t0: Date.now() },
   }), [locale]);
   // A plan changed in the chat is quoted again with the same files: each one already uploaded is not sent twice.
@@ -6149,7 +5849,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // A card stopped while it read its files (the composer's Stop) stays stopped: the plan that came back is dropped.
     patchMsgById(id, (m) => (m.montage?.phase !== 'reading' ? m : r.ok
       // The plan in words, and what the words asked that it leaves out, by name (lib/agent/media/askCoverage).
-      ? { ...m, text: [quoteText(r.quote, names, locale), unplannedText(unplannedAsks(text), locale)].filter(Boolean).join('\n'), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
+      ? { ...m, text: [quoteText(r.quote, names, locale), unplannedText(montageUnplanned(text, r.quote.cutting === 'assembly'), locale)].filter(Boolean).join('\n'), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
       : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names, r.detail)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, patchMsgById, uploaderOnce]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
@@ -6304,9 +6004,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         .filter((x) => x && typeof x.url === 'string' && /^https?:\/\//i.test(x.url)).slice(0, 8)
         .map((x) => ({ url: x.url, ...(typeof x.title === 'string' && x.title.trim() ? { title: x.title.trim().slice(0, 120) } : {}) }));
       const plan = agentAudioPlanOf(d.audioQuote);
+      // A browser plan from the call (GG 2026-11-07 07:38Z, „ვერ ხსნის და არ აკლიკებს"): its Start card, as a typed ask's.
+      const bq = d.browserQuote as Partial<SignedPlan> | undefined;
+      const browserPlan: SignedPlan | undefined = bq && typeof bq === 'object' && typeof bq.token === 'string' && bq.token
+        && bq.quote && typeof bq.quote === 'object' ? (bq as SignedPlan) : undefined;
       const head = locale === 'en' ? 'Agent G (from the voice call):' : locale === 'ru' ? 'Agent G (из голосового звонка):' : 'Agent G (ხმოვანი ზარიდან):';
       const add: Msg[] = [];
-      if (answer) add.push({ role: 'assistant', text: `**${head}**\n\n${answer}`, ...(sources.length ? { sources } : {}) });
+      if (answer || browserPlan) {
+        const words = answer || (locale === 'en' ? 'The plan is ready. Press Start to open the page.' : locale === 'ru' ? 'План готов. Нажмите «Старт», чтобы открыть страницу.' : 'გეგმა მზადაა. გვერდის გასახსნელად დააჭირეთ „დაწყებას".');
+        add.push({ role: 'assistant', text: `**${head}**\n\n${words}`, ...(sources.length ? { sources } : {}), ...(browserPlan ? { browserPlan, browserGoal: d.task } : {}) });
+      }
       if (plan) {
         add.push({
           role: 'assistant', id: `aga-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: audioQuoteText(plan.quote, locale),
@@ -8316,23 +8023,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
   useMicRelease(() => { if (voiceStreamRef.current) stopVoiceRecording(); }, 'music');
 
-  // Detect an existing TRAINED voice model (RVC) so the Music panel can surface a
-  // "sing in my trained voice" toggle. GET /api/voice/train reports the user's model
-  // status; 'completed' means a faithful RVC model is ready (the same probe VoiceTrainer
-  // uses). Fail-open — on any error the toggle simply never appears, and the one-shot
-  // upload/record voice-CLONE path (music-01) still works without it.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch('/api/voice/train', { credentials: 'include' });
-        const j = (await r.json().catch(() => ({}))) as { status?: string };
-        if (alive && j.status === 'completed') setHasTrainedVoice(true);
-      } catch { /* fail-open — no trained-voice toggle */ }
-    })();
-    return () => { alive = false; };
-  }, []);
-
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).
   // Chat can send on text OR attachments alone; the generative modes need a text
@@ -8604,11 +8294,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'prepare_generation': {
-        // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
-        if (d.tool === 'presentation' || d.tool === 'model3d') {
+        // A deck: the studio panel opens with the topic filled in (its own Create runs it). 3D is off (GG 2026-11-13).
+        if (d.tool === 'presentation') {
           selectTool(d.tool, 'voice');
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
-          reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          reply({ ok: true, tool: d.tool, applied: { topic: true } });
           return true;
         }
         // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".
@@ -9265,17 +8955,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
     now: () => Date.now(),
     alive: () => mountedRef.current,
+    // The job's live stream: each step change reaches the card at once (app/api/tasks/stream); polling without it.
+    watch: (jobId) => watchTask(jobId, { lang: locale }),
     onProgress,
-  }), []);
+  }), [locale]);
   const montageProgress = useCallback((id: string): FollowDeps['onProgress'] => (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
     // The stage is kept even while a Stop is on its way: the card marks the step the edit stops on.
-    ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
-    : m)), [patchMsgById]);
+    ? {
+      ...m,
+      // The bubble narrates the step it is on under the plan (lib/agent/media/montageChat runningText).
+      ...(stage && stage !== m.montage.stage ? { text: runningText(m.montage.quote, m.montage.names, stage, locale) } : {}),
+      montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) },
+    }
+    : m)), [locale, patchMsgById]);
   // The run's end in this bubble: the master and its shape, or why it stopped. `resumed`: the card was taken back after
   // a reload, so a job the server never saw means its run never got through (nothing was charged).
   const settleAgentMontage = useCallback((id: string, r: MontageRun & { endedAt?: number }, resumed = false) => {
     if (r.ok) {
-      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || m.montage?.quote?.totalSec || 0, locale, m.montage?.quote?.sound), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
+      patchMsgById(id, (m) => ({ ...m, text: readyText(m.montage?.quote, m.montage?.names, r.durationSec || m.montage?.quote?.totalSec || 0, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     } else {
       const stopped = r.code === 'cancelled';
@@ -9288,7 +8985,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
     montageRunsRef.current.add(id);
     cardFollowsRef.current.add(id);
-    patchMsgById(id, (m) => ({ ...m, text: stageText(null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
+    patchMsgById(id, (m) => ({ ...m, text: runningText(m.montage?.quote, m.montage?.names, null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
     try {
       const r = await runAgentMontage(followDeps(montageProgress(id)), { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
       settleAgentMontage(id, r);
@@ -9451,6 +9148,82 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ? { ...m, text: runPlanText(chain, { names, credits: r.plan.credits, editsText: chainEditsText(chain, locale) }, locale), runJob: { ...m.runJob!, phase: 'planned', plan: r.plan, spec: r.spec, token: r.token } }
       : { ...m, text: `⚠️ ${runErrorText(r.code, locale)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, newAgentRunBubble, patchMsgById, persistChatTurn, uploaderOnce]);
+  // „გახსენი youtube" in the chat (lib/agent/browser/openSiteAsk): is the browser open to this user? Asked once; the route
+  // answers { enabled } for everyone (never 404), and a failed read keeps the ask in the chat as before.
+  const browserOnRef = useRef(false);
+  // Where the last browser run in this chat ended (AutoTaskCard onFinish): a follow-up („ახლა ეს დააკლიკე") goes on from it.
+  const lastBrowserRef = useRef<{ url: string; at: number } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/agent/browser/run', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { enabled?: unknown } | null) => { if (live) browserOnRef.current = j?.enabled === true; })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  // Agent G on myavatar.ge itself (GG 2026-11-07 09:36Z: „move the cursor on the site and do everything"): is it open to this
+  // user? Then an ask like „გადადი ბიბლიოთეკაში და გადმოწერე ბოლო ვიდეო" runs in this tab (components/agent/SiteAgentHost);
+  // its answer comes back here as Agent G's message.
+  const siteOnRef = useRef(false);
+  const siteMsgRef = useRef<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/agent/site/step', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { enabled?: unknown } | null) => { if (live) siteOnRef.current = j?.enabled === true; })
+      .catch(() => {});
+    const off = onSiteTaskResult((r) => {
+      const id = siteMsgRef.current;
+      siteMsgRef.current = null;
+      const text = r.answer || (r.reason === 'user'
+        ? (locale === 'en' ? 'Stopped.' : locale === 'ru' ? 'Остановлено.' : 'შევაჩერე.')
+        : (locale === 'en' ? '⚠️ Agent G could not finish this on the page.' : locale === 'ru' ? '⚠️ Agent G не смог закончить это на странице.' : '⚠️ Agent G-მ ეს გვერდზე ვერ დაასრულა.'));
+      if (id) patchMsgById(id, (m) => ({ ...m, text, docWorking: undefined }));
+      else setMessages((prev) => [...prev, { role: 'assistant', text, notice: true }]);
+      persistChatTurn('assistant', text);
+    });
+    return () => { live = false; off(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
+  const runSiteAsk = useCallback((text: string, viaVoice: boolean) => {
+    const id = `agent-site-${Date.now()}`;
+    siteMsgRef.current = id;
+    const working = locale === 'en' ? 'On it — working on this page; the steps are on the right.' : locale === 'ru' ? 'Начинаю — работаю на этой странице, шаги справа.' : 'ვიწყებ — ამ გვერდზე ვმუშაობ, ნაბიჯები მარჯვნივ ჩანს.';
+    setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', id, text: working, notice: true, docWorking: Date.now() }]);
+    persistChatTurn('user', text);
+    startSiteTask(text);
+  }, [locale, persistChatTurn]);
+  // Agent G plans the open-site ask (POST /api/agent/run: free, opens nothing); its signed browser plan becomes the Start card
+  // under its reply. Without a plan its words are the answer (it may say why), never a claim that the page was opened.
+  const planBrowserAsk = useCallback(async (text: string, goal: string, viaVoice: boolean) => {
+    const id = `agent-browser-${Date.now()}`;
+    const planning = locale === 'en' ? 'Agent G is planning the browser steps…' : locale === 'ru' ? 'Agent G планирует шаги браузера…' : 'Agent G ბრაუზერის ნაბიჯებს გეგმავს…';
+    // A spinner and the seconds so far while Agent G plans (GG 2026-11-07 07:47Z: it looked as if nothing happened).
+    setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', id, text: planning, notice: true, docWorking: Date.now() }]);
+    persistChatTurn('user', text);
+    let reply: string;
+    let plan: SignedPlan | undefined;
+    try {
+      const res = await fetch('/api/agent/run', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal, maxSteps: 6 }),
+      });
+      const body = (await res.json().catch(() => null)) as { answer?: unknown; browserQuote?: SignedPlan } | null;
+      plan = body?.browserQuote && typeof body.browserQuote.token === 'string' ? body.browserQuote : undefined;
+      const answer = typeof body?.answer === 'string' ? body.answer.trim() : '';
+      // A plan that costs the user nothing starts by itself (GG 2026-11-07 08:30Z, Manus): the model's „press Start" is not shown.
+      const starts = !!plan && startsByItself(plan);
+      reply = starts
+        ? (locale === 'en' ? 'On it — the steps are below as I work.' : locale === 'ru' ? 'Начинаю — шаги видны ниже по ходу работы.' : 'ვიწყებ — ნაბიჯები ქვემოთ ჩანს, სანამ ვმუშაობ.')
+        : answer || (plan
+        ? (locale === 'en' ? 'The plan is ready. Press Start to open the page.' : locale === 'ru' ? 'План готов. Нажмите «Старт», чтобы открыть страницу.' : 'გეგმა მზადაა. გვერდის გასახსნელად დააჭირეთ „დაწყებას".')
+        : (locale === 'en' ? '⚠️ Agent G could not plan the browser steps. Try again.' : locale === 'ru' ? '⚠️ Agent G не смог спланировать шаги браузера. Попробуйте ещё раз.' : '⚠️ Agent G-მ ბრაუზერის ნაბიჯები ვერ დაგეგმა. სცადეთ თავიდან.'));
+    } catch {
+      reply = locale === 'en' ? '⚠️ Agent G could not be reached.' : locale === 'ru' ? '⚠️ Agent G недоступен.' : '⚠️ Agent G-სთან კავშირი ვერ დამყარდა.';
+    }
+    patchMsgById(id, (m) => ({ ...m, text: reply, docWorking: undefined, ...(plan ? { browserPlan: plan, browserGoal: text } : {}) }));
+    persistChatTurn('assistant', reply);
+  }, [locale, patchMsgById, persistChatTurn]);
   // Follow one run to its end on this card. Each read is the run as the server has it; the card draws nothing itself.
   const followAgentRun = useCallback(async (id: string, runId: string, events?: RunEvent[]) => {
     runFollowRef.current.set(id, runId);
@@ -9461,6 +9234,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       now: () => Date.now(),
       // A studio no longer on screen stops too: the one that replaced it (a language switch) follows the run itself.
       stopped: () => !mountedRef.current || runFollowRef.current.get(id) !== runId,
+      watch: (rid, after) => watchTask(rid, { lang: locale, ...(after !== undefined ? { after } : {}) }),
       onTask: (task, evs) => patchMsgById(id, (m) => (mine(m) && m.runJob ? { ...m, runJob: { ...m.runJob, task, events: evs } } : m)),
     }, runId, events ? { events } : {});
     if (!end.ok && end.code === 'stopped') return;
@@ -9831,7 +9605,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (m.montage) {
         const c = m.montage;
         const own = cardOwnsJob(c); if (own) owned.add(own);
-        const stage = c.phase === 'running' ? stageText(c.stage ?? null, locale) : c.phase === 'reading' ? readingText(locale) : null;
+        const stage = c.phase === 'running' ? stageText(c.stage ?? null, locale) : c.phase === 'reading' ? readingText(locale, c.names) : null;
         cards.push({ id: m.id, kind: 'montage', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping, prompt: c.prompt });
       } else if (m.audioJob) {
         const c = m.audioJob;
@@ -9887,6 +9661,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
     };
+    // „გახსენი youtube" (GG 2026-11-07 06:58Z): the chat model has no browser, so an open-site ask goes to Agent G, which
+    // plans the steps and puts its Start card here. Only for whoever the browser is open to; nothing opens before Start.
+    if (siteOnRef.current && attachments.length === 0 && siteAsk(text)) {
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      runSiteAsk(text, viaVoice);
+      return true;
+    }
+    const openAsk = browserOnRef.current && attachments.length === 0 ? openSiteAsk(text) : null;
+    // A follow-up on the page the last run ended on (within 20 minutes): Agent G goes on from there, not from nothing.
+    const last = lastBrowserRef.current;
+    const onPage = !openAsk && browserOnRef.current && attachments.length === 0 && last && Date.now() - last.at < 20 * 60_000 && pageFollowUp(text) ? last : null;
+    if (openAsk || onPage) {
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      void planBrowserAsk(text, onPage ? continueGoal(text, onPage.url) : openSiteGoal(text, openAsk!), viaVoice);
+      return true;
+    }
     const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
     const isVideoCreationAsk = !isOtherMediaAsk && /(?:(?:შექმენ|დააგენერირ|გააკეთ|მინდა)[\s\S]{0,40}(?:ვიდეო|ფილმ|კლიპ|სცენ)|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
     // A video ask is ONE clip (GG 2026-10-25 16:10Z): its length is the one the words name (4 · 6 · 8 · 10 s) or the panel's,
@@ -10095,6 +9885,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       </span>
                     ))}
                   </div>
+                ) : null}
+                {/* A render this tab watched keeps its timeline card above the result, folded to one line. */}
+                {m.role === 'assistant' && m.genKind && !m.batch && genClockRef.current.has(m.id ?? `i${i}`)
+                  && (m.imageUrl || m.audioUrl || m.videoUrl || m.text?.startsWith('⚠️') || m.text?.startsWith('⏹')) ? (
+                  <GenTaskCard
+                    input={{
+                      kind: m.genKind,
+                      phase: m.imageUrl || m.audioUrl || m.videoUrl ? 'done' : m.text.startsWith('⏹') ? 'stopped' : 'failed',
+                      ...(m.storyboard?.length ? { frames: { ready: m.storyboard.filter((s) => s.frameUrl).length, total: m.storyboard.length } } : {}),
+                      clock: genClock(m.id ?? `i${i}`, false),
+                    }}
+                    locale={locale}
+                  />
                 ) : null}
                 {m.imageUrl && !m.editJob && (
                   <div className="space-y-1.5">
@@ -10403,13 +10206,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // the old staged-timer console, RemixStudioConsole, is retired from the UI with the director's console).
                   if ((pending || isInflightRemix) && m.remixOpKind) {
                     return (
-                      <ResultCard
-                        kind="video"
-                        aspect={ORIENT_ASPECT[m.orientation ?? videoOrientation]}
-                        state="rendering"
+                      <GenTaskCard
+                        input={{ kind: 'video', phase: 'working', stage: m.text, clock: genClock(m.id ?? `i${i}`, true) }}
                         locale={locale}
-                        stage={m.text}
-                        onCancel={() => cancelBubbleJob(m)}
+                        onStop={() => cancelBubbleJob(m)}
                       />
                     );
                   }
@@ -10424,11 +10224,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     // A ×2/×4 batch draws one ResultCard per tile above (each with its own percent) — an aggregate
                     // card under the grid would say the same thing twice.
                     if (kind === 'image' && m.batch && m.batch.tiles.length > 0) return null;
-                    // THE RESULT'S SHAPE FROM THE FIRST SECOND: the tile a job renders into has the ratio of the
-                    // media it will become, so the feed does not jump when it lands (ResultCard).
-                    const cardAspect = kind === 'video' ? ORIENT_ASPECT[m.orientation ?? videoOrientation]
-                      : kind === 'image' ? (m.regen?.kind === 'image' ? m.regen.aspect : imgAspect)
-                      : kind === 'lipsync' ? lipFormat : '1:1';
                     // The film poll's own percent (videoProgress). Image, music and avatar report none, so their card
                     // reads 0 until the result (§3.3: no number paced to the clock; it was 5x off on the default image tier).
                     const cardPct = kind === 'video' && typeof m.videoProgress === 'number' ? m.videoProgress : undefined;
@@ -10448,16 +10243,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                             ))}
                           </div>
                         )}
-                        <ResultCard
-                          kind={kind === 'lipsync' ? 'avatar' : kind}
-                          aspect={cardAspect}
-                          state={typeof cardPct === 'number' && cardPct >= 96 ? 'finalizing' : 'rendering'}
+                        <GenTaskCard
+                          input={{
+                            kind,
+                            phase: 'working',
+                            ...(typeof cardPct === 'number' ? { pct: cardPct } : {}),
+                            stage: m.text,
+                            ...(m.storyboard?.length ? { frames: { ready: m.storyboard.filter((s) => s.frameUrl).length, total: m.storyboard.length } } : {}),
+                            clock: genClock(m.id ?? `i${i}`, true),
+                          }}
                           locale={locale}
-                          pct={cardPct}
-                          stage={m.text}
-                          poster={m.storyboard?.find((s) => s.frameUrl)?.frameUrl ?? null}
                           // This bubble's own job — its queue job when it has one, else the foreground render.
-                          onCancel={() => cancelBubbleJob(m)}
+                          onStop={() => cancelBubbleJob(m)}
                         />
                         {/* GG 2026-10-18: the old Director's Console (9-agent crew under „Details") is retired from the UI;
                             the loading card above is the one progress view. */}
@@ -10616,6 +10413,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     onApprove={(step, quoteId) => void approveAgentRun(m.id!, step, quoteId)} onRetry={() => void retryAgentRun(m.id!)} />
                 )}
                 {m.role === 'assistant' && m.analyzeJob && <AgentAnalyzeCard state={m.analyzeJob} locale={locale} />}
+                {m.role === 'assistant' && m.browserPlan && (
+                  <div className="mt-3 w-full max-w-[36rem]" data-testid="agent-browser-plan">
+                    <AutoTaskCard key={`b-${m.browserPlan.token.slice(-12)}`} goal={m.browserGoal || m.text} first={{ kind: 'browser', plan: m.browserPlan }} locale={locale}
+                      autoStart={startsByItself(m.browserPlan)}
+                      onFinish={(r) => {
+                        if (r.lastUrl) lastBrowserRef.current = { url: r.lastUrl, at: Date.now() };
+                        if (r.answer) {
+                          const words = `**Agent G:**\n\n${r.answer}`;
+                          setMessages((prev) => [...prev, { role: 'assistant', text: words }]);
+                          persistChatTurn('assistant', words);
+                        }
+                      }} />
+                  </div>
+                )}
                 {m.role === 'assistant' && m.montage && m.videoUrl && (
                   <div className="mt-3 w-full max-w-[36rem] space-y-2" data-testid="agent-montage-result">
                     <ChatVideoPlayer
@@ -12532,6 +12343,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
               <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
+            {/* Connectors — right beside „+" (GG 2026-11-07 07:56Z), Manus-style: every service Agent G can work with, in one list. */}
+            {!guest && (
+              <ConnectorsButton locale={locale}
+                className={chatOnly
+                  ? `${chatRound} text-app-text/90 hover:bg-app-border/10 ${chatSingleRow ? 'order-first' : ''}`
+                  : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'} />
+            )}
             {/* Attach — the paperclip right beside „+", where people look for it (owner, 2026-10-03); it used to be the
                 first row of the „+" sheet. Drawn only for a tool that takes files; the tooltip says what this one takes. */}
             {attachTarget.onAttach && (
@@ -13020,7 +12838,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         desktop (open by default), Gemini's bottom sheet below `lg`. Only its classes change with the width.
         ⚠️ TWO PARENTS (an <aside> for desktop, a portaled sheet for phones) REMOUNTED THE PANELS ON EVERY CROSSING OF
         1024 px — an iPad rotated mid-job lost ServiceParamsPanel's 3D poll (the paid model never reached the chat) and
-        MotionControlPanel's picked files. Mounted while hidden, for the same reason: closing is not discarding. */}
+        a picked file. Mounted while hidden, for the same reason: closing is not discarding. */}
     {/* Outside the layer, above the composer: a tap there puts the settings away (the composer below stays live). */}
     {settingsLayerOpen && settingsAnchor && !isDesktop && (
       <div aria-hidden="true" data-testid="settings-layer-dismiss" onClick={closeSettingsLayer}

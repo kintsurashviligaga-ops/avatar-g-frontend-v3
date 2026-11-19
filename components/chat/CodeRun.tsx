@@ -9,18 +9,23 @@
  *
  * The button exists only for a user the server says may run code (GET → { enabled }, asked once per page and only when
  * a runnable block is on screen), so a closed flag shows nothing at all. Output is shown as text, never as HTML.
+ *
+ * Workspace (GG's 2026-11-06 audit, ACTION 2): the folder button beside Run (on by default) runs the block in the
+ * user's Agent G workspace: its files are in the program's folder, and the files the program writes are saved back as
+ * new versions and listed on the card with a download link each. Off, the run sees no files, as before.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Loader2, Play, Square } from 'lucide-react';
+import { Download, FolderOpen, Loader2, Play, Square } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
-export type SandboxLang = 'python' | 'node';
+export type SandboxLang = 'python' | 'node' | 'shell';
 
 /** The fence label → the sandbox language, or null when this block cannot be run. */
 export function sandboxLanguageOf(fence: string): SandboxLang | null {
   const l = fence.trim().toLowerCase();
   if (l === 'python' || l === 'py' || l === 'python3') return 'python';
   if (l === 'javascript' || l === 'js' || l === 'node' || l === 'mjs' || l === 'nodejs') return 'node';
+  if (l === 'bash' || l === 'sh' || l === 'shell') return 'shell';
   return null;
 }
 
@@ -56,13 +61,29 @@ export function useCodeRunEnabled(wanted: boolean): boolean {
 
 // ─── The card ──────────────────────────────────────────────────────────────────
 
-interface Quote { language: SandboxLang; wallSec: number; credits: number }
+interface Quote { language: SandboxLang; wallSec: number; credits: number; workspaceId?: string }
+/** A file a workspace run saved (lib/agent/sandbox/codeQuote CodeRunWorkspace). */
+interface RunFile { path: string; bytes: number; v: number }
+interface RunWorkspace { id: string; written: RunFile[]; skipped: string[]; error?: string }
+
+export function runWorkspaceOf(v: unknown): RunWorkspace | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const w = v as Record<string, unknown>;
+  if (typeof w.id !== 'string' || !Array.isArray(w.written)) return undefined;
+  const written = (w.written as Array<Record<string, unknown>>)
+    .filter((f) => f && typeof f.path === 'string')
+    .map((f) => ({ path: String(f.path), bytes: Number(f.bytes) || 0, v: Number(f.v) || 0 }));
+  const skipped = Array.isArray(w.skipped) ? (w.skipped as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  return { id: w.id, written, skipped, ...(typeof w.error === 'string' ? { error: w.error } : {}) };
+}
+
+const LANG_NAME: Record<SandboxLang, string> = { python: 'Python', node: 'JavaScript', shell: 'Shell' };
 type State =
   | { phase: 'idle' }
   | { phase: 'quoting' }
   | { phase: 'quoted'; quote: Quote; request: unknown; token: string }
   | { phase: 'running'; t0: number }
-  | { phase: 'done'; exitCode: number; stdout: string; stderr: string; wallMs: number; filed?: boolean }
+  | { phase: 'done'; exitCode: number; stdout: string; stderr: string; wallMs: number; filed?: boolean; workspace?: RunWorkspace }
   | { phase: 'failed'; error: string };
 
 const L: Record<Lang, Record<string, string>> = {
@@ -70,16 +91,22 @@ const L: Record<Lang, Record<string, string>> = {
     run: 'გაშვება', start: 'დაწყება', cancel: 'გაუქმება', checking: 'ვამოწმებ კოდს…', running: 'მუშაობს',
     plan: '{lang} · მაქსიმუმ {sec} წამი · ინტერნეტის გარეშე · უფასო', exit: 'დასრულდა, კოდი {code} · {sec} წმ',
     noOutput: 'პროგრამამ არაფერი დაბეჭდა.', again: 'ხელახლა', filed: 'შენახულია Library-ში (დოკუმენტები).',
+    ws: 'სამუშაო სივრცეში', wsOn: 'ფაილები: სამუშაო სივრცე', wsSaved: 'შენახულია სამუშაო სივრცეში:', wsNone: 'ახალი ფაილი არ შექმნილა.',
+    wsSkipped: 'არ შეინახა:', download: 'ჩამოტვირთვა',
   },
   en: {
     run: 'Run', start: 'Start', cancel: 'Cancel', checking: 'Checking the code…', running: 'Running',
     plan: '{lang} · at most {sec} s · no internet · free', exit: 'Finished, exit code {code} · {sec} s',
     noOutput: 'The program printed nothing.', again: 'Run again', filed: 'Saved in the Library (Docs).',
+    ws: 'In workspace', wsOn: 'files: workspace', wsSaved: 'Saved in the workspace:', wsNone: 'No new files.',
+    wsSkipped: 'Not saved:', download: 'Download',
   },
   ru: {
     run: 'Запустить', start: 'Старт', cancel: 'Отмена', checking: 'Проверяю код…', running: 'Выполняется',
     plan: '{lang} · не больше {sec} с · без интернета · бесплатно', exit: 'Готово, код выхода {code} · {sec} с',
     noOutput: 'Программа ничего не вывела.', again: 'Ещё раз', filed: 'Сохранено в библиотеке (Документы).',
+    ws: 'В рабочей папке', wsOn: 'файлы: рабочая папка', wsSaved: 'Сохранено в рабочей папке:', wsNone: 'Новых файлов нет.',
+    wsSkipped: 'Не сохранено:', download: 'Скачать',
   },
 };
 
@@ -132,6 +159,7 @@ const BTN = 'flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[1
 /** The header button and the card under the code (both null when `language` is null). `code` is read when Run is pressed. */
 export function useCodeRun(language: SandboxLang | null, readCode: () => string, locale: Lang) {
   const [state, setState] = useState<State>({ phase: 'idle' });
+  const [inWorkspace, setInWorkspace] = useState(true);
   const abort = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => () => abort.current?.abort(), []);
@@ -145,14 +173,14 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
     if (!language) return;
     setState({ phase: 'quoting' });
     try {
-      const { status, json } = await post({ action: 'quote', request: { language, code: readCode() } });
+      const { status, json } = await post({ action: 'quote', request: { language, code: readCode(), ...(inWorkspace ? { workspace: true } : {}) } });
       if (json.ok === true && typeof json.token === 'string') {
         setState({ phase: 'quoted', quote: json.quote as Quote, request: json.request, token: json.token });
       } else setState({ phase: 'failed', error: errorOf(status, json) });
     } catch {
       setState({ phase: 'failed', error: 'other' });
     }
-  }, [language, readCode]);
+  }, [language, readCode, inWorkspace]);
 
   const start = useCallback(async () => {
     if (state.phase !== 'quoted') return;
@@ -165,6 +193,7 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
       if (json.ok === true) {
         setState({
           phase: 'done', exitCode: Number(json.exitCode), stdout: String(json.stdout ?? ''), stderr: String(json.stderr ?? ''), wallMs: Number(json.wallMs) || 0, filed: json.filed === true,
+          workspace: runWorkspaceOf(json.workspace),
         });
       } else setState({ phase: 'failed', error: errorOf(status, json) });
     } catch {
@@ -175,11 +204,20 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
   if (!language) return { button: null, card: null };
   const t = L[locale];
   const busy = state.phase === 'quoting' || state.phase === 'running';
+  const wsToggle = (
+    <button
+      type="button" onClick={() => setInWorkspace((v) => !v)} disabled={busy || state.phase === 'quoted'}
+      aria-pressed={inWorkspace} aria-label={t.ws} title={t.ws} data-code-run-workspace={inWorkspace ? 'on' : 'off'}
+      className={`${BTN} ${inWorkspace ? 'text-app-accent' : ''}`}
+    >
+      <FolderOpen size={14} aria-hidden />
+    </button>
+  );
   const button = (
-    <button type="button" onClick={() => void quote()} disabled={busy || state.phase === 'quoted'} aria-label={t.run} title={t.run} data-code-run="" className={BTN}>
+    <>{wsToggle}<button type="button" onClick={() => void quote()} disabled={busy || state.phase === 'quoted'} aria-label={t.run} title={t.run} data-code-run="" className={BTN}>
       {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Play size={14} aria-hidden />}
       <span className="hidden sm:inline">{state.phase === 'done' || state.phase === 'failed' ? t.again : t.run}</span>
-    </button>
+    </button></>
   );
 
   const card = state.phase === 'idle' ? null : (
@@ -187,7 +225,7 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
       {state.phase === 'quoting' && <p className="text-app-muted">{t.checking}</p>}
       {state.phase === 'quoted' && (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-app-text">{fill(t.plan!, { lang: state.quote.language === 'python' ? 'Python' : 'JavaScript', sec: state.quote.wallSec })}</p>
+          <p className="text-app-text">{fill(t.plan!, { lang: LANG_NAME[state.quote.language] ?? 'Code', sec: state.quote.wallSec })}{state.quote.workspaceId ? ` · ${t.wsOn}` : ''}</p>
           <span className="flex items-center gap-1">
             <button type="button" onClick={() => setState({ phase: 'idle' })} className={BTN}>{t.cancel}</button>
             <button type="button" onClick={() => void start()} data-code-run-start="" className="flex h-11 items-center gap-1.5 rounded-full bg-app-accent px-4 text-[13px] font-medium text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8">
@@ -209,10 +247,39 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
           {state.stderr && <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 text-[13px] text-app-danger" data-code-run-stderr="">{state.stderr}</pre>}
           {!state.stdout && !state.stderr && <p className="text-app-muted">{t.noOutput}</p>}
           {state.filed && <p className="text-[12px] text-app-muted" data-code-run-filed="">{t.filed}</p>}
+          {state.workspace && <WorkspaceFiles ws={state.workspace} t={t} />}
         </div>
       )}
       {state.phase === 'failed' && <p className="text-app-danger">{codeRunErrorText(state.error, locale)}</p>}
     </div>
   );
   return { button, card };
+}
+
+/** Opens a 7-day download link for one workspace file (asked when pressed, never kept on the page). */
+async function openWorkspaceFile(workspaceId: string, path: string): Promise<void> {
+  const r = await fetch('/api/agent/workspace', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'link', workspaceId, path }),
+  }).catch(() => null);
+  const j = (await r?.json().catch(() => null)) as { url?: unknown } | null;
+  if (typeof j?.url === 'string' && /^https:\/\//.test(j.url)) window.open(j.url, '_blank', 'noopener,noreferrer');
+}
+
+function WorkspaceFiles({ ws, t }: { ws: RunWorkspace; t: Record<string, string> }) {
+  return (
+    <div className="space-y-1 text-[13px]" data-code-run-files="">
+      {ws.error && <p className="text-app-danger">{ws.error}</p>}
+      {!ws.error && (ws.written.length ? <p className="text-[12px] text-app-muted">{t.wsSaved}</p> : <p className="text-[12px] text-app-muted">{t.wsNone}</p>)}
+      {ws.written.map((f) => (
+        <div key={f.path} className="flex items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-1.5">
+          <span className="min-w-0 truncate text-app-text" title={f.path}>{f.path} <span className="text-app-muted">· v{f.v} · {f.bytes < 1024 ? `${f.bytes} B` : `${Math.round(f.bytes / 1024)} KB`}</span></span>
+          <button type="button" onClick={() => void openWorkspaceFile(ws.id, f.path)} className={BTN} aria-label={`${t.download} ${f.path}`}>
+            <Download size={14} aria-hidden />
+          </button>
+        </div>
+      ))}
+      {ws.skipped.length > 0 && <p className="text-[12px] text-app-muted">{t.wsSkipped} {ws.skipped.join(', ')}</p>}
+    </div>
+  );
 }

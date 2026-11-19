@@ -163,7 +163,7 @@ test('Google-only (STT_ENGINE=gemini): WAV → Gemini on Vertex AI only (bearer 
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
   expect(url).toBe(
-    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.6-flash:generateContent',
+    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.5-flash:generateContent',
   );
   expect(url).not.toContain('key=');
   expect((init.headers as Record<string, string>).Authorization).toBe('Bearer vertex-token');
@@ -172,7 +172,7 @@ test('Google-only (STT_ENGINE=gemini): WAV → Gemini on Vertex AI only (bearer 
   expect(sent.contents[0]!.parts[1]!.inlineData!.mimeType).toBe('audio/wav');
   expect(openaiMock).not.toHaveBeenCalled();
   expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({
-    model: 'gemini-3.6-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
+    model: 'gemini-3.5-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
   }));
   // No trial model was named, so the admin list was never read for this dictation.
   expect(adminListMock).not.toHaveBeenCalled();
@@ -213,7 +213,7 @@ test('Russian speech answered in English: the retry is in Russian, and the answe
     .mockImplementationOnce(async () => geminiOk('[ru] сделай промпт для VEO 3'));
   const res = await POST(upload({ language: 'en-US' }));
   expect(await res.json()).toEqual({ text: 'сделай промпт для VEO 3', provider: 'gemini', language: 'ru-RU' });
-  expect(modelsCalled()).toEqual(['gemini-3.6-flash', 'gemini-3.6-flash']);
+  expect(modelsCalled()).toEqual(['gemini-3.5-flash', 'gemini-3.5-flash']);
 });
 
 test('an English answer that still comes back for Russian speech is remembered as Russian, never as English', async () => {
@@ -262,17 +262,17 @@ test("Google-only: a 429 on 3.6 Flash moves to the chat's next Flash model; the 
   fetchSpy.mockImplementationOnce(async () => new Response('Resource exhausted', { status: 429 }));
   const res = await POST(upload({ language: 'ka-GE' }));
   expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-  expect(modelsCalled()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
+  expect(modelsCalled()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash']);
   expect(bookMock).toHaveBeenCalledTimes(1);
-  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.5-flash' }));
+  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.7-flash' }));
 });
 
 test('Google-only: a model that does not answer in time hands the dictation to the next one (GG, 2026-10-25 TimeoutError)', async () => {
   fetchSpy.mockImplementationOnce(async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); });
   const res = await POST(upload({ language: 'ka-GE' }));
   expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-  expect(modelsCalled()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
-  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.5-flash' }));
+  expect(modelsCalled()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash']);
+  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.7-flash' }));
 });
 
 test("the owner's `?stt=` trial: an admin's allowlisted model is used ALONE (no step-downs), and the diag names it", async () => {
@@ -295,7 +295,7 @@ test("the owner's `?stt=` trial: an admin's allowlisted model is used ALONE (no 
 test("a trial model from anyone but an admin, or one outside STT_MODELS, is ignored: the usual chain answers", async () => {
   let res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-pro-preview' }));
   expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-  expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+  expect(modelsCalled()).toEqual(['gemini-3.5-flash']);
   expect(adminListMock).toHaveBeenCalledTimes(1);
 
   mockUser = { id: USER_ID, email: 'admin@example.com' };
@@ -304,7 +304,7 @@ test("a trial model from anyone but an admin, or one outside STT_MODELS, is igno
     adminListMock.mockClear();
     res = await POST(upload({ language: 'ka-GE', model }));
     expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
-    expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+    expect(modelsCalled()).toEqual(['gemini-3.5-flash']);
     // Not an allowlisted id: the admin list is not even read.
     expect(adminListMock).not.toHaveBeenCalled();
   }
@@ -314,7 +314,7 @@ test("a trial model from anyone but an admin, or one outside STT_MODELS, is igno
   adminListMock.mockRejectedValueOnce(new Error('panel down'));
   res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-flash-lite' }));
   expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
-  expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+  expect(modelsCalled()).toEqual(['gemini-3.5-flash']);
 });
 
 const CHIRP_URL = 'https://us-speech.googleapis.com/v2/projects/gen-lang-client-0671348730/locations/us/recognizers/_:recognize';
@@ -339,7 +339,7 @@ test("the owner's `?stt=chirp_3` trial: Cloud Speech-to-Text alone, booked by th
 test('Chirp 3 from anyone but an admin is ignored: the usual Gemini chain answers', async () => {
   const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3' }));
   expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-  expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+  expect(modelsCalled()).toEqual(['gemini-3.5-flash']);
   expect(bookSpeechMock).not.toHaveBeenCalled();
 });
 
@@ -412,7 +412,7 @@ test('?diag=1 from the owner when every model fails: the reason lists each model
   const res = await POST(upload({ diag: true, language: 'en-US' }));
   const j = (await res.json()) as { code: string; diag: { geminiError: string } };
   expect(j.code).toBe('stt_unavailable');
-  expect(j.diag.geminiError).toMatch(/^gemini-3\.6-flash 429, gemini-3\.5-flash 429, gemini-3\.8-flash 429: /);
+  expect(j.diag.geminiError).toMatch(/^gemini-3\.5-flash 429, gemini-3\.7-flash 429, gemini-3\.8-flash 429: /);
   expect(fetchSpy).toHaveBeenCalledTimes(3);
 });
 
@@ -515,9 +515,9 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
       isChirp(url) ? new Response(JSON.stringify({ error: { message: 'Permission denied' } }), { status: 403 }) : geminiOk('გამარჯობა'));
     const res = await POST(upload({ language: 'ka-GE' }));
     expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.6-flash']);
+    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.5-flash']);
     expect(bookSpeechMock).not.toHaveBeenCalled();
-    expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.6-flash', userId: USER_ID }));
+    expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.5-flash', userId: USER_ID }));
   });
 
   test('Chirp not answering in time: Gemini answers', async () => {
@@ -527,7 +527,7 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
     });
     const res = await POST(upload({ language: 'ru-RU' }));
     expect(await res.json()).toEqual({ text: 'привет', provider: 'gemini', language: 'ru-RU' });
-    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.6-flash']);
+    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.5-flash']);
   });
 
   test('letters Chirp cannot write (Hindi, the Georgian-only request failing): Gemini answers, both are booked', async () => {
@@ -535,7 +535,7 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
       !isChirp(url) ? geminiOk('გესმის ჩემი?') : georgianOnly(init) ? new Response('{}', { status: 500 }) : chirpOk('चमेली के इसमें', 'hi-IN'));
     const res = await POST(upload({ language: 'en-US' }));
     expect(await res.json()).toEqual({ text: 'გესმის ჩემი?', provider: 'gemini', language: 'ka-GE' });
-    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.6-flash']);
+    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.5-flash']);
     expect(bookSpeechMock).toHaveBeenCalledTimes(1);
     expect(bookMock).toHaveBeenCalledTimes(1);
   });
@@ -545,14 +545,14 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
       !isChirp(url) ? geminiOk('გესმის ჩემი ხმა?') : georgianOnly(init) ? new Response('{}', { status: 500 }) : chirpOk('¿Qué es mi chemijo?', 'en-US'));
     const res = await POST(upload({ language: 'en-US' }));
     expect(await res.json()).toEqual({ text: 'გესმის ჩემი ხმა?', provider: 'gemini', language: 'ka-GE' });
-    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.6-flash']);
+    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.5-flash']);
   });
 
   test('Georgian in Latin letters under a Georgian hint (refused by sttAccept): Gemini answers', async () => {
     fetchSpy.mockImplementation(async (url: unknown) => (isChirp(url) ? chirpOk('gamarjoba rogor xar', 'ka-GE') : geminiOk('გამარჯობა, როგორ ხარ')));
     const res = await POST(upload({ language: 'ka-GE' }));
     expect(await res.json()).toEqual({ text: 'გამარჯობა, როგორ ხარ', provider: 'gemini', language: 'ka-GE' });
-    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.6-flash']);
+    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.5-flash']);
   });
 
   test('silence from Chirp is an answer: nothing written, no warning, and Gemini is not asked again', async () => {
@@ -566,7 +566,7 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
   test('a clip over a minute never reaches Chirp (its one-request limit): Gemini answers alone', async () => {
     const res = await POST(upload({ bytes: wavOf(80), language: 'ka-GE' }));
     expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-    expect(urls()).toEqual(['gemini-3.6-flash']);
+    expect(urls()).toEqual(['gemini-3.5-flash']);
     expect(bookSpeechMock).not.toHaveBeenCalled();
   });
 
@@ -581,7 +581,7 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
     expect(j.text).toBe('');
     expect(j.code).toBe('stt_unavailable');
     expect(j.diag.engine).toBe('chirp+gemini');
-    expect(j.diag.geminiError).toMatch(/^Chirp 3 STT failed \(403\): Permission denied; Gemini: gemini-3\.6-flash 429, /);
+    expect(j.diag.geminiError).toMatch(/^Chirp 3 STT failed \(403\): Permission denied; Gemini: gemini-3\.5-flash 429, /);
   });
 
   test("Gemini finding silence after Chirp's error: an empty transcript with no outage warning", async () => {
@@ -610,7 +610,7 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
     process.env.STT_ENGINE = value;
     const res = await POST(upload({ language: 'ka-GE' }));
     expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
-    expect(urls()).toEqual(['gemini-3.6-flash']);
+    expect(urls()).toEqual(['gemini-3.5-flash']);
   });
 
   test('Vertex AI unconfigured: no call to either engine', async () => {

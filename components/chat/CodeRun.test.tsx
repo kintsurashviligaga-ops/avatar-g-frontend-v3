@@ -14,10 +14,11 @@ describe('CodeRun', () => {
   const realFetch = global.fetch;
   afterEach(() => { global.fetch = realFetch; __resetCodeRunForTests(); });
 
-  it('maps fence labels to the two sandbox languages only', () => {
+  it('maps fence labels to the three sandbox languages only', () => {
     expect(sandboxLanguageOf('Python')).toBe('python');
     expect(sandboxLanguageOf('js')).toBe('node');
-    expect(sandboxLanguageOf('bash')).toBeNull();
+    expect(sandboxLanguageOf('bash')).toBe('shell');
+    expect(sandboxLanguageOf('ruby')).toBeNull();
     expect(sandboxLanguageOf('')).toBeNull();
   });
 
@@ -41,6 +42,8 @@ describe('CodeRun', () => {
       return json(200, { ok: true, exitCode: 0, stdout: '<b>4</b>\n', stderr: '', wallMs: 1200, filed: true });
     }) as unknown as typeof fetch;
     render(<Block lang="python" />);
+    // The workspace is on by default; this run is a plain one.
+    fireEvent.click(screen.getByRole('button', { name: 'In workspace' }));
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run' })); });
     expect(await screen.findByText(/Python · at most 60 s · no internet · free/)).toBeTruthy();
     expect(calls).toEqual([{ action: 'quote', request: { language: 'python', code: 'print(2+2)' } }]);
@@ -50,6 +53,31 @@ describe('CodeRun', () => {
     expect(out.tagName).toBe('PRE');
     expect(screen.getByText(/exit code 0 · 1.2 s/)).toBeTruthy();
     expect(screen.getByText('Saved in the Library (Docs).')).toBeTruthy();
+  });
+
+  it('a workspace run asks for the workspace and lists the files it saved, each with a download', async () => {
+    __resetCodeRunForTests(true);
+    const calls: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn((_u: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      calls.push(body);
+      if (body.action === 'quote') {
+        return json(200, { ok: true, quote: { language: 'shell', wallSec: 60, credits: 0, workspaceId: 'ws_abcdef12' }, request: { language: 'shell', code: 'ls', workspaceId: 'ws_abcdef12' }, token: 'tok' });
+      }
+      return json(200, {
+        ok: true, exitCode: 0, stdout: 'ok\n', stderr: '', wallMs: 900,
+        workspace: { id: 'ws_abcdef12', written: [{ path: 'out/chart.png', bytes: 2048, v: 2 }], skipped: ['big.bin (over 10 MB)'] },
+      });
+    }) as unknown as typeof fetch;
+    render(<Block lang="shell" code="ls" />);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run' })); });
+    expect(calls[0]).toEqual({ action: 'quote', request: { language: 'shell', code: 'ls', workspace: true } });
+    expect(await screen.findByText(/Shell · at most 60 s .* files: workspace/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Start/ })); });
+    expect(await screen.findByText('out/chart.png', { exact: false })).toBeTruthy();
+    expect(screen.getByText(/v2 · 2 KB/)).toBeTruthy();
+    expect(screen.getByText(/Not saved: big.bin/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Download out/chart.png' })).toBeTruthy();
   });
 
   it('a refusal is said in words', async () => {
