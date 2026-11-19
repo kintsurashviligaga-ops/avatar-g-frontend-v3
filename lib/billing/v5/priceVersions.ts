@@ -17,6 +17,8 @@
  *   - promotional rows end (validTo); an alarm fires PROMO_ALARM_DAYS before, and louder when no row follows.
  */
 import { ECON, profitOverCostOf, usdToCostGel, type Econ } from '@/lib/credits/unitEconomics';
+import { minCreditsPerUnit } from '@/lib/billing/margin/econ';
+import { pricingV8Active } from '@/lib/credits/priceBook';
 
 export type PriceUnit =
   | 'input_mtok' // one million input tokens
@@ -54,7 +56,7 @@ export const keyOf = (k: PriceKey) => `${k.capability}|${k.model}|${k.unit}`;
 const t = (iso: string | null) => (iso === null ? Infinity : Date.parse(iso));
 
 /** Why a row may not be used (null: it may). */
-export function rowProblem(r: PriceVersion, econ: Econ = ECON): string | null {
+export function rowProblem(r: PriceVersion, econ: Econ = ECON, v8: boolean = pricingV8Active()): string | null {
   if (!r.id || !r.capability || !r.model) return 'id, capability and model';
   if (!PRICE_UNITS.includes(r.unit)) return 'unit';
   if (!(r.usdPerUnit > 0) || !Number.isFinite(r.usdPerUnit)) return 'usdPerUnit must be > 0 (a free provider call is not a price row)';
@@ -67,6 +69,8 @@ export function rowProblem(r: PriceVersion, econ: Econ = ECON): string | null {
   if (!r.approvedBy || !r.approvedBy.trim()) return 'not approved';
   // The owner's rule, on one unit: credits × 0.10 ₾ must earn 100 % over the full cost (FX reserve and card fee included).
   if (profitOverCostOf(r.creditsPerUnit, usdToCostGel(r.usdPerUnit, econ), econ) < econ.profitOverCost - 1e-9) return 'credits below the 100 % profit rule';
+  // v8 (GG 2026-11-14): with NEXT_PUBLIC_PRICING_V8 on, a row must also keep ≥ 65 % gross margin at the 0.08 ₾ floor credit.
+  if (v8 && r.creditsPerUnit < minCreditsPerUnit(r.usdPerUnit) - 1e-9) return 'credits below the 65 % margin rule';
   return null;
 }
 

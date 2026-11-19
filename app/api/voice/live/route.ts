@@ -22,7 +22,7 @@
  *   actions: boolean, tools: false, researchId: string, chatSessionId: string, avatar: 'Kira'|'Ben'|'Leo' }
  *   `avatar` = A TALKING AVATAR (lib/voice/liveAvatar): with NEXT_PUBLIC_LIVE_AVATAR on, an allowlisted prebuilt name turns
  *   the session into gemini-3.8-live answering in VIDEO (the avatar's own voice inside), on every wire this route locks.
- *   Its ticket lives LIVE_AVATAR_TICKET_MS (the relay ends the session there) and it has its own per-user daily cap; a
+ *   Its ticket lives liveAvatarTicketMs(cap) (the relay ends the session there) and it has its own per-user daily cap; a
  *   refused avatar never refuses the call: it opens as a voice call and `avatar: null` (+ `avatarRefused`) says why.
  *   `researchId` = TALK TO A RESEARCH REPORT: the server loads that finished report for the signed-in OWNER (never text from
  *   the browser), squeezes it to the engine's limit (lib/research/liveContext.ts) and appends it to the locked instruction.
@@ -87,7 +87,8 @@ import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
 import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
 import { liveAudienceAllows, liveAvatarAccess } from '@/lib/voice/liveAudience';
-import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL, LIVE_AVATAR_TICKET_MS, liveAvatarEnabled, normalizeLiveAvatar } from '@/lib/voice/liveAvatar';
+import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL, liveAvatarEnabled, liveAvatarTicketMs, normalizeLiveAvatar } from '@/lib/voice/liveAvatar';
+import { hasPaidPlan } from '@/lib/billing/entitlements';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -237,7 +238,7 @@ export async function POST(request: NextRequest) {
     // A talking avatar: switched on, its own audience (lib/voice/liveAudience: admins unless LIVE_AVATAR_AUDIENCE=everyone,
     // so opening the call to everyone never opens its costly part too), an allowlisted prebuilt name, and the account's
     // avatar sessions for today not used up (admins 30, everyone else LIVE_AVATAR_DAILY_SESSIONS, default 1).
-    const avatarAccess = liveAvatarEnabled() ? await liveAvatarAccess(user) : null;
+    const avatarAccess = liveAvatarEnabled() ? await liveAvatarAccess(user, process.env, () => hasPaidPlan(userId)) : null;
     let avatarName = normalizeLiveAvatar(body.avatar);
     let avatarRefused: 'disabled' | 'audience' | 'daily_limit' | null = null;
     if (avatarName && !avatarAccess) { avatarName = null; avatarRefused = 'disabled'; }
@@ -325,7 +326,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = Date.now();
-    const expireTime = new Date(now + (avatar ? LIVE_AVATAR_TICKET_MS : SESSION_TTL_MS)).toISOString();
+    const expireTime = new Date(now + (avatar ? liveAvatarTicketMs(avatarAccess?.maxMs) : SESSION_TTL_MS)).toISOString();
     const newSessionExpireTime = new Date(now + NEW_SESSION_WINDOW_MS).toISOString();
 
     // The lock field is `bidiGenerateContentSetup` — verified live: the earlier `liveConnectConstraints` name is
@@ -403,6 +404,8 @@ export async function POST(request: NextRequest) {
       ...(avatarRefused ? { avatarRefused } : {}),
       // Whether this account may turn the avatar on at all: the call shows its switch only then.
       avatarAllowed: !!avatarAccess?.allowed,
+      // How long this account's avatar may run (1 minute on the free plan under v8 pricing, else 5); the screen caps it there.
+      ...(avatar && avatarAccess ? { avatarMaxMs: avatarAccess.maxMs } : {}),
       // The Live relay the token opens (lib/voice/liveMint); absent = Google directly, as before.
       ...(minter.wsUrl ? { relayUrl: minter.wsUrl } : {}),
     });

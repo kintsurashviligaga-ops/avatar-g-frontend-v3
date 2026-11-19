@@ -37,26 +37,26 @@ describe('the talking avatar\'s own audience (GG 2026-10-31)', () => {
   });
 
   test('a call open to everyone: a user who is not an admin may not turn the avatar on', async () => {
-    expect(await liveAvatarAccess(user, { LIVE_AUDIENCE: 'everyone' })).toEqual({ allowed: false, dailySessions: 0 });
+    expect(await liveAvatarAccess(user, { LIVE_AUDIENCE: 'everyone' })).toEqual({ allowed: false, dailySessions: 0, maxMs: 0 });
   });
 
   test('admins keep 30 sessions a day, with or without the setting', async () => {
     mockAdmin.mockResolvedValue(true);
-    expect(await liveAvatarAccess(user, {})).toEqual({ allowed: true, dailySessions: 30 });
-    expect(await liveAvatarAccess(user, { LIVE_AVATAR_AUDIENCE: 'everyone', LIVE_AVATAR_DAILY_SESSIONS: '1' })).toEqual({ allowed: true, dailySessions: 30 });
+    expect(await liveAvatarAccess(user, {})).toEqual({ allowed: true, dailySessions: 30, maxMs: 300_000 });
+    expect(await liveAvatarAccess(user, { LIVE_AVATAR_AUDIENCE: 'everyone', LIVE_AVATAR_DAILY_SESSIONS: '1' })).toEqual({ allowed: true, dailySessions: 30, maxMs: 300_000 });
   });
 
   test('opened to everyone: 1 session a day unless LIVE_AVATAR_DAILY_SESSIONS says 1–30', async () => {
     const env = { LIVE_AVATAR_AUDIENCE: 'everyone' };
-    expect(await liveAvatarAccess(user, env)).toEqual({ allowed: true, dailySessions: 1 });
-    expect(await liveAvatarAccess(user, { ...env, LIVE_AVATAR_DAILY_SESSIONS: '3' })).toEqual({ allowed: true, dailySessions: 3 });
+    expect(await liveAvatarAccess(user, env)).toEqual({ allowed: true, dailySessions: 1, maxMs: 300_000 });
+    expect(await liveAvatarAccess(user, { ...env, LIVE_AVATAR_DAILY_SESSIONS: '3' })).toEqual({ allowed: true, dailySessions: 3, maxMs: 300_000 });
     for (const v of ['0', '-2', '31', 'many', '']) {
-      expect(await liveAvatarAccess(user, { ...env, LIVE_AVATAR_DAILY_SESSIONS: v })).toEqual({ allowed: true, dailySessions: 1 });
+      expect(await liveAvatarAccess(user, { ...env, LIVE_AVATAR_DAILY_SESSIONS: v })).toEqual({ allowed: true, dailySessions: 1, maxMs: 300_000 });
     }
   });
 
   test('no user: never', async () => {
     mockAdmin.mockImplementation(async (u: unknown) => !!u && false);
-    expect(await liveAvatarAccess(null, {})).toEqual({ allowed: false, dailySessions: 0 });
+    expect(await liveAvatarAccess(null, {})).toEqual({ allowed: false, dailySessions: 0, maxMs: 0 });
   });
 });

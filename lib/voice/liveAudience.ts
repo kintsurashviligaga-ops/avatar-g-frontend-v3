@@ -8,6 +8,8 @@
  */
 import 'server-only';
 import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
+import { pricingV8Active } from '@/lib/credits/priceBook';
+import { liveAvatarMaxMs } from './liveAvatar';
 
 export type LiveAudience = 'admins' | 'everyone';
 
@@ -37,15 +39,21 @@ export function liveAvatarAudience(env: Record<string, string | undefined> = pro
 export const LIVE_AVATAR_ADMIN_DAILY_SESSIONS = 30;
 export const LIVE_AVATAR_USER_DAILY_SESSIONS = 1;
 
-export type LiveAvatarAccess = { allowed: boolean; dailySessions: number };
+/** `maxMs`: how long one avatar session may run for this account (lib/voice/liveAvatar liveAvatarMaxMs). */
+export type LiveAvatarAccess = { allowed: boolean; dailySessions: number; maxMs: number };
 
 export async function liveAvatarAccess(
   user: AdminCandidate | null | undefined,
   env: Record<string, string | undefined> = process.env,
+  /** Whether the account has a paid plan. Asked only when v8 pricing is on (the free plan's 1-minute cap), so off costs no query. */
+  paid?: () => Promise<boolean>,
 ): Promise<LiveAvatarAccess> {
-  if (await isAdminIdentity(user)) return { allowed: true, dailySessions: LIVE_AVATAR_ADMIN_DAILY_SESSIONS };
-  if (liveAvatarAudience(env) !== 'everyone') return { allowed: false, dailySessions: 0 };
+  const v8 = pricingV8Active(env.NEXT_PUBLIC_PRICING_V8);
+  if (await isAdminIdentity(user)) return { allowed: true, dailySessions: LIVE_AVATAR_ADMIN_DAILY_SESSIONS, maxMs: liveAvatarMaxMs({ v8, admin: true, paid: true }) };
+  if (liveAvatarAudience(env) !== 'everyone') return { allowed: false, dailySessions: 0, maxMs: 0 };
   const n = Number.parseInt(env.LIVE_AVATAR_DAILY_SESSIONS?.trim() ?? '', 10);
   const dailySessions = Number.isFinite(n) && n >= 1 && n <= LIVE_AVATAR_ADMIN_DAILY_SESSIONS ? n : LIVE_AVATAR_USER_DAILY_SESSIONS;
-  return { allowed: true, dailySessions };
+  // A failed plan lookup counts as free: the shorter cap is the safe side of a cost cap.
+  const isPaid = v8 && paid ? await paid().catch(() => false) : false;
+  return { allowed: true, dailySessions, maxMs: liveAvatarMaxMs({ v8, admin: false, paid: isPaid }) };
 }

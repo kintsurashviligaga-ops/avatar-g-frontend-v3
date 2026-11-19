@@ -7,7 +7,7 @@
  * 0.10 ₾). It is only shown side by side; this file changes no live price. GG approves the list, then a wiring PR moves
  * PRICE_BOOK to these numbers behind PRICING_V8.
  */
-import { PRICE_BOOK } from '@/lib/credits/priceBook';
+import { PRICE_BOOK_TODAY as PRICE_BOOK } from '@/lib/credits/priceBook';
 import { COGS, cogsOf, fullCostUsd, type CogsAction, type ServiceId } from './cogs';
 import { MARGIN_ECON, creditsToGel, gelToUsd, grossMargin, minCredits } from './econ';
 

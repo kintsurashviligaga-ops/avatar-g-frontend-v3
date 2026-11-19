@@ -258,6 +258,7 @@ export default function GeminiLiveConversation({
     if (renewRef.current()) askedAvatarRef.current = desiredAvatar;
   }, [callReady, desiredAvatar]);
   const sessionAvatar = session.avatar;
+  const avatarCapMs = session.avatarMaxMs ?? LIVE_AVATAR_MAX_MS;
   const { avatarRefused, avatarAllowed } = session;
   useEffect(() => {
     if (!avatarRefused) return;
@@ -266,12 +267,13 @@ export default function GeminiLiveConversation({
     // Not open to this account (lib/voice/liveAudience): the switch goes away, no notice; the call simply stays voice.
     if (avatarRefused !== 'audience') setAvatarNote(avatarRefused === 'daily_limit' ? 'dailyLimit' : 'disabled');
   }, [avatarRefused]);
-  // Cost: one avatar session runs LIVE_AVATAR_MAX_MS at most, then the call goes on by voice.
+  // Cost: one avatar session runs the server's cap at most (LIVE_AVATAR_MAX_MS, or 1 min on the free plan under v8 pricing),
+  // then the call goes on by voice.
   useEffect(() => {
     if (!sessionAvatar) return;
-    const timer = setTimeout(() => { setAvatarWanted(false); setAvatarNote('capped'); }, LIVE_AVATAR_MAX_MS);
+    const timer = setTimeout(() => { setAvatarWanted(false); setAvatarNote('capped'); }, avatarCapMs);
     return () => clearTimeout(timer);
-  }, [sessionAvatar]);
+  }, [sessionAvatar, avatarCapMs]);
   // A voice session (or the end of the call) clears the picture; a browser that turns out unable to play it goes back to voice.
   const resetAvatar = avatarPlayer.reset;
   useEffect(() => { if (!sessionAvatar) resetAvatar(); }, [sessionAvatar, resetAvatar]);
