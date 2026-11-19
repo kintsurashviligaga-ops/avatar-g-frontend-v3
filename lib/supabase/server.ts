@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { cookies } from 'next/headers';
-import type { SupabaseClient, User } from '@supabase/supabase-js';
+import type { SupabaseClient, User, UserResponse } from '@supabase/supabase-js';
 import {
 	createServerClient as createSsrServerClient,
 } from '@supabase/ssr';
@@ -160,4 +160,18 @@ export async function authedClientFromRequest(req: Request): Promise<{
 	}) as unknown as AnySupabase;
 	const { data: { user } } = await bearerClient.auth.getUser();
 	return { supabase: bearerClient, user };
+}
+
+/**
+ * Phase 8.0 P2 — the ONE place server code asks "who is signed in?" for a client it already holds.
+ *
+ * Same answer and same shape as `client.auth.getUser()` (so `const { data: { user }, error } = await
+ * getSessionUser(supabase)` is a drop-in), but every caller now goes through here. That lets the local JWT check
+ * (AUTH_LOCAL_CLAIMS, lib/supabase/localClaims) switch all of them at once instead of 100+ files one by one.
+ * Prefer `authedClientFromRequest(req)` when a route also needs the Bearer-token fallback.
+ */
+type SessionUserClient = { auth: { getUser: () => Promise<UserResponse> } };
+
+export async function getSessionUser(client: SessionUserClient): Promise<UserResponse> {
+	return client.auth.getUser();
 }

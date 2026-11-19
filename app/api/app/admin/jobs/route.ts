@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServiceRoleClient, createServerClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { effectiveAdminAllowlist } from '@/lib/auth/adminGuard';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export async function GET() {
   const server = createServerClient();
   const {
     data: { user },
-  } = await server.auth.getUser();
+  } = await getSessionUser(server);
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

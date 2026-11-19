@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { WorkflowRunStartSchema } from '@/lib/workflows/schemas';
 import { startWorkflowRun } from '@/lib/workflows/runner';
 import { getBillingSnapshot } from '@/lib/billing/enforce';
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const supabase = createServerClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getSessionUser(supabase);
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -22,6 +22,7 @@ import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 import { getServerEnv } from '@/lib/env/server';
 import { addShippingEvent } from '@/lib/shipping';
 import { ApiResponse } from '@/lib/commerce/types';
+import { getSessionUser } from '@/lib/supabase/server';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -47,7 +48,7 @@ async function getAuthUser(_request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await getSessionUser(supabase);
   return user;
 }
 

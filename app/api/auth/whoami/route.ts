@@ -12,7 +12,7 @@
  *   hasUser:true + emailIsFounder:false   → you're signed in as a different/non-founder account.
  */
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient, getSessionUser } from '@/lib/supabase/server';
 import { isAdminUserAsync } from '@/lib/admin/guard';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +26,7 @@ export async function GET() {
   let metaRole = false;
   try {
     const supabase = createRouteHandlerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getSessionUser(supabase);
     hasUser = Boolean(user);
     email = user?.email ?? null;
     metaRole = await isAdminUserAsync(user);

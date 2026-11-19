@@ -10,7 +10,7 @@
  * unbilled call) and then their row. GET and PATCH only read and write our own rows.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient, createServiceRoleClient, getSessionUser } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import {
@@ -143,7 +143,7 @@ export async function GET(): Promise<NextResponse> {
     const supabase = createSupabaseServerClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
@@ -187,7 +187,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     const supabase = createSupabaseServerClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
@@ -273,7 +273,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     const supabase = createSupabaseServerClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }

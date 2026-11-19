@@ -7,7 +7,7 @@
  * 4. Request size limits
  */
 
-import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient, getSessionUser } from '@/lib/supabase/server';
 
 export interface AuthContext {
   userId: string;
@@ -29,7 +29,7 @@ const dailyUsage = new Map<string, { count: number; resetAt: number }>();
 export async function getAuthContext(): Promise<AuthContext | null> {
   try {
     const supabase = createRouteHandlerClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await getSessionUser(supabase);
 
     if (error || !user) return null;
 
