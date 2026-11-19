@@ -9,7 +9,11 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PAID_TIER_IDS, TIER_IDS } from './tiers';
+import { TODAY_SOLD_TIER_IDS } from './tiers';
+
+// This migration predates v8 Pro: it lists today's tiers, and docs/v8.1-finance/sql/01_pro_tier.sql adds 'pro' at launch.
+const PAID_TIER_IDS = TODAY_SOLD_TIER_IDS;
+const TIER_IDS = ['free', ...TODAY_SOLD_TIER_IDS];
 
 const RAW = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '20261001a_subscription_tiers.sql'), 'utf8');
 const SQL = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '').toLowerCase().replace(/\s+/g, ' ');

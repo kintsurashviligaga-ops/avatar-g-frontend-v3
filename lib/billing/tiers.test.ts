@@ -8,6 +8,7 @@ import {
   PAID_TIER_IDS,
   TIERS,
   TIER_IDS,
+  TODAY_SOLD_TIER_IDS,
   TIER_LIST,
   TRIAL,
   allowsChatMode,
@@ -34,9 +35,10 @@ const PRICES = {
 };
 
 describe('the catalogue', () => {
-  it('has exactly free < starter < creator < business, each keyed by its own id with rank = position', () => {
-    expect(TIER_IDS).toEqual(['free', 'starter', 'creator', 'business']);
-    expect(PAID_TIER_IDS).toEqual(['starter', 'creator', 'business']);
+  it('has exactly free < starter < creator < pro < business, each keyed by its own id with rank = position', () => {
+    expect(TIER_IDS).toEqual(['free', 'starter', 'creator', 'pro', 'business']);
+    expect(PAID_TIER_IDS).toEqual(['starter', 'creator', 'pro', 'business']);
+    expect(TODAY_SOLD_TIER_IDS).toEqual(['starter', 'creator', 'business']); // v8 Pro is not sold before launch
     TIER_IDS.forEach((id, i) => {
       expect(TIERS[id].id).toBe(id);
       expect(TIERS[id].rank).toBe(i);
@@ -49,6 +51,7 @@ describe('the catalogue', () => {
       ['free', 0, 50],
       ['starter', 19.99, 540],
       ['creator', 39.99, 1080],
+      ['pro', 47.78, 1550], // v8 Pro: 129 ₾ = round(47.78 × 2.7)
       ['business', 79.99, 2160],
     ]);
   });
@@ -68,11 +71,11 @@ describe('the catalogue', () => {
   });
 
   it('pins the per-tier Pro allowance, templates, video caps, Veo tiers and priority', () => {
-    expect(TIER_LIST.map((t) => t.chat.proDaily)).toEqual([5, 20, 100, 300]);
-    expect(TIER_LIST.map((t) => t.premiumTemplates)).toEqual([false, false, true, true]);
-    expect(TIER_LIST.map((t) => t.video.maxSeconds)).toEqual([8, 24, 48, 240]);
-    expect(TIER_LIST.map((t) => t.video.longForm)).toEqual([false, false, false, true]);
-    expect(TIER_LIST.map((t) => t.priority)).toEqual([false, false, false, true]);
+    expect(TIER_LIST.map((t) => t.chat.proDaily)).toEqual([5, 20, 100, 200, 300]);
+    expect(TIER_LIST.map((t) => t.premiumTemplates)).toEqual([false, false, true, true, true]);
+    expect(TIER_LIST.map((t) => t.video.maxSeconds)).toEqual([8, 24, 48, 120, 240]);
+    expect(TIER_LIST.map((t) => t.video.longForm)).toEqual([false, false, false, true, true]);
+    expect(TIER_LIST.map((t) => t.priority)).toEqual([false, false, false, false, true]);
     // The free film renders on Fast at most (filmComposite already enforces this); Standard is a paid feature.
     expect(TIERS.free.video.veoTiers).not.toContain('standard');
     expect(TIERS.starter.video.veoTiers).not.toContain('standard');
@@ -108,6 +111,7 @@ describe('the catalogue', () => {
     expect(PAID_TIER_IDS.map((id) => TIERS[id].stripePriceEnv)).toEqual([
       'STRIPE_PRICE_STARTER',
       'STRIPE_PRICE_CREATOR',
+      null, // Pro is BOG-only: STRIPE_PRICE_PRO is the legacy $39.99 env
       'STRIPE_PRICE_BUSINESS',
     ]);
   });
@@ -141,7 +145,7 @@ describe('TRIAL — documents the grants that already exist', () => {
 describe('tierById / isTierId / higherTier', () => {
   it('resolves known ids and falls back to FREE (least privilege) for anything else', () => {
     expect(tierById('creator').id).toBe('creator');
-    for (const junk of [undefined, null, '', 'pro', 'CREATOR', 'admin', 'business ']) {
+    for (const junk of [undefined, null, '', 'PRO', 'CREATOR', 'admin', 'business ']) {
       expect(tierById(junk).id).toBe('free');
     }
     expect(isTierId('starter')).toBe(true);
@@ -157,7 +161,7 @@ describe('tierById / isTierId / higherTier', () => {
   });
 
   it('monthly allowance = the tier’s included credits for paid tiers', () => {
-    expect(PAID_TIER_IDS.map((id) => monthlyAllowanceCredits(id))).toEqual([540, 1080, 2160]);
+    expect(PAID_TIER_IDS.map((id) => monthlyAllowanceCredits(id))).toEqual([540, 1080, 1550, 2160]);
     expect(monthlyAllowanceCredits('nonsense')).toBe(0);
   });
 });
@@ -191,16 +195,16 @@ describe('Stripe price ids (inert until the env is set)', () => {
 
 describe('proDailyLimitForTier — the tier allowance under the operator ceiling', () => {
   it('uses the tier allowance when CHAT_PRO_DAILY_LIMIT is unset', () => {
-    expect(TIER_IDS.map((id) => proDailyLimitForTier(id, {}))).toEqual([5, 20, 100, 300]);
+    expect(TIER_IDS.map((id) => proDailyLimitForTier(id, {}))).toEqual([5, 20, 100, 200, 300]);
   });
 
   it('treats the env as a CEILING, never a raise', () => {
-    expect(TIER_IDS.map((id) => proDailyLimitForTier(id, { CHAT_PRO_DAILY_LIMIT: '50' }))).toEqual([5, 20, 50, 50]);
+    expect(TIER_IDS.map((id) => proDailyLimitForTier(id, { CHAT_PRO_DAILY_LIMIT: '50' }))).toEqual([5, 20, 50, 50, 50]);
     expect(proDailyLimitForTier('free', { CHAT_PRO_DAILY_LIMIT: '1000' })).toBe(5);
   });
 
   it('0 turns Pro off for every tier', () => {
-    expect(TIER_IDS.map((id) => proDailyLimitForTier(id, { CHAT_PRO_DAILY_LIMIT: '0' }))).toEqual([0, 0, 0, 0]);
+    expect(TIER_IDS.map((id) => proDailyLimitForTier(id, { CHAT_PRO_DAILY_LIMIT: '0' }))).toEqual([0, 0, 0, 0, 0]);
   });
 
   it('ignores a malformed or out-of-range ceiling (same parse as chatProUserLimit)', () => {
@@ -218,7 +222,7 @@ describe('proDailyLimitForTier — the tier allowance under the operator ceiling
 
 describe('video length gates', () => {
   it('maxVideoSecondsForTier — 8 / 24 / 48 / 240, unknown → free', () => {
-    expect(TIER_IDS.map((id) => maxVideoSecondsForTier(id))).toEqual([8, 24, 48, 240]);
+    expect(TIER_IDS.map((id) => maxVideoSecondsForTier(id))).toEqual([8, 24, 48, 120, 240]);
     expect(maxVideoSecondsForTier(undefined)).toBe(8);
   });
 

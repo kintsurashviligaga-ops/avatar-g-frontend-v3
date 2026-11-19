@@ -30,13 +30,20 @@ import { CHAT_MODE_IDS, type ChatModeId } from '@/lib/chat/chatModes';
 import { CREDIT_COSTS } from '@/lib/credits/pricing';
 import type { VeoTier } from '@/lib/veo/types';
 
-export type TierId = 'free' | 'starter' | 'creator' | 'business';
+/**
+ * 'pro' is the v8 Pro plan (GG 2026-11-14: 129 ₾ / 1 550 credits). It exists in the catalogue so a BOG subscription on
+ * it resolves, renews and is entitled, but nothing SELLS it until NEXT_PUBLIC_PRICING_V8 is on and the DB allows it
+ * (docs/v8.1-finance/sql/01_pro_tier.sql). Today's sold plans are TODAY_SOLD_TIER_IDS.
+ */
+export type TierId = 'free' | 'starter' | 'creator' | 'pro' | 'business';
 export type PaidTierId = Exclude<TierId, 'free'>;
 export type TierLocale = 'ka' | 'en' | 'ru';
 
 /** Ascending order — also the `rank` of each tier (index), used to pick the higher of two. */
-export const TIER_IDS: readonly TierId[] = ['free', 'starter', 'creator', 'business'];
-export const PAID_TIER_IDS: readonly PaidTierId[] = ['starter', 'creator', 'business'];
+export const TIER_IDS: readonly TierId[] = ['free', 'starter', 'creator', 'pro', 'business'];
+export const PAID_TIER_IDS: readonly PaidTierId[] = ['starter', 'creator', 'pro', 'business'];
+/** The plans on sale before v8 (pricing page, admin price sheet, BOG checkout with the flag off). */
+export const TODAY_SOLD_TIER_IDS: readonly PaidTierId[] = ['starter', 'creator', 'business'];
 
 /** The per-medium breakdown a tier's credits are marketed as. The credits are one pool; this is how it is framed. */
 export interface CreditCeiling {
@@ -60,7 +67,7 @@ export function tierCreditPool(ceiling: CreditCeiling): number {
 
 export interface SubscriptionTier {
   id: TierId;
-  /** 0 = free … 3 = business. Higher wins when two sources disagree. */
+  /** 0 = free … 4 = business. Higher wins when two sources disagree. */
   rank: number;
   names: Record<TierLocale, string>;
   /** The DISPLAYED monthly price. Stripe charges whatever its Price object says — keep them equal. */
@@ -157,9 +164,25 @@ export const TIERS: Readonly<Record<TierId, SubscriptionTier>> = {
     priority: false,
     stripePriceEnv: 'STRIPE_PRICE_CREATOR',
   },
+  // v8 Pro (GG 2026-11-14 10:26Z): 129 ₾ = round(47.78 × 2.7), 1 550 credits a month. Framed 12 videos + 60 tracks +
+  // 94 images (900 + 180 + 470). Entitlements sit between creator and business. Not sold until v8 is on.
+  pro: {
+    id: 'pro',
+    rank: 3,
+    names: { en: 'Pro', ka: 'პრო', ru: 'Про' },
+    monthlyPriceUsd: 47.78,
+    creditCeiling: { videos: 12, music: 60, images: 94 },
+    includedCredits: 1550,
+    creditCadence: 'monthly',
+    chat: { proDaily: 200, modes: ALL_CHAT_MODES },
+    premiumTemplates: true,
+    video: { maxSeconds: 120, longForm: true, veoTiers: ['lite', 'fast', 'standard'] },
+    priority: false,
+    stripePriceEnv: null, // BOG only. STRIPE_PRICE_PRO is a LEGACY env (the old $39.99 rung) and must stay ignored
+  },
   business: {
     id: 'business',
-    rank: 3,
+    rank: 4,
     names: { en: 'Business / Agency', ka: 'ბიზნესი / სააგენტო', ru: 'Бизнес / Агентство' },
     monthlyPriceUsd: 79.99,
     creditCeiling: { videos: 16, music: 80, images: 144 },

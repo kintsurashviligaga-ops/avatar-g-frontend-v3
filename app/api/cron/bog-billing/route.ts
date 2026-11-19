@@ -37,7 +37,7 @@ import {
 } from '@/lib/billing/bogSettlement';
 import { claimBogRenewal, recordBogRenewalFailure } from '@/lib/billing/wallet-ledger';
 import { bogLimits, checkBogLimits } from '@/lib/billing/bogLimits';
-import { monthlyAllowanceCredits } from '@/lib/billing/tiers';
+import { renewalAllowanceCredits } from '@/lib/billing/margin/bogV8';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -141,7 +141,8 @@ async function handle(req: NextRequest) {
     const limits = bogLimits();
     let chargedThisTickGel = 0; // renewals charged above are not paid rows yet; in merchant scope they still count
     for (const sub of (due ?? []) as Array<{ id: string; tier: string | null; user_id?: string; amount_gel?: number | string | null }>) {
-      const credits = monthlyAllowanceCredits(sub.tier);
+      // The renewal grants what the subscription was bought with: a v8 amount → the v8 allowance, else the tier's.
+      const credits = renewalAllowanceCredits(sub.tier, sub.amount_gel);
       if (credits <= 0) continue;
       const renewalGel = Number(sub.amount_gel ?? 0);
       const room = await checkBogLimits(svc, {

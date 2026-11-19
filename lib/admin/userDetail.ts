@@ -256,8 +256,11 @@ export async function refundLedgerEntry(client: Client, userId: string, ledgerId
   }
 }
 
-/** The profiles.tier comp value for a catalogue tier (resolveTier maps these back). */
-export const COMP_TIER_VALUE: Readonly<Record<TierId, string>> = {
+/**
+ * The profiles.tier comp value for a catalogue tier (resolveTier maps these back). v8 Pro has none: profiles.tier 'PRO'
+ * already means the old $39.99 rung (→ creator), so a Pro comp is refused (invalid_tier) until it gets its own value.
+ */
+export const COMP_TIER_VALUE: Readonly<Partial<Record<TierId, string>>> = {
   free: 'FREE', starter: 'STARTER', creator: 'CREATOR', business: 'BUSINESS',
 };
 
@@ -274,9 +277,10 @@ export async function assignUserPlan(
   opts: { grantAllowance: boolean; actorId: string },
 ): Promise<WriteResult & { granted?: number }> {
   if (paidWritesBlockedOnPreview()) return { ok: false, newBalance: null, error: PREVIEW_NOT_ISOLATED };
-  if (!userId || !(tier in COMP_TIER_VALUE)) return { ok: false, newBalance: null, error: 'invalid_tier' };
+  const compValue = COMP_TIER_VALUE[tier];
+  if (!userId || !compValue) return { ok: false, newBalance: null, error: 'invalid_tier' };
   try {
-    const { data: upd, error } = await client.from('profiles').update({ tier: COMP_TIER_VALUE[tier] }).eq('id', userId).select('id');
+    const { data: upd, error } = await client.from('profiles').update({ tier: compValue }).eq('id', userId).select('id');
     if (error) return { ok: false, newBalance: null, error: error.message };
     if (!Array.isArray(upd) || upd.length === 0) return { ok: false, newBalance: null, error: 'user_not_found' };
 
