@@ -5,7 +5,10 @@
 import 'server-only';
 import { dbSpendStore } from '@/lib/agent/sandbox/dbSpend';
 import { disabledBrowser, hostBrowserRunner, type BrowserRunner } from './runner';
-import { vercelBrowserHost } from './vercelHost';
+import { vercelBrowserHost, vercelLoginHost } from './vercelHost';
+import { vaultKey } from './sessionVault';
+import { SESSION_BUCKET, sessionStore, type SessionStore } from './sessionStore';
+import { browserLogin, type BrowserLogin } from './login';
 import type { BrowserDeps } from './quote';
 
 const SNAPSHOT = /^[A-Za-z0-9_-]{6,80}$/;
@@ -14,9 +17,40 @@ export function browserEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.BROWSER_ENABLED === '1' && SNAPSHOT.test(env.BROWSER_SNAPSHOT_ID ?? '');
 }
 
+/**
+ * Logging in inside the cloud browser (./login): off unless the browser is on, AGENT_BROWSER_LOGIN=1 and
+ * AGENT_BROWSER_VAULT_KEY holds a 32-byte key (the vault has no fallback key).
+ */
+export function browserLoginEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return browserEnabled(env) && env.AGENT_BROWSER_LOGIN === '1' && vaultKey(env) !== null;
+}
+
+/** The saved-logins vault, or null when logins are off. */
+export async function liveSessionStore(env: NodeJS.ProcessEnv = process.env): Promise<SessionStore | null> {
+  const key = browserLoginEnabled(env) ? vaultKey(env) : null;
+  if (!key) return null;
+  const { supabaseBlobs } = await import('@/lib/agent/workspace/live');
+  return sessionStore(supabaseBlobs(SESSION_BUCKET), key);
+}
+
+export async function liveBrowserLogin(userId: string, env: NodeJS.ProcessEnv = process.env): Promise<BrowserLogin | null> {
+  const sessions = await liveSessionStore(env);
+  if (!sessions) return null;
+  return browserLogin({
+    host: vercelLoginHost(env.BROWSER_SNAPSHOT_ID!),
+    spend: dbSpendStore({ userId }),
+    sessions,
+    key: () => env.AGENT_G_QUOTE_SECRET || env.SUPABASE_SERVICE_ROLE_KEY || '',
+  });
+}
+
 export function getBrowserRunner(userId: string | null, env: NodeJS.ProcessEnv = process.env): BrowserRunner {
   if (!browserEnabled(env)) return disabledBrowser;
-  return hostBrowserRunner(vercelBrowserHost(env.BROWSER_SNAPSHOT_ID!), dbSpendStore({ userId }));
+  // A task that starts on a site the person saved a login for opens with that login (only with logins switched on).
+  const loadState = userId && browserLoginEnabled(env)
+    ? async (url: string) => (await liveSessionStore(env))?.forUrl(userId, url) ?? null
+    : undefined;
+  return hostBrowserRunner(vercelBrowserHost(env.BROWSER_SNAPSHOT_ID!), dbSpendStore({ userId }), { loadState });
 }
 
 export async function liveBrowserDeps(): Promise<BrowserDeps> {
