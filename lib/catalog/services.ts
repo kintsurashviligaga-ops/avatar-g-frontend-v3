@@ -158,7 +158,9 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['motion transfer', 'motion control', 'copy the motion', 'მოძრაობის გადატანა', 'перенос движения'],
   }),
   svc({
-    id: 'video.vfx', category: 'video', order: 15, tool: 'vfx', pricingKey: 'vfx', status: 'live', boundary: 'google',
+    // REMOVED (GG 2026-11-13): out of every menu, the search and Agent G's routing (lib/studio/tools.ts); /api/genjutsu/quote and
+    // /generate answer 410 service_removed before any charge. The id stays (§50 analytics identity).
+    id: 'video.vfx', category: 'video', order: 15, tool: 'vfx', pricingKey: 'vfx', status: 'hidden', boundary: 'google',
     boundaryNote: 'Veo scene only (motion / swap ran on Higgsfield: closed by lib/genjutsu/engines); priced by lib/genjutsu/pricing.ts through quote `vfx`',
     label: l('VFX ეფექტები', 'VFX effects', 'VFX-эффекты'),
     description: l('ერთი შეხებით VFX ეფექტები ფოტოსთვის', 'One-tap VFX effects for your photos', 'VFX-эффекты в одно касание'),
