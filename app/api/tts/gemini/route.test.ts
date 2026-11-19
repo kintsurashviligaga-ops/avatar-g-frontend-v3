@@ -669,7 +669,7 @@ describe('the checks run together, and the booking follows the audio', () => {
     await ticks();
     // All three are under way while neither the cap nor the budget has answered…
     expect(byKey()).toHaveBeenCalledWith(USER_ID, RATE_LIMITS.TTS_USER);
-    expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-2.5-flash-preview-tts');
+    expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-3.8-flash-tts');
     expect(tokenMock()).toHaveBeenCalledTimes(1);
     // …and nothing is asked of the model yet.
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -741,7 +741,7 @@ describe('the checks run together, and the booking follows the audio', () => {
       await ticks();
       expect(bookMock).toHaveBeenCalledTimes(1);
       expect(bookMock.mock.calls[0]![0]).toMatchObject({
-        model: 'gemini-2.5-flash-preview-tts', inputTokens: 9, outputTokens: 30, totalTokens: 39, userId: USER_ID,
+        model: 'gemini-3.8-flash-tts', inputTokens: 9, outputTokens: 30, totalTokens: 39, userId: USER_ID,
       });
       booked.resolve(undefined);
       await expect(handed[0]).resolves.toBeUndefined();
