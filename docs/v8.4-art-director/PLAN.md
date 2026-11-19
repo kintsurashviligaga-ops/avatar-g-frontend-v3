@@ -17,3 +17,23 @@ Full gap analysis and UI/UX plan: https://claude.ai/artifact/BeuhTzzfLKZEf9iGvfY
 - A: lib/image/artDirector (this PR) — spec, flag, price, prompt, body, grid, mask, intent, request, library, labels.
 - B: routes (quote + run, Vertex only) + UI (grid card, control panel, reference tray A–N, brush), mounted behind the flag.
 - C: Library save + PNG/JPG download + chat edit intent wiring; ~$1 paid check after Supabase is back (GG approved).
+
+## PR C — Library recipe, PNG/JPG download, chat edits (built 2026-11-15)
+
+- `GET /api/image/art-director/download?path=&format=png|jpg` — only `art-director/<uid>/<uuid>.png` of the caller
+  (`artResultId`); JPG is made on the fly (white behind transparency, q92); file name `myavatar-<id>-<size>.<ext>`.
+- `GET /api/image/art-director/recipe?path=` — the JSON recipe stored next to the picture (no DB column, no migration).
+  Reference storage paths are not returned; the card shows letters and roles.
+- Library: rows filed with `params.subtype = 'art-director-v1'` carry `artPath` (own host, own folder only); the card gets a
+  "Recipe" button with the recipe and PNG/JPG downloads.
+- Chat (OmniStudio), behind `NEXT_PUBLIC_IMAGE_ART_DIRECTOR` = admin | everyone (client) **and** `IMAGE_ART_DIRECTOR`
+  (server):
+  - Image tool, no photo attached, no template → an Art Director grid at the chat's count and ratio, 1K unless the line
+    names 2K/4K. A `feature_off` answer sends the line down the old `/api/nanobanana/image` path.
+  - A line after an Art Director picture that asks to change it (`detectEditIntent`: edit / remove / background /
+    upscale / extend / vary, ka/en/ru) → that operation on the newest picture, or on the tile picked with "Use as base".
+    "a castle in 4K" names a size and is not an upscale.
+  - Each tile: Upscale (Re-render) 2K/4K with GG's tooltip, Edit (brush, "keep everything else identical"), Vary, Use as
+    base, PNG/JPG. Every press is its own bubble, price and charge.
+- Turn-on (GG card, after Supabase is back and the ~$1 paid check passes): set `IMAGE_ART_DIRECTOR=admin` and
+  `NEXT_PUBLIC_IMAGE_ART_DIRECTOR=admin`, redeploy. Prices follow `NEXT_PUBLIC_PRICING_V8` (off = today's book, 1K only).

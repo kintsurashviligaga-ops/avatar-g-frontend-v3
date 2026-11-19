@@ -40,6 +40,7 @@ import {
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { normalizeRoomGeometry, normalizeStyleGuide, type RoomGeometry, type StyleGuide } from '@/lib/orchestrator/interior';
 import { serverTiming } from '@/lib/perf/serverTiming';
+import { artResultId } from '@/lib/image/artDirector/library';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +62,15 @@ export interface LibraryItem {
   expiresAt?: string;
   /** The signed-in owner starred it. Absent on the demo library, and when the stars could not be read. */
   favorite?: boolean;
+  /** An Art Director picture (Phase 8.4): its own storage path, for the recipe card and the PNG/JPG download. */
+  artPath?: string;
+}
+
+/** The Art Director path behind a stored link, only when it is exactly one of THIS user's results (artResultId). */
+function artPathOf(url: string, uid: string): string | null {
+  const ref = describeSupabaseObjectUrl(url);
+  if (!ref || ref.bucket !== 'renders' || !ownStorageHosts().has(ref.host)) return null;
+  return artResultId(ref.path, uid) ? ref.path : null;
 }
 
 /** How long a link minted here works. 24 h: longer than any session, short enough that a leaked link is not permanent. */
@@ -208,6 +218,7 @@ export async function GET(req: NextRequest) {
       if (mayResign(row)) resignable.add(rows.length);
       else unproven.set(rows.length, row);
       const plan = pickPlan(row);
+      const artPath = params.subtype === 'art-director-v1' ? artPathOf(url, uid) : null;
       rows.push({
         id: row.id,
         kind: row.service_type,
@@ -216,6 +227,7 @@ export async function GET(req: NextRequest) {
         orientation: params.orientation === 'vertical' ? 'vertical' : 'landscape',
         createdAt: row.created_at,
         ...(plan ? { plan } : {}),
+        ...(artPath ? { artPath } : {}),
       });
     }
 
