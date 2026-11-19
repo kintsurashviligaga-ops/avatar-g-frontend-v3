@@ -53,6 +53,17 @@ export const L10N = {
   notVerbatim: { ka: 'წამყვანმა ტექსტი ზუსტად ვერ წაიკითხა — სცადე „თავიდან შექმნა“.', en: 'The presenter did not read every word — try Regenerate.', ru: 'Ведущий прочитал не дословно — попробуйте «Пересоздать».' },
   timingEstimated: { ka: 'ტექსტის მონიშვნა მიახლოებითია.', en: 'Word highlighting is approximate.', ru: 'Подсветка слов приблизительная.' },
   dubLabel: { ka: 'სტუდიური ხმა (ტუჩები მიახლოებით)', en: 'Studio voice (lips approximate)', ru: 'Студийный голос (губы приблизительно)' },
+  speed: { ka: 'სიჩქარე', en: 'Speed', ru: 'Скорость' },
+  pitch: { ka: 'ტონის სიმაღლე', en: 'Pitch', ru: 'Высота' },
+  dubFailed: { ka: 'სტუდიური ხმა ვერ დაიდო — სცენა Omni-ს ხმით დარჩა, ხმის ფასი დაგიბრუნდა.', en: 'The studio voice could not be laid on — the scene keeps Omni’s voice and the voice part was refunded.', ru: 'Студийный голос не наложен — сцена с голосом Omni, стоимость голоса возвращена.' },
+  openMontage: { ka: 'მონტაჟში გახსნა', en: 'Open in Montage', ru: 'Открыть в монтаже' },
+  toDirector: { ka: 'რეჟისორის რეჟიმის ფილმში დამატება', en: 'Add to a Director’s Workflow film', ru: 'Добавить в фильм режиссёра' },
+  offered: { ka: 'დაემატა — რეჟისორის რეჟიმში მზა სცენად გამოჩნდება.', en: 'Added — it shows up as a ready scene in Director’s Workflow.', ru: 'Добавлено — появится готовой сценой в режиме режиссёра.' },
+  freeNote: { ka: 'უფასოა: ვიდეო უკვე შექმნილია.', en: 'Free: the video is already made.', ru: 'Бесплатно: видео уже создано.' },
+  close: { ka: 'დახურვა', en: 'Close', ru: 'Закрыть' },
+  library: { ka: 'ბიბლიოთეკაში შენახულია.', en: 'Saved in your Library.', ru: 'Сохранено в библиотеке.' },
+  wholePresentation: { ka: 'მთელი პრეზენტაცია', en: 'Whole presentation', ru: 'Вся презентация' },
+  noScript: { ka: 'ჩასვი სცენარი ქვემოთ და სცენებად დავყოფ.', en: 'Paste the script below and I will split it into scenes.', ru: 'Вставьте сценарий ниже, и я разделю его на сцены.' },
   pillared: { ka: '16:9-ში წამყვანი ბუნდოვან ფონზე დგას.', en: 'In 16:9 the presenter stands on a blurred backdrop.', ru: 'В 16:9 ведущий стоит на размытом фоне.' },
 } as const satisfies Record<string, L>;
 

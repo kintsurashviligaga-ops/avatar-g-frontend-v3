@@ -31,8 +31,11 @@ import { getVertexAccessToken, vertexAiConfig } from '@/lib/veo/vertexAuth';
 import { chirpWordsBody, parseChirpWords } from './chirpWords';
 import { StudioError } from './errors';
 import { LIVE_TAKE_MAX_MS, LiveTakeRecorder, type TakeResult } from './liveTake';
-import { ownsStudioPath, type SceneDeps, type SceneJob } from './sceneRun';
+import { ownsStudioPath, type DubArgs, type SceneDeps, type SceneJob } from './sceneRun';
 import { composeWideArgs } from './stitch';
+import { voiceAdjustFilter } from './voiceAdjust';
+import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
+import { dubFilter, frameLevelsDb, planDub, speechSpans } from '@/lib/avatar/speechMatch';
 
 const exec = promisify(execFile);
 export const STUDIO_BUCKET = 'renders';
@@ -139,6 +142,46 @@ async function chirpWords(bytes: Buffer, lang: SceneJob['lang']) {
   return parsed.words.length ? parsed : null;
 }
 
+/** A track's speech levels (16 kHz mono, voice band), for speechMatch. null when it has no audio. */
+async function levelsOf(file: string, pcm: string): Promise<number[] | null> {
+  try {
+    await exec(bin(), ['-y', '-v', 'error', '-i', file, '-map', '0:a:0', '-af', 'highpass=f=120,lowpass=f=4000', '-ac', '1', '-ar', '16000', '-f', 's16le', pcm], { timeout: 60_000, maxBuffer: 1 << 24 });
+    const buf = await readFile(pcm);
+    if (buf.byteLength < 320) return null;
+    return frameLevelsDb(new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2)), 16_000);
+  } catch { return null; }
+}
+
+const TTS_LANG: Record<SceneJob['lang'], string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
+
+/**
+ * The Studio voice over an Omni clip (D3, "lips approximate"): the named Gemini-TTS voice reads the scene, its exact
+ * speed/pitch is applied (D6), and the line is cut at its pauses and laid onto where the presenter's mouth spoke
+ * (speechMatch.planDub; unmatched → from the start, padded). The picture is stream-copied. null on any miss.
+ */
+export async function dubOmniClip(a: DubArgs): Promise<Buffer | null> {
+  const mp3 = await synthesizeGoogleTts(a.text, { languageCode: TTS_LANG[a.lang], geminiVoice: a.voiceId });
+  if (!mp3) return null;
+  return withTmp(async (dir) => {
+    const clip = join(dir, 'clip.mp4'), raw = join(dir, 'voice.mp3'), voice = join(dir, 'voice.wav'), out = join(dir, 'out.mp4');
+    await writeFile(clip, a.clip);
+    await writeFile(raw, Buffer.from(mp3));
+    const adjust = voiceAdjustFilter(a.adjust);
+    await exec(bin(), ['-y', '-i', raw, ...(adjust ? ['-af', adjust] : []), '-ac', '1', '-ar', '24000', voice], { timeout: 60_000 });
+    const line = await levelsOf(voice, join(dir, 'line.pcm'));
+    const mouth = await levelsOf(clip, join(dir, 'mouth.pcm'));
+    const sec = Number(a.durationSec.toFixed(3));
+    const pieces = planDub(line ? speechSpans(line) : [], mouth ? speechSpans(mouth) : [], sec);
+    const graph = pieces ? dubFilter(pieces, '1:a', sec) : `[1:a]apad=whole_dur=${sec}[voice]`;
+    await exec(bin(), [
+      '-y', '-i', clip, '-i', voice, '-filter_complex', graph, '-map', '0:v:0', '-map', '[voice]',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-t', String(sec), '-movflags', '+faststart', out,
+    ], { timeout: 90_000, maxBuffer: 1 << 26 });
+    const buf = await readFile(out);
+    return buf.byteLength >= 1_024 ? buf : null;
+  }).catch(() => null);
+}
+
 export function liveSceneDeps(userId: string): SceneDeps {
   const sb = () => createServiceRoleClient();
   return {
@@ -176,6 +219,7 @@ export function liveSceneDeps(userId: string): SceneDeps {
     },
     measure: (bytes) => withTmp(async (dir) => { const f = join(dir, 'm.mp4'); await writeFile(f, bytes); return probeSec(f); }),
     words: (bytes, lang) => chirpWords(bytes, lang).catch(() => null),
+    dub: dubOmniClip,
     async save(uid, path, bytes, mime) {
       if (!ownsStudioPath(path, uid)) throw new StudioError('invalid_request', 'Bad storage path.');
       const { error } = await sb().storage.from(STUDIO_BUCKET).upload(path, bytes, { contentType: mime, upsert: true });

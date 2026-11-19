@@ -2,13 +2,15 @@
 
 /**
  * Virtual Studio controls: the presenter library (Studio = Live presenters, Cinematic = Omni faces; female/male,
- * professional/casual), voice (Live only — Omni speaks in its own voice), tone, pace, format, quality (Omni) and the
+ * professional/casual), voice (Live: the voice it speaks in; Cinematic: its own voice, or a named "Studio voice (lips
+ * approximate)" dub with exact speed/pitch sliders — D3/D6), tone, pace, format, quality (Omni) and the
  * background. Every price shown is the 30 s price from lib/avatar/studio/price (the server charges the same).
  */
 import { useState } from 'react';
 import { filterPresenters, PACES, TONES, TONE_LABEL, VOICES, presenterById, type Gender, type PresenterLook, type StudioEngine } from '@/lib/avatar/studio/catalog';
 import { price30s, type StudioBook } from '@/lib/avatar/studio/price';
 import type { StudioRequest } from '@/lib/avatar/studio/plan';
+import { VOICE_PITCH_MAX, VOICE_PITCH_MIN, VOICE_SPEED_MAX, VOICE_SPEED_MIN } from '@/lib/avatar/studio/voiceAdjust';
 import { t, type StudioLang } from './labels';
 
 const chip = (on: boolean) => `rounded-full border px-3 py-1.5 text-[13px] ${on ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border text-app-muted hover:text-app-text'}`;
@@ -60,6 +62,7 @@ export function StudioControls({ value, onChange, lang, book, onUploadBackground
   const set = (patch: Partial<StudioRequest>) => onChange({ ...value, ...patch });
   const bg = value.background ?? { kind: 'studio' as const };
   const live = presenter?.engine === 'live';
+  const dub = !live && !!value.voiceId;
   return (
     <div data-testid="vs-controls" className="space-y-3">
       <PresenterLibrary value={value.presenterId} lang={lang} book={book}
@@ -74,8 +77,26 @@ export function StudioControls({ value, onChange, lang, book, onUploadBackground
             className="mt-1 block w-full rounded-xl border border-app-border bg-app-bg px-3 py-2 text-[14px] text-app-text">
             {VOICES.map((v) => <option key={v.id} value={v.id}>{v.id} · {v.character[lang]} · {v.gender === 'female' ? t('female', lang) : t('male', lang)}</option>)}
           </select>
-        ) : <span data-testid="vs-omni-voice" className="mt-1 block text-[14px] text-app-text">{t('omniVoice', lang)}</span>}
+        ) : (
+          <select data-testid="vs-omni-voice" value={value.voiceId ?? ''} onChange={(e) => set({ voiceId: e.target.value || null })}
+            className="mt-1 block w-full rounded-xl border border-app-border bg-app-bg px-3 py-2 text-[14px] text-app-text">
+            <option value="">{t('omniVoice', lang)}</option>
+            {VOICES.map((v) => <option key={v.id} value={v.id}>{v.id} · {t('dubLabel', lang)}</option>)}
+          </select>
+        )}
       </label>
+      {dub && (
+        <div data-testid="vs-dub-sliders" className="grid grid-cols-2 gap-3">
+          <label className="block text-[12px] text-app-muted">{t('speed', lang)} · {(value.voiceSpeed ?? 1).toFixed(2)}×
+            <input type="range" data-testid="vs-voice-speed" min={VOICE_SPEED_MIN} max={VOICE_SPEED_MAX} step={0.05} value={value.voiceSpeed ?? 1}
+              onChange={(e) => set({ voiceSpeed: Number(e.target.value) })} className="mt-1 block w-full" />
+          </label>
+          <label className="block text-[12px] text-app-muted">{t('pitch', lang)} · {(value.voicePitch ?? 0) > 0 ? '+' : ''}{value.voicePitch ?? 0}
+            <input type="range" data-testid="vs-voice-pitch" min={VOICE_PITCH_MIN} max={VOICE_PITCH_MAX} step={0.5} value={value.voicePitch ?? 0}
+              onChange={(e) => set({ voicePitch: Number(e.target.value) })} className="mt-1 block w-full" />
+          </label>
+        </div>
+      )}
       <div>
         <div className="mb-1 text-[12px] text-app-muted">{t('tone', lang)}</div>
         <div className="flex flex-wrap gap-1.5">
