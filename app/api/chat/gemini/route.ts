@@ -93,6 +93,7 @@ import { mentionsPdf } from '@/lib/chat/documentIntent';
 import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
 import { veoAvatarPublic } from '@/lib/avatar/veoAvatar';
 import { serverTiming, type ServerTiming } from '@/lib/perf/serverTiming';
+import { setEndUser } from '@/lib/ai/google/safetyIdentifier';
 
 /** Derived from the helper's own return type — lib/supabase/server does not export its client alias. */
 type AnyAuthedClient = Awaited<ReturnType<typeof authedClientFromRequest>>['supabase'];
@@ -482,6 +483,7 @@ export async function POST(req: NextRequest) {
   const userId = auth.user?.id ?? null;
   /** The verified ACCOUNT, or null — a session id of "anonymous" is not an account (generationGate.isAnonymousUser). */
   const accountId = isAnonymousUser(userId) ? null : userId;
+  setEndUser(accountId); // Phase 8.9: hashed labels.safety_identifier on this request's Vertex calls (flag off → no-op)
   // The Veo talking avatar runs for the admin until GG opens it (app/api/avatar/veo), so the prompt offers the Avatar
   // tool only to whoever that route lets through. Known at once when it is open to all or there is no account;
   // otherwise checked from here and read in the stream, by CONTEXT_DEADLINE_MS (a late answer offers no avatar).
