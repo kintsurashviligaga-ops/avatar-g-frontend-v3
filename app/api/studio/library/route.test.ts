@@ -42,7 +42,7 @@ function mockQuery(table = 'generation_jobs') {
   chain.delete = () => { if (write) { write.op = 'delete'; mockFavWrites.push(write); } return chain; };
   for (const m of ['order', 'range', 'or']) chain[m] = (...a: unknown[]) => { mockPaging.push([m, ...a]); return chain; };
   chain.update = (patch: Record<string, unknown>) => { mockUpdates.push(patch); return chain; };
-  for (const m of ['eq', 'neq', 'in']) chain[m] = (...a: unknown[]) => { (write ? write.filters : mockFilters).push([m, ...a]); return chain; };
+  for (const m of ['eq', 'neq', 'in', 'ilike']) chain[m] = (...a: unknown[]) => { (write ? write.filters : mockFilters).push([m, ...a]); return chain; };
   chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
     if (write) return resolve({ data: mockFavError ? null : write.op === 'read' ? mockFavRows : null, error: mockFavError });
     return mockQueryThrows ? reject(new Error('socket hang up')) : resolve({ data: mockQueryError ? null : mockRows, error: mockQueryError });
@@ -252,6 +252,26 @@ describe('GET — the kind filter', () => {
   test('the Docs tab asks for Agent G\'s PDFs', async () => {
     await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=document'));
     expect(serviceFilters()).toEqual([['eq', 'service_type', 'document']]);
+  });
+});
+
+describe('GET — search (Phase 7.8): the prompts of the whole Library, not only the page on screen', () => {
+  const searches = () => mockFilters.filter(([m]) => m === 'ilike');
+  test('q filters the prompt with ilike, within the kind', async () => {
+    await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=image&q=%20sunset%20'));
+    expect(searches()).toEqual([['ilike', 'params->>prompt', '%sunset%']]);
+    expect(mockFilters).toContainEqual(['eq', 'service_type', 'image']);
+  });
+  test('LIKE wildcards are meant literally, and a long search is capped at 100 characters', async () => {
+    await GET(new NextRequest(`https://myavatar.ge/api/studio/library?q=${encodeURIComponent('100%_off\\')}`));
+    expect(searches()).toEqual([['ilike', 'params->>prompt', '%100\\%\\_off\\\\%']]);
+    mockFilters.length = 0;
+    await GET(new NextRequest(`https://myavatar.ge/api/studio/library?q=${'a'.repeat(150)}`));
+    expect(searches()).toEqual([['ilike', 'params->>prompt', `%${'a'.repeat(100)}%`]]);
+  });
+  test('no q, no search filter', async () => {
+    await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=film'));
+    expect(searches()).toEqual([]);
   });
 });
 
