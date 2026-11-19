@@ -17,7 +17,7 @@
  * finger and everything after it shifts, as in CapCut. The LEFT handle shows the cut as a dimmed region and
  * applies it on release: trimming a clip's start live would slide the clip out from under the finger.
  */
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertCircle, Layers, Loader2, Minus, Music2, Plus, Square, Type, Volume2, VolumeX } from 'lucide-react';
 import { fmtClock, type Copy } from './copy';
 import { fmtSec, fmtTime } from './media';
@@ -99,6 +99,11 @@ export interface TimelineProps {
   onText: (clipId: string | null) => void;
   onToggleOriginal: () => void;
   onZoom: (factor: number) => void;
+  /**
+   * The Smart Editor's Text and Effects lanes (Phase 8.7, components/studio/montage/smart/SmartLanes), drawn above the
+   * video track in the same scrolling content. Absent (the flag is off) = the timeline is exactly as before.
+   */
+  smartLanes?: { height: number; render: (g: { pad: number; pxPerSec: number; top: number }) => ReactNode };
 }
 
 export interface TimelineHandle {
@@ -233,7 +238,8 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     return { step, out };
   }, [p.pxPerSec, p.totalSec]);
 
-  const tracksTop = RULER_H + 6;
+  const smartTop = RULER_H + 6;
+  const tracksTop = smartTop + (p.smartLanes ? p.smartLanes.height + 6 : 0);
   const textTop = tracksTop + videoH + 6;
   const musicTop = textTop + textH + 6;
   const height = musicTop + musicH + 8;
@@ -272,6 +278,8 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
               <span key={`m${s}`} className="absolute top-[13px] h-[5px] w-px bg-app-border/25" style={{ left: pad + (s + ticks.step / 2) * p.pxPerSec }} />
             ))}
           </div>
+
+          {p.smartLanes && p.clips.length > 0 && p.smartLanes.render({ pad, pxPerSec: p.pxPerSec, top: smartTop })}
 
           {/* Clip sound — left of the first clip, like CapCut's „Mute clip audio" */}
           {p.clips.length > 0 && (

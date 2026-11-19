@@ -174,6 +174,8 @@ export const STAGE_LABEL: Record<string, Tri> = {
   bridge: T('ფოტოების გაცოცხლება', 'Bringing photos to life', 'Оживляем фото'),
   normalize: T('ფორმატში მორგება', 'Fitting the format', 'Подгоняем формат'),
   stitch: T('კლიპების შეერთება', 'Joining the clips', 'Склеиваем клипы'),
+  inserts: T('ჩანართების დადება', 'Laying the cutaways', 'Накладываем вставки'),
+  smart: T('სუბტიტრები და ეფექტები', 'Captions and effects', 'Субтитры и эффекты'),
   music: T('მუსიკის დადება', 'Laying the music', 'Накладываем музыку'),
 };
 
