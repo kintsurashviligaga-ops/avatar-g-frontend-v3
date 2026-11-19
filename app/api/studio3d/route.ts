@@ -17,7 +17,7 @@ export const maxDuration = 60; // the reference picture is drawn inside this req
 
 /** GET /api/studio3d — 200 { ok, on: true } when this user may use the 3D Studio, 404 otherwise (the chat's 3D panel asks). */
 export async function GET(req: NextRequest) {
-  const ctx = await studio3dContext(req);
+  const ctx = await studio3dContext((await authedClientFromRequest(req)).user);
   if (!ctx.ok) return ctx.response;
   return NextResponse.json({ ok: true, on: true }, { headers: { 'cache-control': 'private, no-store' } });
 }
