@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { studio3dContext } from '@/lib/studio3d/server/routeAuth';
 import { downloadJob } from '@/lib/studio3d/server/service';
 import { contentDisposition } from '@/lib/studio3d/server/download';
@@ -15,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await studio3dContext(req);
+  const ctx = await studio3dContext((await authedClientFromRequest(req)).user);
   if (!ctx.ok) return ctx.response;
   const limited = await checkRateLimit(req, RATE_LIMITS.WRITE);
   if (limited) return limited;
