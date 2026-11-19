@@ -267,6 +267,11 @@ import { postArtChat } from './artDirector/chatRun';
 import { artChatClientOn, lastArtBase, planArtChat, type ArtChatBase, type ArtChatRequest, type ArtChatState } from '@/lib/image/artDirector/chat';
 import { detectEditIntent } from '@/lib/image/artDirector/intent';
 import { artBook, imageCredits, sizesFor } from '@/lib/image/artDirector/price';
+import { MusicPlanCard } from './musicProducer/MusicPlanCard';
+import { producerChatClientOn, producerChatTakes } from '@/lib/music/producer/flag';
+import { parseProducerAsk } from '@/lib/music/producer/intent';
+import { producerBook } from '@/lib/music/producer/book';
+import { filmTargets } from '@/lib/music/producer/videoTargets';
 import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
@@ -882,6 +887,10 @@ const ENABLE_PARALLEL_CINEMA = process.env.NEXT_PUBLIC_PARALLEL_CINEMA === '1';
 // NEXT_PUBLIC_IMAGE_ART_DIRECTOR is 'admin' or 'everyone'; the server's IMAGE_ART_DIRECTOR still decides per user, and a
 // refusal sends the line down the old image path.
 const ART_CHAT = artChatClientOn(process.env.NEXT_PUBLIC_IMAGE_ART_DIRECTOR);
+// Phase 8.5 Music Producer in the chat: a music line in the Music tool, or one that names a video ("… and add it to Scene 3
+// of my video") anywhere, gets Agent G's plan card (one price, Start). OFF unless NEXT_PUBLIC_MUSIC_PRODUCER_V2 is 'admin'
+// or 'everyone'; the server's MUSIC_PRODUCER_V2 still decides per user.
+const MUSIC_PRODUCER_CHAT = producerChatClientOn(process.env.NEXT_PUBLIC_MUSIC_PRODUCER_V2);
 /**
  * A film that already wrote its own failure on its bubble. The queued job must still settle as failed, so renderFilm
  * throws — and its catch used to paint the generic "the service may be busy" line over the real reason. In Production
@@ -989,7 +998,9 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   art?: ArtChatState;
   /** A 3D result's model (our Storage, .glb) — kept as data, not only as the link in the text, so it survives a reload
    *  (leanMessages) and the chat model is told what was made (lib/chat/historySerializer). */
-  glbUrl?: string }
+  glbUrl?: string;
+  /** Agent G's Music Producer plan card for this line (Phase 8.5). Never persisted. */
+  musicPlan?: { text: string } }
 
 /** The jobs an Agent G card narrates itself (its run's own and each run step's): the tray leaves them to the card. */
 function cardJobsOf(m: Msg): string[] {
@@ -6957,6 +6968,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
     }
+    // Phase 8.5 — Agent G's Music Producer plan card (make the track, place it in the film). Nothing is charged until Start.
+    if (MUSIC_PRODUCER_CHAT && text && attachments.length === 0 && producerChatTakes(text, effMode, parseProducerAsk(text))) {
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '', musicPlan: { text } }]);
+      setInput('');
+      stopDictationEcho();
+      return;
+    }
     if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       closeSettingsLayer();
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
@@ -10010,6 +10028,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       picked={artPick?.path ?? null} />
                   );
                 })()}
+                {m.musicPlan && (
+                  <MusicPlanCard text={m.musicPlan.text} film={filmTargets()[0] ?? null} book={producerBook()}
+                    lang={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}
+                    onCharged={(credits) => notifyCredit('music', { credits })} />
+                )}
                 {m.batch && (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-1.5">
@@ -10830,7 +10853,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [artPick, runArtChat, busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain, confirmClip, changeClipAsk, cancelClipAsk, confirmEdit, changeEditAsk, cancelEditAsk]);
+  ), [artPick, runArtChat, busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain, confirmClip, changeClipAsk, cancelClipAsk, confirmEdit, changeEditAsk, cancelEditAsk, notifyCredit]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

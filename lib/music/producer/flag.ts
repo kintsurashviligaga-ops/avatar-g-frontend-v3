@@ -16,3 +16,18 @@ export function producerAllowed(isAdmin: boolean, env: Record<string, string | u
   const a = producerAudience(env);
   return a === 'everyone' || (a === 'admin' && isAdmin);
 }
+
+/**
+ * The CLIENT switch for the chat (NEXT_PUBLIC_MUSIC_PRODUCER_V2, read literally so Next inlines it): 'admin' or 'everyone'
+ * lets the chat show Agent G's music plan card. The server's MUSIC_PRODUCER_V2 still decides per user; turn both on together.
+ */
+export const producerChatClientOn = (value: string | undefined): boolean => {
+  const v = (value ?? '').trim().toLowerCase();
+  return v === 'admin' || v === 'everyone';
+};
+
+/** A line the chat hands to the Music Producer: in the Music tool any music ask; elsewhere only one that names a video. */
+export function producerChatTakes(text: string, mode: string, ask: { target: unknown } | null): boolean {
+  if (!text.trim() || !ask) return false;
+  return mode === 'music' || ask.target != null;
+}
