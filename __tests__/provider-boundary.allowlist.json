@@ -16,7 +16,6 @@
       "lib/services/model3d/replicate3dClient.ts"
     ],
     "openai": [
-      "lib/agent-g/voice/stt.ts",
       "lib/system/provider-health.ts",
       "services/voice-v2v-node/server.mjs"
     ],
