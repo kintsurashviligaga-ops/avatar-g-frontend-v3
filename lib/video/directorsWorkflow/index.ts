@@ -5,3 +5,4 @@ export * from './scenePrompt';
 export * from './planner';
 export * from './flag';
 export * from './runner';
+export * from './finalCut';

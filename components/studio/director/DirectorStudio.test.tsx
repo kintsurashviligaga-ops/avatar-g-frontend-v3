@@ -59,3 +59,33 @@ test('a short balance stops before any scene starts', async () => {
   expect(screen.getByTestId('dw-notice').textContent).toMatch(/Not enough credits/);
   expect(f.started).toEqual([]);
 });
+
+test('once every scene is delivered: a free final cut, or one with a priced music bed, saved to the Library', async () => {
+  const f = fakeDeps([]);
+  fetchMock.mockImplementation(async (url: string, init?: { body?: string }) => {
+    if (url === '/api/video/director-workflow/cut') {
+      const b = JSON.parse(init?.body ?? '{}');
+      if (b.quote) return { ok: true, json: async () => ({ success: true, musicCredits: 3, bedSeconds: 30, musicAvailable: true }) };
+      return { ok: true, json: async () => ({ success: true, url: 'https://cdn/film.mp4', savedToLibrary: true, musicCredits: b.music ? 3 : 0 }) };
+    }
+    return { ok: true, json: async () => ({ success: true, version: 1 }) };
+  });
+  render(<DirectorStudio locale="en" onClose={() => {}} deps={f.deps} initial={board()} />);
+  expect(screen.queryByTestId('dw-final-cut')).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByTestId('dw-approve')); });
+  await waitFor(() => expect(screen.getByTestId('dw-final-cut')).toBeTruthy());
+  expect(screen.getByTestId('dw-cut').textContent).toMatch(/Final cut · free/);
+
+  // Music: the price comes from the server before anything is charged.
+  await act(async () => { fireEvent.click(screen.getByTestId('dw-music')); });
+  await act(async () => { fireEvent.change(screen.getByTestId('dw-music-style'), { target: { value: 'Add cinematic music to the whole film' } }); });
+  await waitFor(() => expect(screen.getByTestId('dw-cut').textContent).toMatch(/music ✦3/));
+  await act(async () => { fireEvent.click(screen.getByTestId('dw-cut')); });
+  await waitFor(() => expect(screen.getByTestId('dw-film').getAttribute('src')).toBe('https://cdn/film.mp4'));
+  expect(screen.getByTestId('dw-film-saved').textContent).toMatch(/Library/);
+
+  const cutCall = fetchMock.mock.calls.map((c) => [c[0], JSON.parse(c[1]?.body ?? '{}')]).find(([u, b]) => u === '/api/video/director-workflow/cut' && !b.quote)![1];
+  expect(cutCall.clips).toEqual([{ sceneId: 's1', url: 'https://cdn/s1.mp4' }, { sceneId: 's2', url: 'https://cdn/s2.mp4' }]);
+  expect(cutCall.music).toEqual({ prompt: 'cinematic music' });
+  expect(cutCall.expectedCredits).toBe(3);
+});
