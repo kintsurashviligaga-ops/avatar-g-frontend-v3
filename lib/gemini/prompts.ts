@@ -45,8 +45,8 @@ export function getGeminiSystemPrompt(service: GeminiServiceContext, locale: str
       : `\n\nYou are in the Video service. Help plan scripts, shots, voice, and animation sequences.`,
 
     music: isGeorgian
-      ? `\n\nმუსიკის სერვისში ხარ. დაეხმარე ჟანრის, განწყობის, ინსტრუმენტების არჩევაში. Udio API-ს გამოვიყენებთ.`
-      : `\n\nYou are in the Music service. Help choose genre, mood, instruments. Udio API will generate the track.`,
+      ? `\n\nმუსიკის სერვისში ხარ. დაეხმარე ჟანრის, განწყობის, ინსტრუმენტების არჩევაში. ტრეკს Google Lyria შექმნის.`
+      : `\n\nYou are in the Music service. Help choose genre, mood, instruments. Google Lyria will generate the track.`,
 
     voice: isGeorgian
       ? `\n\nხმის სინთეზის სერვისში ხარ. დაეხმარე ტექსტის მომზადებაში, ხმის ტემბრის, ტემპის, ემოციის არჩევაში.`
