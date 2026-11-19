@@ -271,3 +271,30 @@ describe('multi-step runs (PART 2): plan, run, approve, resume', () => {
     }
   });
 });
+
+describe('a read relayed by the stream with its signed pass (TASK_RELAY_TICKET)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mintRelayTicket, RELAY_HEADER } = require('../../../lib/tasks/relayTicket') as typeof import('../../../lib/tasks/relayTicket');
+  const relayed = (id: string, ticket: string | null) =>
+    GET(new NextRequest(`https://myavatar.ge/api/tasks?id=${id}`, { headers: ticket ? { [RELAY_HEADER]: ticket } : {} }));
+  beforeEach(() => { process.env.TASK_RELAY_SECRET = 'a-test-secret-long-enough'; });
+
+  test('a valid pass for that task skips the session and the rate limit and reads as the pass’s user', async () => {
+    mockUser = null; // no session at all: the pass alone answers
+    const t = mintRelayTicket({ userId: 'user-1', taskId: 'prod_1_a', workersOpen: false }, Date.now(), 60_000)!;
+    const r = await relayed('prod_1_a', t);
+    expect(r.status).toBe(200);
+    expect(authedClientFromRequest).not.toHaveBeenCalled();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+    expect(mockReads).toEqual([['user-1', 'prod_1_a']]);
+  });
+
+  test('a pass for another task, another user’s task, or a forged one is no pass', async () => {
+    mockUser = null;
+    const other = mintRelayTicket({ userId: 'user-1', taskId: 'prod_2_b', workersOpen: false }, Date.now(), 60_000)!;
+    expect((await relayed('prod_1_a', other)).status).toBe(401); // falls through to the session check
+    const theirs = mintRelayTicket({ userId: 'user-1', taskId: 'job-x', workersOpen: false }, Date.now(), 60_000)!;
+    expect((await relayed('job-x', theirs)).status).toBe(404); // job-x is user-2's: scoped to the pass's user
+    expect((await relayed('prod_1_a', 'forged.a.b.c.d')).status).toBe(401);
+  });
+});
