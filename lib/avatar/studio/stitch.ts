@@ -58,8 +58,8 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 export interface ComposeInput {
   /** The Live take (portrait). */
   foreground: string;
-  /** The background image. */
-  background: string;
+  /** The background image; null = the take's own frame, blurred and filled (pillar only). */
+  background: string | null;
   outPath: string;
   mode: 'key' | 'pillar';
   /** Where the presenter stands in the wide frame. */
@@ -75,7 +75,8 @@ export type ComposeResult = { ok: true; argv: string[] } | { ok: false; reason: 
 
 /** ffmpeg argv (without the binary) composing a portrait Live take onto a 16:9 background. Audio is the take's own. */
 export function composeWideArgs(c: ComposeInput): ComposeResult {
-  for (const s of [c.foreground, c.background]) {
+  if (c.mode === 'key' && !c.background) return { ok: false, reason: 'unsafe_source', detail: 'keying needs a background image' };
+  for (const s of c.background ? [c.foreground, c.background] : [c.foreground]) {
     if (!isSafeSource(s)) return { ok: false, reason: 'unsafe_source', detail: 'a compose input is not a safe source' };
   }
   const W = c.width ?? 1920, H = c.height ?? 1080;
@@ -87,12 +88,15 @@ export function composeWideArgs(c: ComposeInput): ComposeResult {
   const fg = c.mode === 'key'
     ? `[0:v]chromakey=${key}:${c.similarity ?? 0.12}:${c.blend ?? 0.08},scale=-2:${H}[fg]`
     : `[0:v]scale=-2:${H}[fg]`;
-  const bg = `[1:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1${c.mode === 'pillar' ? ',boxblur=12:2' : ''}[bg]`;
-  const graph = `${bg};${fg};[bg][fg]overlay=x=${x}:y=(H-h)/2:shortest=1,format=yuv420p[v]`;
+  const fill = `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1${c.mode === 'pillar' ? ',boxblur=12:2' : ''}[bg]`;
+  const self = !c.background;
+  const graph = self
+    ? `[0:v]split[s0][s1];[s0]${fill};[s1]scale=-2:${H}[fg];[bg][fg]overlay=x=${x}:y=(H-h)/2,format=yuv420p[v]`
+    : `[1:v]${fill};${fg};[bg][fg]overlay=x=${x}:y=(H-h)/2:shortest=1,format=yuv420p[v]`;
   return {
     ok: true,
     argv: [
-      '-y', '-i', c.foreground, '-loop', '1', '-i', c.background,
+      '-y', '-i', c.foreground, ...(self ? [] : ['-loop', '1', '-i', c.background as string]),
       '-filter_complex', graph,
       '-map', '[v]', '-map', '0:a?',
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-r', '24',
