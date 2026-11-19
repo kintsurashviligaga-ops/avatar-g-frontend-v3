@@ -1,0 +1,462 @@
+{
+  "version": "v8-proposal",
+  "pricesReadAt": "2026-11-14T06:50:00Z",
+  "rule": {
+    "minGrossMargin": 0.65,
+    "floorCreditGel": 0.08,
+    "baseCreditGel": 0.1,
+    "gelPerUsd": 2.7,
+    "fxReserve": 0.05,
+    "cardFee": 0.03,
+    "vatRate": 0,
+    "creditsPerUsd": 104.3814
+  },
+  "actions": [
+    {
+      "id": "video.omni.720p.4s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.3144,
+      "credits": 33,
+      "current": 20,
+      "gel": 3.3,
+      "usd": 1.22,
+      "marginFloor": 0.6519,
+      "marginBase": 0.7215
+    },
+    {
+      "id": "video.omni.720p.6s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.4716,
+      "credits": 50,
+      "current": 29,
+      "gel": 5,
+      "usd": 1.85,
+      "marginFloor": 0.6554,
+      "marginBase": 0.7243
+    },
+    {
+      "id": "video.omni.720p.8s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.6289,
+      "credits": 66,
+      "current": 38,
+      "gel": 6.6,
+      "usd": 2.44,
+      "marginFloor": 0.6519,
+      "marginBase": 0.7215
+    },
+    {
+      "id": "video.omni.720p.10s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.7861,
+      "credits": 83,
+      "current": 47,
+      "gel": 8.3,
+      "usd": 3.07,
+      "marginFloor": 0.654,
+      "marginBase": 0.7232
+    },
+    {
+      "id": "video.omni.1080p.4s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.4673,
+      "credits": 49,
+      "current": 29,
+      "gel": 4.9,
+      "usd": 1.81,
+      "marginFloor": 0.6516,
+      "marginBase": 0.7213
+    },
+    {
+      "id": "video.omni.1080p.6s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.701,
+      "credits": 74,
+      "current": 43,
+      "gel": 7.4,
+      "usd": 2.74,
+      "marginFloor": 0.6539,
+      "marginBase": 0.7231
+    },
+    {
+      "id": "video.omni.1080p.8s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.9347,
+      "credits": 98,
+      "current": 57,
+      "gel": 9.8,
+      "usd": 3.63,
+      "marginFloor": 0.6516,
+      "marginBase": 0.7213
+    },
+    {
+      "id": "video.omni.1080p.10s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 1.1683,
+      "credits": 122,
+      "current": 71,
+      "gel": 12.2,
+      "usd": 4.52,
+      "marginFloor": 0.6501,
+      "marginBase": 0.7201
+    },
+    {
+      "id": "video.omni.edit.720p.4s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.3176,
+      "credits": 34,
+      "current": 25,
+      "gel": 3.4,
+      "usd": 1.26,
+      "marginFloor": 0.6588,
+      "marginBase": 0.727
+    },
+    {
+      "id": "video.omni.edit.720p.6s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.4764,
+      "credits": 50,
+      "current": 35,
+      "gel": 5,
+      "usd": 1.85,
+      "marginFloor": 0.6519,
+      "marginBase": 0.7215
+    },
+    {
+      "id": "video.omni.edit.720p.8s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.6352,
+      "credits": 67,
+      "current": 44,
+      "gel": 6.7,
+      "usd": 2.48,
+      "marginFloor": 0.6537,
+      "marginBase": 0.7229
+    },
+    {
+      "id": "video.omni.edit.720p.10s",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.794,
+      "credits": 83,
+      "current": 53,
+      "gel": 8.3,
+      "usd": 3.07,
+      "marginFloor": 0.6505,
+      "marginBase": 0.7204
+    },
+    {
+      "id": "video.veo.lite.720p.8s",
+      "service": "video",
+      "model": "veo-3.1-lite-generate",
+      "costUsd": 0.4448,
+      "credits": 47,
+      "current": null,
+      "gel": 4.7,
+      "usd": 1.74,
+      "marginFloor": 0.6542,
+      "marginBase": 0.7234
+    },
+    {
+      "id": "video.veo.fast.1080p.8s",
+      "service": "video",
+      "model": "veo-3.1-fast-generate",
+      "costUsd": 1.0608,
+      "credits": 111,
+      "current": 64,
+      "gel": 11.1,
+      "usd": 4.11,
+      "marginFloor": 0.6508,
+      "marginBase": 0.7207
+    },
+    {
+      "id": "image.1k",
+      "service": "image",
+      "model": "gemini-3.1-flash-image",
+      "costUsd": 0.0715,
+      "credits": 8,
+      "current": 5,
+      "gel": 0.8,
+      "usd": 0.3,
+      "marginFloor": 0.6734,
+      "marginBase": 0.7387
+    },
+    {
+      "id": "image.2k",
+      "service": "image",
+      "model": "gemini-3.1-flash-image",
+      "costUsd": 0.108,
+      "credits": 12,
+      "current": null,
+      "gel": 1.2,
+      "usd": 0.44,
+      "marginFloor": 0.6712,
+      "marginBase": 0.7369
+    },
+    {
+      "id": "image.4k",
+      "service": "image",
+      "model": "gemini-3.1-flash-image",
+      "costUsd": 0.1622,
+      "credits": 17,
+      "current": null,
+      "gel": 1.7,
+      "usd": 0.63,
+      "marginFloor": 0.6514,
+      "marginBase": 0.7211
+    },
+    {
+      "id": "image.edit.1k",
+      "service": "image",
+      "model": "gemini-3.1-flash-image",
+      "costUsd": 0.0725,
+      "credits": 8,
+      "current": 5,
+      "gel": 0.8,
+      "usd": 0.3,
+      "marginFloor": 0.6689,
+      "marginBase": 0.7351
+    },
+    {
+      "id": "music.clip",
+      "service": "music",
+      "model": "lyria-3-clip-preview",
+      "costUsd": 0.0501,
+      "credits": 6,
+      "current": 3,
+      "gel": 0.6,
+      "usd": 0.22,
+      "marginFloor": 0.6949,
+      "marginBase": 0.7559
+    },
+    {
+      "id": "music.song",
+      "service": "music",
+      "model": "lyria-3-pro-preview",
+      "costUsd": 0.0977,
+      "credits": 11,
+      "current": 6,
+      "gel": 1.1,
+      "usd": 0.41,
+      "marginFloor": 0.6756,
+      "marginBase": 0.7405
+    },
+    {
+      "id": "voice.tts.minute",
+      "service": "voice",
+      "model": "gemini-3.8-flash-tts",
+      "costUsd": 0.0279,
+      "credits": 3,
+      "current": null,
+      "gel": 0.3,
+      "usd": 0.11,
+      "marginFloor": 0.6607,
+      "marginBase": 0.7286
+    },
+    {
+      "id": "voice.stt.minute",
+      "service": "voice",
+      "model": "chirp_3",
+      "costUsd": 0.0162,
+      "credits": 2,
+      "current": null,
+      "gel": 0.2,
+      "usd": 0.07,
+      "marginFloor": 0.7039,
+      "marginBase": 0.7632
+    },
+    {
+      "id": "live.voice.minute",
+      "service": "live",
+      "model": "gemini-3.8-live",
+      "costUsd": 0.0442,
+      "credits": 5,
+      "current": null,
+      "gel": 0.5,
+      "usd": 0.19,
+      "marginFloor": 0.677,
+      "marginBase": 0.7416
+    },
+    {
+      "id": "live.avatar.minute",
+      "service": "live",
+      "model": "gemini-3.8-live",
+      "costUsd": 0.4157,
+      "credits": 44,
+      "current": null,
+      "gel": 4.4,
+      "usd": 1.63,
+      "marginFloor": 0.6548,
+      "marginBase": 0.7239
+    },
+    {
+      "id": "video.omni.720p.second",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.0786,
+      "credits": 9,
+      "current": null,
+      "gel": 0.9,
+      "usd": 0.33,
+      "marginFloor": 0.6809,
+      "marginBase": 0.7447
+    },
+    {
+      "id": "video.omni.1080p.second",
+      "service": "video",
+      "model": "gemini-omni-1.2-flash",
+      "costUsd": 0.1168,
+      "credits": 13,
+      "current": null,
+      "gel": 1.3,
+      "usd": 0.48,
+      "marginFloor": 0.6717,
+      "marginBase": 0.7373
+    },
+    {
+      "id": "video.veo.standard.1080p.8s",
+      "service": "video",
+      "model": "veo-3.1-generate",
+      "costUsd": 3.5248,
+      "credits": 368,
+      "current": 213,
+      "gel": 36.8,
+      "usd": 13.63,
+      "marginFloor": 0.6501,
+      "marginBase": 0.7201
+    },
+    {
+      "id": "chat.message",
+      "service": "chat",
+      "model": "gemini-3.8-flash",
+      "costUsd": 0.0107,
+      "credits": 2,
+      "current": null,
+      "gel": 0.2,
+      "usd": 0.07,
+      "marginFloor": 0.8052,
+      "marginBase": 0.8441
+    },
+    {
+      "id": "chat.search",
+      "service": "chat",
+      "model": "gemini-3.8-flash + grounding",
+      "costUsd": 0.0307,
+      "credits": 4,
+      "current": null,
+      "gel": 0.4,
+      "usd": 0.15,
+      "marginFloor": 0.7192,
+      "marginBase": 0.7753
+    }
+  ],
+  "plans": [
+    {
+      "id": "free",
+      "priceGel": 0,
+      "credits": 50,
+      "cadence": "trial_once",
+      "rolloverMonths": 0,
+      "whatYouGet": {
+        "videos8s720": 0,
+        "images1k": 6,
+        "songs": 4,
+        "avatarMinutes": 1,
+        "ttsMinutes": 16
+      }
+    },
+    {
+      "id": "start",
+      "priceGel": 25,
+      "credits": 280,
+      "cadence": "monthly",
+      "rolloverMonths": 1,
+      "whatYouGet": {
+        "videos8s720": 4,
+        "images1k": 35,
+        "songs": 25,
+        "avatarMinutes": 6,
+        "ttsMinutes": 93
+      }
+    },
+    {
+      "id": "creator",
+      "priceGel": 55,
+      "credits": 650,
+      "cadence": "monthly",
+      "rolloverMonths": 1,
+      "whatYouGet": {
+        "videos8s720": 9,
+        "images1k": 81,
+        "songs": 59,
+        "avatarMinutes": 14,
+        "ttsMinutes": 216
+      }
+    },
+    {
+      "id": "pro",
+      "priceGel": 129,
+      "credits": 1550,
+      "cadence": "monthly",
+      "rolloverMonths": 1,
+      "whatYouGet": {
+        "videos8s720": 23,
+        "images1k": 193,
+        "songs": 140,
+        "avatarMinutes": 35,
+        "ttsMinutes": 516
+      }
+    },
+    {
+      "id": "business",
+      "priceGel": 299,
+      "credits": 3700,
+      "cadence": "monthly",
+      "rolloverMonths": 2,
+      "whatYouGet": {
+        "videos8s720": 56,
+        "images1k": 462,
+        "songs": 336,
+        "avatarMinutes": 84,
+        "ttsMinutes": 1233
+      }
+    }
+  ],
+  "topups": [
+    {
+      "id": "topup_10",
+      "priceGel": 10,
+      "credits": 100,
+      "bonusPct": 0
+    },
+    {
+      "id": "topup_25",
+      "priceGel": 25,
+      "credits": 260,
+      "bonusPct": 4
+    },
+    {
+      "id": "topup_50",
+      "priceGel": 50,
+      "credits": 540,
+      "bonusPct": 8
+    },
+    {
+      "id": "topup_100",
+      "priceGel": 100,
+      "credits": 1100,
+      "bonusPct": 10
+    }
+  ]
+}
