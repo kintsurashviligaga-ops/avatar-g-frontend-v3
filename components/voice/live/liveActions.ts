@@ -220,7 +220,7 @@ export type AgentRunAnswer =
  * client timeout (LIVE_AGENT_TIMEOUT_MS) that holds even when the fetch ignores its abort signal. Never throws.
  * `io` is for tests.
  */
-export async function fetchAgentRun(task: string, io: { fetchImpl?: typeof fetch; timeoutMs?: number; files?: readonly string[] } = {}): Promise<AgentRunAnswer> {
+export async function fetchAgentRun(task: string, io: { fetchImpl?: typeof fetch; timeoutMs?: number; files?: readonly string[]; maxSteps?: number; budgetMs?: number; source?: 'live' | 'chat' } = {}): Promise<AgentRunAnswer> {
   const doFetch = io.fetchImpl ?? (typeof fetch === 'function' ? fetch : null);
   if (!doFetch) return { ok: false, error: 'network' };
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
@@ -233,7 +233,7 @@ export async function fetchAgentRun(task: string, io: { fetchImpl?: typeof fetch
     const res = await Promise.race([
       doFetch('/api/agent/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ goal: task, maxSteps: LIVE_AGENT_MAX_STEPS, budgetMs: LIVE_AGENT_BUDGET_MS, source: 'live', ...(io.files?.length ? { files: io.files.slice(0, LIVE_AGENT_FILES_MAX) } : {}) }),
+        body: JSON.stringify({ goal: task, maxSteps: io.maxSteps ?? LIVE_AGENT_MAX_STEPS, budgetMs: io.budgetMs ?? LIVE_AGENT_BUDGET_MS, source: io.source ?? 'live', ...(io.files?.length ? { files: io.files.slice(0, LIVE_AGENT_FILES_MAX) } : {}) }),
         ...(ctrl ? { signal: ctrl.signal } : {}),
       }),
       deadline,
