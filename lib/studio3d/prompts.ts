@@ -40,3 +40,31 @@ export function parseSafetyAnswer(answer: string): 'allow' | 'block' {
   // Fail closed: anything other than a clear ALLOW is a block.
   return /^\s*ALLOW\b/i.test(answer) ? 'allow' : 'block';
 }
+
+/**
+ * D4 (GG 2026-11-15): Gemini looks at the uploaded PHOTO before image mode spends a GPU second. Objects, toys, pets
+ * and fictional characters pass; a selfie passes when the user ticked "this photo is of me" (figurines of yourself);
+ * photos of other real people and of anyone who looks under 18 are refused. One word answer, read fail-closed.
+ */
+export function photoCheckPrompt(): string {
+  return [
+    'You check photos uploaded to a 3D model generator. Answer with exactly one word.',
+    'MINOR if any person in the photo looks under 18 (child, baby, teenager).',
+    'SELF if the photo shows exactly one adult and looks like a self-portrait (a selfie at arm\'s length, front camera or mirror).',
+    'PERSON if it shows any other real adult person, more than one person, or a known public figure.',
+    'UNSAFE if it shows nudity, sexual content, gore, a weapon meant to hurt people, or a hate symbol.',
+    'OBJECT for everything else: products, toys, figurines, statues, drawings or renders of fictional characters, animals, furniture, vehicles, buildings.',
+  ].join(' ');
+}
+
+export type PhotoVerdict = { verdict: 'allow' } | { verdict: 'block'; reason: 'confirm_self' | 'blocked_person' | 'blocked_minor' | 'blocked' };
+
+export function parsePhotoAnswer(answer: string, selfConfirmed: boolean): PhotoVerdict {
+  const w = (answer.trim().match(/^[A-Za-z]+/)?.[0] ?? '').toUpperCase();
+  if (w === 'OBJECT') return { verdict: 'allow' };
+  if (w === 'SELF') return selfConfirmed ? { verdict: 'allow' } : { verdict: 'block', reason: 'confirm_self' };
+  if (w === 'PERSON') return { verdict: 'block', reason: 'blocked_person' };
+  if (w === 'MINOR') return { verdict: 'block', reason: 'blocked_minor' };
+  // UNSAFE, an empty answer, a timeout or anything unexpected: refuse.
+  return { verdict: 'block', reason: 'blocked' };
+}

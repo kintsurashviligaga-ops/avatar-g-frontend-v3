@@ -57,7 +57,7 @@ export interface Studio3dOutputs {
 }
 
 export type Studio3dEvent =
-  | { type: 'safety'; verdict: 'allow' | 'block' }
+  | { type: 'safety'; verdict: 'allow' | 'block'; reason?: string }
   | { type: 'reference_ready' }
   | { type: 'approve' }
   | { type: 'admitted' }
@@ -127,7 +127,7 @@ export function advance(job: Studio3dJob, ev: Studio3dEvent): Advance {
   switch (job.step) {
     case 'check':
       if (ev.type !== 'safety') return ignore(job);
-      if (ev.verdict === 'block') return fail(job, 'blocked');
+      if (ev.verdict === 'block') return fail(job, ev.reason && /^[a-z_]{3,40}$/.test(ev.reason) ? ev.reason : 'blocked');
       if (job.mode === 'image') return toQueued(job);
       return { job: { ...job, step: 'reference' }, effects: [{ kind: 'make_reference' }, { kind: 'notify', step: 'reference' }], applied: true };
 

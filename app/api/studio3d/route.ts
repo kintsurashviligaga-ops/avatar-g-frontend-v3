@@ -14,6 +14,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // the reference picture is drawn inside this request
 
+/** GET /api/studio3d — 200 { ok, on: true } when this user may use the 3D Studio, 404 otherwise (the chat's 3D panel asks). */
+export async function GET(req: NextRequest) {
+  const ctx = await studio3dContext(req);
+  if (!ctx.ok) return ctx.response;
+  return NextResponse.json({ ok: true, on: true }, { headers: { 'cache-control': 'private, no-store' } });
+}
+
 export async function POST(req: NextRequest) {
   const ctx = await studio3dContext(req);
   if (!ctx.ok) return ctx.response;

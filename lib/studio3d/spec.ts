@@ -37,6 +37,8 @@ export interface Studio3dRequest {
   meshUrl?: string;
   detail: Studio3dDetail;
   faces: Studio3dFaces;
+  /** Image mode only: the user ticked "this photo is of me" (D4: selfies may become figurines; other people may not). */
+  selfie?: boolean;
 }
 
 export type Validated = { ok: true; request: Studio3dRequest } | { ok: false; error: string };
@@ -86,6 +88,7 @@ export function validateStudio3d(body: unknown): Validated {
       ...(mode === 'retexture' ? { meshUrl: meshUrl as string } : {}),
       detail: mode === 'retexture' ? 'standard' : pick<Studio3dDetail>(b.detail, ['standard', 'high'], 'standard'),
       faces: pick<Studio3dFaces>(b.faces, ['low', 'medium', 'high'], 'medium'),
+      ...(mode === 'image' && b.selfie === true ? { selfie: true } : {}),
     },
   };
 }

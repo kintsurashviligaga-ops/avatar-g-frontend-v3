@@ -65,7 +65,7 @@ it('a failure says the credits came back', () => {
 it('a finished model opens the viewer and the GLB download', () => {
   render(<Studio3dCard locale="en" job={view({ mode: 'image', step: 'done', model: { glbUrl: 'https://signed/model.glb' } }) as any} />);
   expect(screen.getByTestId('viewer').dataset.url).toBe('https://signed/model.glb');
-  expect(screen.getByRole('link', { name: 'Download GLB' }).getAttribute('href')).toBe('https://signed/model.glb');
+  expect(screen.getByRole('link', { name: 'Download GLB' }).getAttribute('href')).toBe('/api/studio3d/00000000-0000-4000-8000-000000000001/download?format=glb');
   expect(screen.getAllByRole('listitem').every((li) => li.dataset.state === 'done')).toBe(true);
 });
 
@@ -75,4 +75,26 @@ it('server refusals are shown in words', async () => {
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a lamp' } });
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '3D Studio' })); });
   expect(screen.getByRole('alert').textContent).toBe('One model is already being built — wait for it to finish');
+});
+
+it('D4: a photo can be ticked as "this is me", and the tick goes with the request', async () => {
+  const bodies: any[] = [];
+  const fetchImpl = (async (_u: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return res({ ok: false, error: 'user_busy' }, 429);
+  }) as unknown as typeof fetch;
+  const imageUrl = 'https://zwksnayknzggdcenqqxy.supabase.co/storage/v1/object/sign/uploads/u/me.jpg?token=a';
+  render(<Studio3dCard locale="en" fetchImpl={fetchImpl} initial={{ mode: 'image', imageUrl }} />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'This photo is of me' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '3D Studio' })); });
+  expect(bodies[0]).toMatchObject({ mode: 'image', imageUrl, selfie: true });
+});
+
+it.each([
+  ['blocked_minor', 'We don’t make 3D models from photos of children'],
+  ['blocked_person', 'only from your own selfie'],
+  ['confirm_self', 'tick “This photo is of me”'],
+])('D4: a photo refused as %p is explained', (error, words) => {
+  render(<Studio3dCard locale="en" job={view({ mode: 'image', step: 'failed', error }) as any} />);
+  expect(screen.getByRole('alert').textContent).toContain(words);
 });
