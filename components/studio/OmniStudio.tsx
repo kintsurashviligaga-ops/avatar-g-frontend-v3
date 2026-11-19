@@ -83,6 +83,7 @@ import type { VideoQuality } from '@/lib/credits/videoPricing';
 import { promptSpeaksGeorgian } from '@/lib/video/clipPrompt';
 import { clipAdvancedUiOn } from '@/lib/video/clipAdvanced';
 import { clipLastFrameUiOn } from '@/lib/video/clipLastFrame';
+import { useChatMediaRenew } from '@/lib/chat/useChatMediaRenew';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
@@ -1914,6 +1915,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }
   // Agent G's cards come back in a state this page can carry on (a running one is followed again below).
   const [messages, setMessages] = useState<Msg[]>(() => restoreAgentCards(loadConversationMessages(conversationId), locale));
+  // A reopened chat's expired media links come back fresh (Phase 7.6; server-gated by CHAT_MEDIA_RENEW, off).
+  useChatMediaRenew(conversationId, messages, setMessages);
   // Mirror of `messages` for the mount-hydration effect below (reads the current view without a
   // stale-closure / exhaustive-deps churn).
   const messagesRef = useRef<Msg[]>(messages);
