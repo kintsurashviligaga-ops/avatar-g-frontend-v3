@@ -71,7 +71,9 @@ describe('the panel says requested · rendered · final, and a pick on it drops 
     // The panel and the chips share clipSettings: a pick sets the length, drops a stale request, and changes a clip card
     // waiting for Create (GG 2026-10-26 12:45Z), whose length they show while it waits.
     expect(studio).toMatch(/onSeconds: \(sec: DirectClipSeconds\) => \{ setVideoDuration\(sec\); setVideoRequestedSec\(null\); toAskingClip\(\{ seconds: sec \}\); \},/);
-    expect(studio).toMatch(/seconds: askingClip \? askingClip\.ask\.seconds : snapDirectClipSeconds\(videoDuration\),/);
+    expect(studio).toMatch(/seconds: askingClip \? askingClip\.ask\.seconds : composerClipSeconds,/);
+    // The panel's length, unless the box asks to refine the clip just made (that clip's own length, Phase 7.6).
+    expect(studio).toMatch(/const composerClipSeconds: DirectClipSeconds = refineClip \? refineClip\.seconds : snapDirectClipSeconds\(videoDuration\);/);
     // One clip is rendered at the length picked (4 · 6 · 8 · 10): there is no trim plan to show on its panel.
     const clipPanel = /<ClipCreatePanel([\s\S]*?)\n {12}\/>/.exec(studio)?.[1] ?? '';
     expect(clipPanel).toMatch(/\{\.\.\.clipSettings\}/);
