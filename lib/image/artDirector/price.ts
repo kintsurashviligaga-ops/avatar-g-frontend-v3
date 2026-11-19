@@ -50,3 +50,12 @@ export function quoteArt(q: ArtPriceInput & { count: number }, gate: MarginGate 
 export function sizesFor(book: ArtBook): ArtSize[] {
   return (['1K', '2K', '4K'] as const).filter((s) => imageCredits({ size: s, references: 0, book }) != null);
 }
+
+/**
+ * Which book is live. Same switch and spelling as pricingV8Active in the v8 wiring PR (#351): NEXT_PUBLIC_PRICING_V8 =
+ * on | 1 | true. Read literally from process.env so Next inlines it on the client too.
+ */
+export function artBook(value: string | undefined = process.env.NEXT_PUBLIC_PRICING_V8): ArtBook {
+  const v = (value ?? '').trim().toLowerCase();
+  return v === 'on' || v === '1' || v === 'true' ? 'v8' : 'today';
+}
