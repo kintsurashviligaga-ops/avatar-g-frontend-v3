@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { connectorKeys, decryptToken, encryptToken, pkceChallenge, pkcePair, signState, STATE_TTL_MS, verifyState } from './crypto';
 import { authorizationUrl, DRIVE_SCOPE, driveOAuthConfig, emailFromIdToken, exchangeCode, refreshAccessToken, revokeToken } from './oauth';
 import { capText, driveAccessToken, driveProvider, readDriveFile, type DriveDeps } from './drive';
+import { DRIVE_SUPPORTED_MIME } from './fileTypes';
 import type { ConnectorAccountRow, ConnectorAccountStore } from './store';
 import { driveAccess, driveOpenTo } from './access';
 import { connectorRegistry, connectorStates } from '../registry';
@@ -90,6 +91,24 @@ describe('OAuth calls', () => {
     expect(u.searchParams.get('code_challenge_method')).toBe('S256');
     expect(u.searchParams.get('access_type')).toBe('offline');
     expect(u.searchParams.get('client_id')).toBe(CLIENT_ID);
+  });
+
+  test('redirect-based Picker requests only drive.file and preserves PKCE', () => {
+    const u = new URL(authorizationUrl(cfg, { redirectUri: 'https://myavatar.ge/api/connectors/google_drive/callback', state: 's', challenge: 'c', onePick: true }));
+    expect(u.searchParams.get('scope')).toBe(DRIVE_SCOPE);
+    expect(u.searchParams.get('trigger_onepick')).toBe('true');
+    expect(u.searchParams.get('allow_multiple')).toBe('true');
+    expect(u.searchParams.get('prompt')).toBe('consent');
+    expect(u.searchParams.get('access_type')).toBe('online');
+    expect(u.searchParams.get('mimetypes')).toBe(DRIVE_SUPPORTED_MIME.join(','));
+    expect(u.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(u.searchParams.get('state')).toBe('s');
+  });
+
+  test('redirect-based Picker may exchange a code without replacing an existing refresh token', async () => {
+    const f = (async () => res(200, { access_token: 'at', scope: DRIVE_SCOPE })) as unknown as typeof fetch;
+    expect(await exchangeCode(cfg, { code: 'c', verifier: 'v', redirectUri: 'r', refreshOptional: true }, f)).toMatchObject({ ok: true, accessToken: 'at', refreshToken: '' });
+    expect(await exchangeCode(cfg, { code: 'c', verifier: 'v', redirectUri: 'r' }, f)).toEqual({ ok: false, reason: 'no_refresh_token' });
   });
 
   test('code exchange: refresh token + email; missing scope or refresh token refused', async () => {

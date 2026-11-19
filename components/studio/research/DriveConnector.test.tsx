@@ -6,6 +6,7 @@ const dispose = jest.fn();
 const visible = jest.fn();
 const origin = jest.fn();
 const size = jest.fn();
+const mode = jest.fn();
 const load = jest.fn();
 jest.mock('./googlePicker', () => ({ loadGooglePicker: () => load() }));
 
@@ -20,10 +21,10 @@ beforeEach(() => {
     setCallback: (cb: typeof callback) => { callback = cb; return builder; },
     build: () => ({ dispose, setVisible: visible }),
   };
-  const view = { setMimeTypes: () => view, setIncludeFolders: () => view, setSelectFolderEnabled: () => view };
+  const view = { setMode: (v: string) => { mode(v); return view; }, setMimeTypes: () => view, setIncludeFolders: () => view, setSelectFolderEnabled: () => view };
   window.google = { picker: {
     DocsView: jest.fn(() => view), PickerBuilder: jest.fn(() => builder),
-    ViewId: { DOCS: 'docs' }, Feature: { MULTISELECT_ENABLED: 'multi' }, Action: { PICKED: 'picked', CANCEL: 'cancel' },
+    ViewId: { DOCS: 'docs' }, DocsViewMode: { LIST: 'list' }, Feature: { MULTISELECT_ENABLED: 'multi' }, Action: { PICKED: 'picked', CANCEL: 'cancel' },
   } };
   global.fetch = jest.fn(async (url: string) => ({
     ok: true, status: 200,
@@ -31,15 +32,16 @@ beforeEach(() => {
   })) as jest.Mock;
 });
 
-test('mobile Picker fits the viewport, uses this origin, refreshes only after selection, and disposes', async () => {
-  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+test('desktop Picker uses list mode and this origin, refreshes only after selection, and disposes', async () => {
+  Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
   Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
   const { unmount } = render(<DriveConnector lang="en" linked onChanged={jest.fn()} />);
   await screen.findByText('No files picked yet.');
   fireEvent.click(screen.getByRole('button', { name: 'Pick files' }));
   await waitFor(() => expect(visible).toHaveBeenCalledWith(true));
+  expect(mode).toHaveBeenCalledWith('list');
   expect(origin).toHaveBeenCalledWith(window.location.origin);
-  expect(size).toHaveBeenCalledWith(366, 650);
+  expect(size).toHaveBeenCalledWith(976, 650);
   const calls = (global.fetch as jest.Mock).mock.calls.length;
   act(() => callback({ action: 'cancel' }));
   expect(dispose).toHaveBeenCalledTimes(1);
