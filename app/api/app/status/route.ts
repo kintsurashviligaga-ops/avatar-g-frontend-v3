@@ -9,10 +9,9 @@ export const runtime = 'nodejs';
 type KeyStatus = 'ready' | 'partial' | 'missing';
 
 // Only what a live route can still use (v5.1 M-14): Anthropic, Udio, Deepgram, ElevenLabs and Cartesia are refused in
-// production (Google only, MASTER TASK v3.1), so a missing key there is not a gap. OpenAI stays for chat-memory
-// embeddings, Replicate for 3D-from-photo.
+// production (Google only, MASTER TASK v3.1), so a missing key there is not a gap. OpenAI is gone too (chat memory on
+// gemini-embedding-001, Agent G dictation on Chirp 3); Replicate stays listed for 3D-from-photo, which is off.
 const APP_KEYS = [
-  { id: 'openai', env: 'OPENAI_API_KEY' },
   // Gemini runs on Vertex AI (MASTER TASK v3.1): configured means Vertex can serve, not that an AI Studio key is set.
   { id: 'gemini', env: 'GCP_PROJECT_ID' },
   { id: 'replicate', env: 'REPLICATE_API_TOKEN' },

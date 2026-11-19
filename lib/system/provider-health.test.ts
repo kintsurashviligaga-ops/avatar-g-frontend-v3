@@ -89,27 +89,20 @@ test('the routing row for text follows Vertex readiness, not the key', async () 
   expect(missing).toMatchObject({ configured: false });
 });
 
-test('a thrown message that echoes a provider key never reaches `detail`', async () => {
-  const OPENAI = 'sk-test-openai-0123456789abcdef';
-  process.env.OPENAI_API_KEY = OPENAI;
-  fetchMock.mockRejectedValueOnce(new TypeError(`Headers.append: "Bearer ${OPENAI}" is an invalid header value.`));
-
-  const entry = (await runProviderHealthAudit({ live: true })).providers.find((p) => p.provider === 'openai');
-  expect(entry?.status).toBe('unhealthy');
-  expect(entry?.detail).not.toContain(OPENAI);
-  expect(entry?.detail).toContain('[redacted]');
+test('Google is the only provider: an OpenAI key, set or not, is never probed or listed (v5.1 M-14)', async () => {
+  process.env.OPENAI_API_KEY = 'sk-test-openai-0123456789abcdef';
+  const report = await runProviderHealthAudit({ live: true });
+  expect(report.providers.map((p) => p.provider)).toEqual(['gemini']);
+  expect(report.routing.map((r) => [r.category, r.provider])).toEqual([['text', 'gemini'], ['memory', 'gemini']]);
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('a provider that never answers gets a "no answer" verdict at the deadline instead of hanging the audit', async () => {
-  process.env.OPENAI_API_KEY = 'sk-test-openai';
-  fetchMock.mockImplementation(() => new Promise(() => { /* never settles */ }));
+test('a probe that never answers gets a "no answer" verdict at the deadline instead of hanging the audit', async () => {
+  mockToken.mockImplementation(() => new Promise(() => { /* never settles */ }));
   const started = Date.now();
   const report = await runProviderHealthAudit({ live: true, deadlineMs: 40 });
   expect(Date.now() - started).toBeLessThan(2_000);
-  const by = Object.fromEntries(report.providers.map((p) => [p.provider, p]));
-  expect(by.openai).toMatchObject({ status: 'unhealthy', detail: 'No answer within 40 ms' });
-  expect(by.gemini).toMatchObject({ status: 'healthy' }); // the hung vendor did not take the others down with it
-  expect(report.providers.map((p) => p.provider)).toEqual(['openai', 'gemini']);
+  expect(report.providers.find((p) => p.provider === 'gemini')).toMatchObject({ status: 'unhealthy', detail: 'No answer within 40 ms' });
 });
 
 test('without ?live nothing is fetched at all', async () => {
