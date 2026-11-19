@@ -16,6 +16,7 @@
  * budget guarding — this component is deliberately dumb about all of that.
  */
 import dynamic from 'next/dynamic';
+import { useStudio3dAvailable } from '@/components/studio3d/useStudio3dAvailable';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import {
@@ -58,6 +59,8 @@ const DOWNLOAD_LINK = 'tap-44 relative inline-flex items-center text-[12px] font
 // three.js + R3F: a ~245 kB (gzip) chunk, fetched only once a model is on screen. ⚠️ THE PLACEHOLDER IS THE VIEWER'S
 // OWN BOX — with no `loading` the panel showed nothing, then jumped by the canvas's height when the chunk landed.
 const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false, loading: () => <GlbViewerSkeleton /> });
+// Phase 8.8: the Google-first 3D Studio replaces the old 3D panel when STUDIO_3D_V2 is open (see ServiceParamsPanel below).
+const Studio3dCard = dynamic(() => import('@/components/studio3d/Studio3dCard'), { ssr: false, loading: () => <div className="h-24" /> });
 
 export type PanelService = 'dubbing' | 'presentation' | 'model3d';
 type Lang = 'ka' | 'en' | 'ru';
@@ -239,7 +242,7 @@ function warningLines(w: Result['warnings'], lang: Lang): string[] {
   return out;
 }
 
-export function ServiceParamsPanel({
+function LegacyServiceParamsPanel({
   service,
   locale,
   onClose,
@@ -963,4 +966,17 @@ function SppFrame({ embedded, title, closeLabel, onClose, children }: {
       {children}
     </Panel>
   );
+}
+
+/**
+ * The 3D tool's panel is the Google-first 3D Studio (Phase 8.8) when STUDIO_3D_V2 is open for this person — asked once
+ * through GET /api/studio3d — and the old panel otherwise. Dubbing and Presentation never ask.
+ */
+export function ServiceParamsPanel(props: Parameters<typeof LegacyServiceParamsPanel>[0]) {
+  const studio3dOn = useStudio3dAvailable(props.service === 'model3d');
+  if (props.service === 'model3d' && studio3dOn === null) return <div className="h-24" aria-busy="true" />;
+  if (props.service === 'model3d' && studio3dOn) {
+    return <Studio3dCard locale={props.locale} initial={props.prefill?.topic ? { mode: 'text', prompt: props.prefill.topic.slice(0, 600) } : undefined} />;
+  }
+  return <LegacyServiceParamsPanel {...props} />;
 }

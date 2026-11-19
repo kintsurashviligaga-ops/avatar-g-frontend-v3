@@ -41,6 +41,10 @@ export const UI: Record<string, Record<Lang, string>> = {
   busy: { ka: 'ერთი მოდელი უკვე იქმნება — დაელოდე მის დასრულებას', en: 'One model is already being built — wait for it to finish', ru: 'Одна модель уже создаётся — дождитесь её' },
   dailyCap: { ka: 'დღევანდელი ლიმიტი ამოიწურა, ხვალ სცადე', en: 'Today’s limit is reached, try tomorrow', ru: 'Дневной лимит исчерпан, попробуйте завтра' },
   blocked: { ka: 'ამ მოთხოვნით 3D მოდელს ვერ შევქმნით', en: 'We can’t make a 3D model of this', ru: 'Мы не можем создать такую 3D-модель' },
+  selfie: { ka: 'ეს ფოტოზე მე ვარ', en: 'This photo is of me', ru: 'На этом фото я' },
+  confirmSelf: { ka: 'ფოტოზე ადამიანია. თუ ეს შენ ხარ, მონიშნე „ეს ფოტოზე მე ვარ“ და სცადე თავიდან', en: 'There is a person in this photo. If it’s you, tick “This photo is of me” and try again', ru: 'На фото человек. Если это вы, отметьте «На этом фото я» и попробуйте снова' },
+  blockedPerson: { ka: 'სხვა რეალური ადამიანის ფოტოდან 3D მოდელს ვერ შევქმნით, მხოლოდ შენი სელფიდან', en: 'We can’t make a 3D model from a photo of another real person, only from your own selfie', ru: 'Мы не делаем 3D-модель по фото другого человека, только по вашему селфи' },
+  blockedMinor: { ka: 'ბავშვების ფოტოებიდან 3D მოდელს არ ვქმნით', en: 'We don’t make 3D models from photos of children', ru: 'Мы не делаем 3D-модели по фото детей' },
 };
 
 export const t = (key: keyof typeof UI, l: string | undefined) => UI[key]?.[lang(l)] ?? String(key);

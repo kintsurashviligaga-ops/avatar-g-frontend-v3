@@ -3,7 +3,7 @@
 import {
   studio3dAudience, studio3dAllowed, validateStudio3d, isOwnStorageUrl, clampStlMm,
   quote3d, journeyQuote, grossMargin, fullCostUsd, creditsForCost,
-  referencePrompt, retexturePrompt, parseSafetyAnswer,
+  referencePrompt, retexturePrompt, parseSafetyAnswer, photoCheckPrompt, parsePhotoAnswer,
   newJob, advance, admit, etaSeconds, chargeRef, refundRef, referenceRef,
   parseStudio3dIntent, stepLabel, t,
   engineConfig, buildSpec, encodeSpec, decodeSpec, cloudRunEngine, executionState, parseManifest,
@@ -99,6 +99,28 @@ describe('prompts', () => {
     expect(parseSafetyAnswer('BLOCK')).toBe('block');
     expect(parseSafetyAnswer('')).toBe('block');
     expect(parseSafetyAnswer('I think ALLOW')).toBe('block');
+  });
+  it('D4 photo check: objects pass, selfies need the tick, other people and minors never pass, anything odd is refused', () => {
+    expect(photoCheckPrompt()).toMatch(/MINOR[\s\S]*SELF[\s\S]*PERSON[\s\S]*OBJECT/);
+    expect(parsePhotoAnswer('OBJECT', false)).toEqual({ verdict: 'allow' });
+    expect(parsePhotoAnswer(' object.', false)).toEqual({ verdict: 'allow' });
+    expect(parsePhotoAnswer('SELF', true)).toEqual({ verdict: 'allow' });
+    expect(parsePhotoAnswer('SELF', false)).toEqual({ verdict: 'block', reason: 'confirm_self' });
+    expect(parsePhotoAnswer('PERSON', true)).toEqual({ verdict: 'block', reason: 'blocked_person' });
+    expect(parsePhotoAnswer('MINOR', true)).toEqual({ verdict: 'block', reason: 'blocked_minor' });
+    expect(parsePhotoAnswer('UNSAFE', true)).toEqual({ verdict: 'block', reason: 'blocked' });
+    expect(parsePhotoAnswer('', true)).toEqual({ verdict: 'block', reason: 'blocked' });
+    expect(parsePhotoAnswer('I see an OBJECT', true)).toEqual({ verdict: 'block', reason: 'blocked' });
+  });
+  it('the selfie tick is kept for image mode only and only when exactly true', () => {
+    expect(validateStudio3d({ mode: 'image', imageUrl: IMG, selfie: true })).toMatchObject({ ok: true, request: { selfie: true } });
+    expect((validateStudio3d({ mode: 'image', imageUrl: IMG, selfie: 'yes' }) as any).request.selfie).toBeUndefined();
+    expect((validateStudio3d({ mode: 'text', prompt: 'a lamp', selfie: true }) as any).request.selfie).toBeUndefined();
+  });
+  it('a refusal reason from the photo check becomes the job error; junk reasons fall back to "blocked"', () => {
+    const j = newJob('00000000-0000-4000-8000-000000000001', 'image', 14, 8);
+    expect(advance(j, { type: 'safety', verdict: 'block', reason: 'blocked_minor' }).job).toMatchObject({ step: 'failed', error: 'blocked_minor' });
+    expect(advance(j, { type: 'safety', verdict: 'block', reason: '<script>' }).job).toMatchObject({ step: 'failed', error: 'blocked' });
   });
 });
 
