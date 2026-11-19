@@ -22,7 +22,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d, Scissors } from 'lucide-react';
+import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d, Scissors, FileText, ExternalLink } from 'lucide-react';
+import { documentFileName } from '@/lib/documents/spec';
 import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
 import { PlanView } from '@/components/studio/create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
@@ -38,8 +39,8 @@ import { videoKey } from '@/lib/library/videoPool';
 import { readLibraryView, saveLibraryView, useKeptScroll } from '@/lib/library/libraryView';
 
 type Lang = 'ka' | 'en' | 'ru';
-type Tab = 'video' | 'image' | 'music' | 'favorites';
-const isTab = (v: unknown): v is Tab => v === 'video' || v === 'image' || v === 'music' || v === 'favorites';
+type Tab = 'video' | 'image' | 'music' | 'documents' | 'favorites';
+const isTab = (v: unknown): v is Tab => v === 'video' || v === 'image' || v === 'music' || v === 'documents' || v === 'favorites';
 
 // ⚠️ DOWNLOAD SAVED ONLY SOMETIMES (GG, 2026-10-18). This page kept its own older copy of the save: it fetched the whole
 // file first and only then asked for the system share sheet — a browser lets a page open that only for a few seconds
@@ -47,57 +48,60 @@ const isTab = (v: unknown): v is Tab => v === 'video' || v === 'image' || v === 
 // saved an error page as the file and released the file's link the instant the download began. It now saves through
 // lib/media/saveMedia, the chat's own save: a plain download, the share sheet only on an iPhone or iPad (Photos) with a
 // one-tap retry when the wait ran out, and the button shows it is working until the file is out.
-function saveName(it: { kind: string; id: string }): string {
+function saveName(it: { kind: string; id: string; prompt?: string | null }): string {
+  // A PDF keeps its own title as its name, as the chat's card saves it.
+  if (it.kind === 'document' && it.prompt) return documentFileName(it.prompt, '');
   return `myavatar-${it.kind}-${it.id.slice(0, 8)}`;
 }
 function fallbackExt(it: { kind: string; url: string }): string {
   if (/\.glb(\?|#|$)/i.test(it.url)) return 'glb';
-  return VIDEO_KINDS.has(it.kind) ? 'mp4' : it.kind === 'music' ? 'mp3' : 'png';
+  return VIDEO_KINDS.has(it.kind) ? 'mp4' : it.kind === 'music' ? 'mp3' : it.kind === 'document' ? 'pdf' : 'png';
 }
 
 const PAGE_SIZE = 12;
 const NO_ITEMS: LibraryItem[] = [];
 
 // Which service_type(s) each tab shows (the API takes a comma list): avatar videos sit with the films, the Interior
-// designer's 3D plans (filed with their render) with the pictures. Favorites are the starred works of every kind.
-const TAB_KIND: Record<Exclude<Tab, 'favorites'>, string> = { video: 'film,avatar', image: 'image,interior', music: 'music' };
+// designer's 3D plans (filed with their render) with the pictures, Agent G's PDFs on their own tab (Master Task v2.0,
+// DOC-01). Favorites are the starred works of every kind.
+const TAB_KIND: Record<Exclude<Tab, 'favorites'>, string> = { video: 'film,avatar', image: 'image,interior', music: 'music', documents: 'document' };
 const VIDEO_KINDS = new Set(['film', 'avatar']);
 const IMAGE_KINDS = new Set(['image', 'interior']);
 
 const COPY: Record<Lang, {
   title: string; tabs: Record<Tab, string>; empty: string; emptyFav: string; favFailed: string; download: string; del: string; edit: string;
   play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
-  plan: string; openPlan: string; closePlan: string;
+  plan: string; openPlan: string; closePlan: string; open: string;
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
-    tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', favorites: 'ფავორიტი' },
+    tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', documents: 'დოკუმენტი', favorites: 'ფავორიტი' },
     empty: 'ჯერ არაფერი შექმენით',
     emptyFav: 'რჩეულები ჯერ ცარიელია. ნამუშევარზე ვარსკვლავს დააჭირე და აქ გამოჩნდება.',
     favFailed: 'ვარსკვლავი ვერ შეინახა. სცადე თავიდან.',
     download: 'ჩამოტვირთვა', del: 'წაშლა', edit: 'რედაქტირება ედიტორში', play: 'დაკვრა',
     confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
-    plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა',
+    plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა', open: 'ნახვა',
   },
   en: {
     title: 'Library',
-    tabs: { video: 'Video', image: 'Image', music: 'Music', favorites: 'Favorites' },
+    tabs: { video: 'Video', image: 'Image', music: 'Music', documents: 'Docs', favorites: 'Favorites' },
     empty: 'Nothing created yet',
     emptyFav: 'No favorites yet. Tap the star on a work to keep it here.',
     favFailed: 'The star could not be saved. Try again.',
     download: 'Download', del: 'Delete', edit: 'Open in Editor', play: 'Play',
     confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
-    plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan',
+    plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan', open: 'Open',
   },
   ru: {
     title: 'Библиотека',
-    tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', favorites: 'Избранное' },
+    tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', documents: 'Документы', favorites: 'Избранное' },
     empty: 'Пока ничего не создано',
     emptyFav: 'В избранном пока пусто. Нажмите звезду на работе, и она появится здесь.',
     favFailed: 'Не удалось сохранить отметку. Попробуйте ещё раз.',
     download: 'Скачать', del: 'Удалить', edit: 'Открыть в редакторе', play: 'Воспроизвести',
     confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
-    plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план',
+    plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план', open: 'Открыть',
   },
 };
 
@@ -122,7 +126,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [tab, setTab] = useState<Tab>(() => { const kept = keptView(owner); return kept && isTab(kept.tab) ? kept.tab : 'video'; });
   useEffect(() => {
     const requested = searchParams?.get('tab');
-    if (requested === 'favorites' || requested === 'video' || requested === 'image' || requested === 'music') {
+    if (isTab(requested)) {
       setTab(requested);
     }
   }, [searchParams]);
@@ -248,8 +252,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // Next page exists when a full page came back (Favorites pages like every other tab).
   const hasNext = items.length === PAGE_SIZE;
 
-  const TABS: Tab[] = useMemo(() => ['video', 'image', 'music', 'favorites'], []);
-  const tabIcon = (tb: Tab) => tb === 'video' ? <Film size={14} /> : tb === 'image' ? <ImageIcon size={14} /> : tb === 'music' ? <Music2 size={14} /> : <Star size={14} />;
+  const TABS: Tab[] = useMemo(() => ['video', 'image', 'music', 'documents', 'favorites'], []);
+  const tabIcon = (tb: Tab) => tb === 'video' ? <Film size={14} /> : tb === 'image' ? <ImageIcon size={14} /> : tb === 'music' ? <Music2 size={14} /> : tb === 'documents' ? <FileText size={14} /> : <Star size={14} />;
 
   return (
     <div ref={rootRef} className="mx-auto w-full max-w-5xl px-4 py-6">
@@ -298,9 +302,10 @@ export default function LibraryGallery({ locale }: { locale: string }) {
               const isVideo = VIDEO_KINDS.has(it.kind);
               const isImage = IMAGE_KINDS.has(it.kind);
               const isMusic = it.kind === 'music';
+              const isDoc = it.kind === 'document';
               return (
                 <div key={it.id} className={`group flex flex-col overflow-hidden rounded-2xl border border-app-border/15 bg-app-elevated/40 ${openPlan === it.id ? 'col-span-full' : ''}`}>
-                  <div className={`relative w-full overflow-hidden bg-app-bg/60 ${it.orientation === 'vertical' ? 'aspect-[9/16]' : isMusic ? 'aspect-square' : 'aspect-video'}`}>
+                  <div className={`relative w-full overflow-hidden bg-app-bg/60 ${it.orientation === 'vertical' ? 'aspect-[9/16]' : isMusic || isDoc ? 'aspect-square' : 'aspect-video'}`}>
                     {/* #t=0.1 makes the browser seek to 0.1s and paint THAT frame as the
                         poster — without it many browsers show a black thumbnail until play. The element is kept
                         between two showings of this card (PooledVideo), so a tab or page that comes back reads
@@ -320,6 +325,17 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3">
                         <Music2 size={28} className="text-app-accent" />
                         <audio src={it.url} controls className="w-full" preload="none" onError={() => onMediaError(it)} />
+                      </div>
+                    )}
+                    {/* A PDF: its title and the browser's own viewer in a new tab (no inline frame: the page's CSP allows none). */}
+                    {isDoc && (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center" data-testid="library-document">
+                        <FileText size={28} className="text-app-accent" aria-hidden="true" />
+                        <p className="line-clamp-3 text-[12.5px] font-medium text-app-text">{it.prompt ?? 'PDF'}</p>
+                        <a href={it.url} target="_blank" rel="noopener noreferrer" data-testid="library-document-open"
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-app-elevated px-3 text-[12px] text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent">
+                          <ExternalLink size={13} aria-hidden="true" /> {t.open}
+                        </a>
                       </div>
                     )}
                     {/* Favorite star: the account's, so a signed-out visitor's demo examples have none. */}

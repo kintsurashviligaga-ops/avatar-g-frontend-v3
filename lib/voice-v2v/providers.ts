@@ -2,7 +2,7 @@ import 'server-only';
 /**
  * The realtime voice engines this app server calls (MASTER TASK v3.1: Google only for chat, voice and agents). The
  * OpenAI and Deepgram STT, the Cartesia TTS fallback and the OpenAI assistant stream are gone: the realtime STT refuses
- * (/api/voice/transcribe runs Gemini instead), and the TTS is Google Cloud TTS on the Vertex Workload Identity token
+ * (/api/voice/transcribe runs Chirp 3 and Gemini on Vertex AI instead), and the TTS is Google Cloud TTS on the Vertex Workload Identity token
  * (lib/audio/google-tts; ElevenLabs is gone since PR 5d).
  */
 import type { RealtimeVoiceLanguage } from '@/types/voice';

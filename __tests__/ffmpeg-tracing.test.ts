@@ -12,8 +12,13 @@ import { dirname, join, relative } from 'path';
 
 const ROOT = join(__dirname, '..');
 const NATIVE = { ffmpeg: 'ffmpeg-static', resvg: '@resvg/resvg-js' } as const;
-// …and the talking avatar's two routes (lib/avatar/voicedClip): the poll that lays its ElevenLabs line over the clip.
-const SCOPES = ['app/api/agent', 'app/api/tasks', 'app/api/genjutsu/status', 'app/api/avatar/veo', 'app/api/film/sweep'];
+// …and the talking avatar's two routes (lib/avatar/voicedClip): the poll that lays its ElevenLabs line over the clip; and
+// the video service's direct clip (app/api/video/clip), whose Georgian line the same poll lays on (lib/video/voicedClip);
+// and the uploaded video's edit / extend (app/api/video/omni-edit), which ffmpeg measures and re-encodes before pricing.
+const SCOPES = [
+  'app/api/agent', 'app/api/tasks', 'app/api/genjutsu/status', 'app/api/avatar/veo', 'app/api/video/clip', 'app/api/video/omni-edit',
+  'app/api/film/sweep',
+];
 
 /** Routes that import a module reaching the package but never run it. Each needs a reason a reviewer can check. */
 const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
@@ -25,6 +30,10 @@ const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
     ffmpeg: 'enqueue and status only; the watermark runs in /api/agent/video-queue/drain',
     resvg: 'enqueue and status only; the watermark runs in /api/agent/video-queue/drain',
   },
+  '/api/tasks/stream': {
+    ffmpeg: 'relays reads of /api/tasks over HTTP (that route starts the workers); reaches taskView for its types and parseTaskId only',
+    resvg: 'relays reads of /api/tasks over HTTP (that route starts the workers); reaches taskView for its types and parseTaskId only',
+  },
   '/api/agent/media/audio': { resvg: 'takes the sound out of a video; draws no text' },
   '/api/agent/media/analyze': { resvg: 'probes the file; draws nothing' },
   '/api/agent/run': { resvg: 'its tools quote; renders run in the edit and task workers' },
@@ -32,6 +41,10 @@ const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
   '/api/avatar/veo': {
     ffmpeg: 'speaks the line and submits the clip; ffmpeg runs where it is delivered (/api/genjutsu/status)',
     resvg: 'speaks the line and submits the clip; draws nothing',
+  },
+  '/api/video/clip': {
+    ffmpeg: 'speaks a Georgian line and submits the clip; ffmpeg runs where it is delivered (/api/genjutsu/status)',
+    resvg: 'speaks a Georgian line and submits the clip; draws nothing',
   },
 };
 

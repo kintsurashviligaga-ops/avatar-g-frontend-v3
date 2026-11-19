@@ -33,9 +33,9 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   { text: 'ამ ვიდეოდან ამოიღე ხმა MP3-ად.', attachments: ['video'], expect: { kind: 'act', capability: 'agent.audio-extract' }, source: 'master-task' },
   { text: 'მუსიკა 5 წამიდან დაიწყე.', pending: { capability: 'agent.montage' }, expect: { kind: 'act', capability: 'agent.montage' }, source: 'master-task' },
   { text: 'ვიდეო 9:16-ზე გადაიყვანე.', attachments: ['video'], expect: { kind: 'act', capability: 'media.edit' }, source: 'master-task' },
-  // An ad is the Product ad service: it is made from the product's photo, so with none attached Agent G asks for it.
-  { text: 'გააკეთე 20-წამიანი რეკლამა.', expect: { kind: 'act', capability: 'video.product-ad', missing: ['photo'] }, source: 'master-task' },
-  { text: 'გააკეთე 20-წამიანი რეკლამა.', attachments: ['image'], expect: { kind: 'act', capability: 'video.product-ad' }, source: 'master-task' },
+  // An ad is an ordinary video: the Product ad service is removed (GG 2026-10-27). An attached photo is its first frame.
+  { text: 'გააკეთე 20-წამიანი რეკლამა.', expect: { kind: 'act', capability: 'video.generate' }, source: 'master-task' },
+  { text: 'გააკეთე 20-წამიანი რეკლამა.', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'master-task' },
   { text: 'ეს ფოტო გააცოცხლე.', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'master-task' },
   { text: 'სუბტიტრები დაამატე.', attachments: ['video'], expect: { kind: 'act', capability: 'video.remix' }, source: 'master-task' },
   { text: 'ეს ვიდეო რუსულად გაახმოვანე.', attachments: ['video'], expect: { kind: 'act', capability: 'voice.dubbing' }, source: 'master-task' },
@@ -61,9 +61,9 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   // The rest of the 13 in English and Russian (PART 7: every sentence in all three languages).
   { text: 'convert the video to 9:16', attachments: ['video'], expect: { kind: 'act', capability: 'media.edit' }, source: 'coverage' },
   { text: 'переведи видео в 9:16', attachments: ['video'], expect: { kind: 'act', capability: 'media.edit' }, source: 'coverage' },
-  { text: 'make a 20-second ad', expect: { kind: 'act', capability: 'video.product-ad', missing: ['photo'] }, source: 'coverage' },
-  { text: 'make a 20-second ad', attachments: ['image'], expect: { kind: 'act', capability: 'video.product-ad' }, source: 'coverage' },
-  { text: 'сделай 20-секундную рекламу', attachments: ['image'], expect: { kind: 'act', capability: 'video.product-ad' }, source: 'coverage' },
+  { text: 'make a 20-second ad', expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
+  { text: 'make a 20-second ad', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
+  { text: 'сделай 20-секундную рекламу', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
   { text: 'animate this photo', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
   { text: 'оживи это фото', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
   { text: 'add subtitles', attachments: ['video'], expect: { kind: 'act', capability: 'video.remix' }, source: 'coverage' },

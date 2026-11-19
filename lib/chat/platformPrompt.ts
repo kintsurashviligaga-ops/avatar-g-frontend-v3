@@ -94,15 +94,19 @@ export const START_QUESTION: Readonly<Record<PlatformPromptLocale, string>> = { 
 
 const gel = (credits: number): string => creditsToGel(credits).toFixed(2);
 const cr = (credits: number): string => `${credits} cr (${gel(credits)} ₾)`;
+const tetri = (credits: number): number => Math.round(creditsToGel(credits) * 100);
 /** The film lengths the price line gives as examples (the Video tool's presets). */
 const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
 
 /**
  * The tools whose every engine is outside Google + ElevenLabs. Their routes always refuse before any charge (MASTER TASK
- * v3.1, lib/providers/mediaPolicy GATED_ENTRIES: lipsync / heygen, remix `character`, motion-control, model3d); the
- * test pins each to its gated route.
+ * v3.1, lib/providers/mediaPolicy GATED_ENTRIES: remix `character`, model3d; the lip-sync / HeyGen and Motion Control
+ * routes were deleted in v5.1 M-14); the test pins each to its gated (or removed) route.
  */
 export const OUTSIDE_ENGINE_TOOLS: readonly ToolId[] = ['avatar', 'swap', 'motion', 'model3d'];
+
+/** Tools GG removed from the services (the product ad, 2026-10-27): their routes refuse, so the chat names them as closed. */
+export const REMOVED_TOOLS: readonly ToolId[] = ['product'];
 
 /**
  * The Veo talking avatar (/api/avatar/veo, lib/avatar/veoAvatar): one 8 s Fast Veo clip, priced as one. It reopens the
@@ -136,6 +140,7 @@ const touchUpLine = (loc: PlatformPromptLocale): string =>
 function closedTools({ veoAvatar }: Gates): ToolId[] {
   return [
     ...OUTSIDE_ENGINE_TOOLS.filter((id) => !(id === 'avatar' && veoAvatar)),
+    ...REMOVED_TOOLS,
     ...(ownerApprovedPrice('dubbing', CREDIT_COSTS.dubbing_per_minute) ? [] : ['dubbing' as const]),
     ...(ownerApprovedPrice('presentation', CREDIT_COSTS.presentation_deck) ? [] : ['presentation' as const]),
   ];
@@ -188,7 +193,7 @@ function notYetLine(loc: PlatformPromptLocale, closed: readonly ToolId[]): strin
  * topupCredits), not CREDIT_PACKAGES — a pack list nothing sells, whose amounts disagree with it. Which list is the
  * product's is the owner's call (owner action 7); until then the assistant quotes the one a user can actually buy.
  */
-function priceBlock(topUp: string, closed: readonly ToolId[]): string {
+function priceBlock(topUp: string, closed: readonly ToolId[], spoken: boolean): string {
   const C = CREDIT_COSTS;
   const open = (id: ToolId) => !closed.includes(id);
   const chat = C.chat_message > 0 ? `chat ${cr(C.chat_message)} per message` : 'chat is free';
@@ -206,12 +211,14 @@ function priceBlock(topUp: string, closed: readonly ToolId[]): string {
   return [
     `PRICES (cr = credits; 1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾; ${chat}): image ${cr(C.image_generate)} each;`,
     `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
-    // The film's lip-sync pass was the old avatar engine (/api/video/lipsync), which is always refused, so it is not
+    // The film's lip-sync pass was the old avatar engine (/api/video/lipsync, removed in v5.1 M-14), so it is not
     // priced; the Veo avatar is its own 8 s clip at the Veo price.
-    `product ad = a Fast film of its length; chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
+    `${open('product') ? 'product ad = a Fast film of its length; ' : ''}chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
     `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip; ` : ''}touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote only these numbers, in credits and lari; never guess one.`,
-  ].join(' ');
+    // GG 2026-10-26 12:32Z, a Live call: „5 კრედიტი, ანუ 0.50 თეთრი" — the lari amount was said with the tetri's name.
+    spoken ? `₾ is lari; 100 tetri = 1 lari, so ${gel(C.image_generate)} ₾ is ${tetri(C.image_generate)} tetri, never "${gel(C.image_generate)} tetri".` : null,
+  ].filter(Boolean).join(' ');
 }
 
 /**
@@ -256,6 +263,11 @@ export function buildPlatformPrompt(opts: {
    * English speech got Georgian answers (GG, 2026-10-25).
    */
   spoken?: boolean;
+  /**
+   * The turn names a PDF (lib/chat/documentIntent PDF_NOUN): the DOCUMENTS line is added, so the model never answers that it
+   * cannot make one. Only then: the prompt has a fixed budget and most turns never mention a PDF.
+   */
+  mentionsPdf?: boolean;
 }): string {
   const loc: PlatformPromptLocale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
@@ -293,6 +305,10 @@ export function buildPlatformPrompt(opts: {
     // free to describe a screenshot it never took.
     `BROWSER: none — never claim to click, log in or screenshot a site.`,
 
+    // ⚠️ IT SAID „I CAN'T MAKE A PDF" (Master Task v2.0, Phase 1, DOC-01). The studio writes PDFs now (lib/chat/documentIntent →
+    // /api/documents/create): a request naming a PDF and a verb never reaches this model, and one worded otherwise must not
+    // be told it is impossible.
+    ...(opts?.mentionsPdf ? [`DOCUMENTS: The studio makes real PDFs (tables, charts, Georgian too). Never say you cannot make a PDF; when one is wanted, ask the user to say so in one sentence ("შემიქმენი PDF …") and it appears here.`] : []),
     `ANSWERING: You are a complete general-purpose assistant. Answer any question (science, code, writing, health, daily life…) accurately and fully; never call a topic "outside the platform". Help find films, books and music to watch or buy legally; never help with piracy. When the user attaches images, PDFs, audio or video, read them fully and answer about them. Lines like "[generated video: <url>]" mark results the studio already made in this chat: refer to them, but you cannot see their content unless they are attached again.`,
 
     `FORMAT: Fit the length to the question — a simple or casual question gets one to three plain sentences, no headings. Use Markdown only when structure helps: short ## headings, bullet or numbered lists, tables for comparisons, fenced code blocks with a language tag for all code, LaTeX maths in $…$ or $$…$$. Answer first; no filler, no restating the question, no generic disclaimers.`,
@@ -316,6 +332,6 @@ export function buildPlatformPrompt(opts: {
     // offers, so it named characters the app does not have. The list comes from the catalogue itself.
     `PERSONAS (user picks: "${PERSONA_MENU[loc].menu}" menu → "${PERSONA_MENU[loc].row}"): ${BUILT_IN_PERSONAS.map((p) => p.name[loc]).join(', ')}, plus own. Name no others; a PERSONA block below is active.`,
 
-    priceBlock(ui.topUp, closed),
+    priceBlock(ui.topUp, closed, opts?.spoken === true),
   ].join('\n\n');
 }

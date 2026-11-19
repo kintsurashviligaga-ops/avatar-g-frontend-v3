@@ -77,12 +77,15 @@ jobs:
       - run: npm ci
       # The action's own "latest" lookup is an anonymous API call, which a shared runner's address can exhaust (Preview
       # run 38386454944 stopped there: "rate limit exceeded"). The job's token asks instead; the version is then pinned.
-      - name: Resolve the Supabase CLI's latest release (with this job's token)
+      - name: Resolve the Supabase CLI's latest 2.x release (with this job's token)
         id: supabase-cli
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          v="$(gh release view --repo supabase/cli --json tagName -q .tagName)"
+          # Held to major 2: CLI 3.0.0 (2026-11) refuses this stack's config.toml ("[inbucket] ... no longer supported"),
+          # which stopped every run of this job. Moving to 3.x is its own change (config migration), not a CI side effect.
+          v="$(gh release list --repo supabase/cli --exclude-pre-releases --limit 100 --json tagName -q '[.[].tagName | select(startswith("v2."))][0] // ""')"
+          test -n "$v"
           echo "version=${v#v}" >> "$GITHUB_OUTPUT"
           echo "Supabase CLI ${v}"
       - uses: supabase/setup-cli@v1

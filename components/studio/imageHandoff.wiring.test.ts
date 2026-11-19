@@ -24,8 +24,8 @@ test('a yes to Agent G\'s own quoted offer starts it only at its real price; oth
   expect(block).toContain('if (guestStop()) return true;');
 });
 
-test('on a phone the chat bar hides while a tool sheet is open, and the sheet stops under a docked call', () => {
-  expect(src).toMatch(/data-testid="composer-bar" className=\{imageWorkspace \|\| \(!isDesktop && optionsOpen && !chatOnly\) \? 'hidden'/);
-  expect(src).toMatch(/'studio-sheet sheet-rise relative flex max-h-\[86svh\]/);
+test('the chat bar stays while a tool\'s settings are open (they sit above it), and the layer stops under a docked call', () => {
+  expect(src).toMatch(/data-testid="composer-bar" className=\{imageWorkspace \? 'hidden'/);
+  expect(src).toMatch(/"studio-sheet sheet-rise relative flex min-h-0/);
   expect(css).toMatch(/html\[data-live-docked\] \.studio-sheet \{ max-height: calc\(100svh - var\(--live-dock-h\) - 12px\) !important; \}/);
 });

@@ -36,6 +36,7 @@ const PLAN = {
 };
 const AVATAR = { id: 'av-1', kind: 'avatar', url: 'https://cdn.example.com/a.mp4', prompt: 'talking avatar', orientation: 'landscape', createdAt: '2026-10-09T00:00:00Z' };
 const MODEL = { id: 'glb-1', kind: 'image', url: 'https://ours.supabase.co/storage/v1/object/sign/renders/chair.glb?token=t', prompt: 'a chair', orientation: 'landscape', createdAt: '2026-10-08T00:00:00Z' };
+const DOC = { id: 'doc-1', kind: 'document', url: 'https://ours.supabase.co/storage/v1/object/sign/renders/documents/u/r.pdf?token=t', prompt: 'ქართული ანგარიში', orientation: 'landscape', createdAt: '2026-10-31T00:00:00Z' };
 const SONG = { id: 'song-1', kind: 'music', url: 'https://ours.supabase.co/storage/v1/object/sign/renders/s.mp3?token=t', prompt: 'a Tbilisi song', orientation: 'landscape', createdAt: '2026-10-07T00:00:00Z' };
 
 let requested: string[] = [];
@@ -52,7 +53,7 @@ beforeEach(() => {
   global.fetch = jest.fn(async (url: string) => {
     requested.push(url);
     const kind = new URL(url, 'https://x').searchParams.get('kind') ?? '';
-    const items = kind.includes('interior') ? [PLAN, MODEL] : kind.includes('avatar') ? [AVATAR] : kind === 'music' ? [SONG] : [];
+    const items = kind.includes('interior') ? [PLAN, MODEL] : kind.includes('avatar') ? [AVATAR] : kind === 'music' ? [SONG] : kind === 'document' ? [DOC] : [];
     return { ok: true, status: 200, json: async () => ({ items }) };
   }) as unknown as typeof fetch;
 });
@@ -120,6 +121,26 @@ test('a film tab that comes back shows the same <video>, its link untouched: not
   expect(film.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
   expect(setAttribute).not.toHaveBeenCalledWith('src', expect.anything());
   expect(film.controls).toBe(true);
+});
+
+test('the Docs tab lists Agent G\'s PDFs: title, Open in a new tab, and Download under the title as a .pdf', async () => {
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Docs$/ })); });
+  expect(kinds()).toEqual(['film,avatar', 'document']);
+  expect(screen.getByTestId('library-document').textContent).toContain('ქართული ანგარიში');
+  const open = screen.getByTestId('library-document-open');
+  expect(open.getAttribute('href')).toBe(DOC.url);
+  expect(open.getAttribute('target')).toBe('_blank');
+  expect(screen.queryByTestId('library-edit')).toBeNull(); // a PDF does not open in the Montage
+  await act(async () => { fireEvent.click(screen.getByTestId('library-download')); });
+  expect(mockSaveMedia).toHaveBeenCalledWith(DOC.url, 'ქართული ანგარიში', expect.objectContaining({ fallbackExt: 'pdf' }));
+});
+
+test('?tab=documents opens on the Docs tab', async () => {
+  mockSearch = new URLSearchParams('tab=documents');
+  await act(async () => { render(<LibraryGallery locale="ka" />); });
+  expect(kinds()).toContain('document');
+  expect(screen.getByRole('button', { name: /დოკუმენტი/ })).toBeTruthy();
 });
 
 test('a 3D plan shows its render with a „3D plan" badge and opens on the card', async () => {

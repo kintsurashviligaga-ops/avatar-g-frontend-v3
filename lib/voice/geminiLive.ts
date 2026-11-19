@@ -88,6 +88,7 @@
  */
 
 import { LIVE_FUNCTION_DECLARATIONS, type LiveFunctionDeclaration } from './liveTools';
+import { RELAY_NUDGE_FRAME, relayControlOf } from './relay/wire';
 
 // Native-audio Live model: Gemini generates expressive voice audio DIRECTLY over the WS (no external
 // TTS). Verified live (2026-07-24) with the project's key: ephemeral-token mint + v1alpha Constrained
@@ -171,6 +172,10 @@ export interface GeminiLiveCallbacks {
   /** Every parsed server event in the parity shape (transcripts, goAway, resumption, toolCall, usage, …).
    *  Fires in addition to the legacy callbacks above, after them, for the same message. */
   onEvent?: (event: LiveServerEvent) => void;
+  /** Our Live relay only (lib/voice/relay/wire): it acks the setup and takes nudges. Never reaches onEvent. */
+  onRelayHello?: () => void;
+  /** Our Live relay received the setup frame. */
+  onRelaySetupAck?: () => void;
 }
 
 // ─── Pure wire-format builders (unit-tested) ──────────────────────────────────
@@ -749,6 +754,7 @@ export class GeminiLiveSession {
   private pendingAudio: string[] = [];
   private setupTimer: ReturnType<typeof setTimeout> | null = null;
   private lastResumptionHandle: string | null = null;
+  private relayHello = false;
 
   constructor(private config: GeminiLiveConfig, private cb: GeminiLiveCallbacks = {}) {}
 
@@ -832,6 +838,10 @@ export class GeminiLiveSession {
     let parsed: unknown;
     try { parsed = JSON.parse(text); } catch { return; }
 
+    const control = this.config.relayUrl ? relayControlOf(parsed) : null;
+    if (control === 'hello') { this.relayHello = true; this.cb.onRelayHello?.(); return; }
+    if (control === 'setupAck') { this.cb.onRelaySetupAck?.(); return; }
+
     for (const ev of parseLiveServerEvents(parsed)) {
       switch (ev.type) {
         case 'setupComplete':
@@ -903,6 +913,13 @@ export class GeminiLiveSession {
     if (!this.ready) return;
     const msg = buildToolResponse(responses);
     if (msg.toolResponse.functionResponses.length) this.rawSend(msg);
+  }
+
+  /** Write a tiny frame our relay drops, so a setup the network still holds goes through (lib/voice/relay/wire).
+   *  Only to a relay that said hello, before setupComplete. Returns whether it was written. */
+  nudgeRelay(): boolean {
+    if (!this.relayHello || this.ready || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    try { this.ws.send(RELAY_NUDGE_FRAME); return true; } catch { return false; }
   }
 
   /** Tell the server the mic stream paused (mute) so it can finalise the turn; resume by sending audio. */

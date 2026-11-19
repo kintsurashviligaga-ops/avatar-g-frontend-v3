@@ -123,6 +123,7 @@ server.on('upgrade', (req, socket, head) => {
     client.on('message', (d) => session?.onClientMessage(text(d)));
     client.on('close', () => { active--; session?.onClientClose(); });
     client.on('error', () => { /* a close follows */ });
+    session.onClientOpen();
   });
 });
 

@@ -460,6 +460,8 @@ describe('the talking avatar', () => {
   const savedUrl = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
   const savedPlay = HTMLMediaElement.prototype.play;
   const savedLoad = HTMLMediaElement.prototype.load;
+  // Whether the server lets this account turn the avatar on (lib/voice/liveAudience; GG 2026-10-31).
+  let allowAvatar = true;
   beforeEach(() => {
     process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
     saved.MediaSource = g.MediaSource;
@@ -468,10 +470,11 @@ describe('the talking avatar', () => {
     URL.revokeObjectURL = jest.fn();
     HTMLMediaElement.prototype.play = jest.fn(() => Promise.resolve());
     HTMLMediaElement.prototype.load = jest.fn();
+    allowAvatar = true;
     g.fetch = jest.fn(async (url: string, init?: RequestInit) => {
       if (url !== '/api/voice/live') return { ok: false, status: 404, json: async () => ({}) };
       const body = JSON.parse(String(init?.body ?? '{}'));
-      const avatar = body.avatar ?? null;
+      const avatar = allowAvatar ? body.avatar ?? null : null;
       return {
         ok: true,
         status: 200,
@@ -481,6 +484,8 @@ describe('the talking avatar', () => {
           expiresAt: new Date(Date.now() + 3e5).toISOString(),
           avatar: avatar === 'Kira' ? 'Kira' : null,
           ...(avatar === 'Ben' ? { avatarRefused: 'daily_limit' } : {}),
+          ...(!allowAvatar && body.avatar ? { avatarRefused: 'audience' } : {}),
+          avatarAllowed: allowAvatar,
         }),
       };
     });
@@ -562,6 +567,31 @@ describe('the talking avatar', () => {
     expect(FakeSocket.all).toHaveLength(2);
   });
 
+  test('an account the avatar is not open to (GG 2026-10-31): no toggle, a plain voice call', async () => {
+    allowAvatar = false;
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    expect(mintBodies()[0]).not.toHaveProperty('avatar');
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+    expect(screen.queryByTestId('live-notice')).toBeNull();
+  });
+
+  test('closed to this account after the switch showed: it goes away, quietly, and is not asked again', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    allowAvatar = false;
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira' });
+    await ready(FakeSocket.all[1]!);
+    await waitFor(() => expect(screen.queryByTestId('live-avatar-switch')).toBeNull());
+    expect(screen.queryByTestId('live-notice')).toBeNull();
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
   test('switched off for this build, or a browser without MSE: no toggle', async () => {
     delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
     const { unmount } = render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
@@ -581,6 +611,9 @@ describe('failedNote — what the call is told when a generation fails', () => {
     const note = failedNote('ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.');
     expect(note).toContain('This is a test link');
     expect(note).toContain('do not offer to try again');
+    // GG 2026-10-26 13:24Z: „ამჟამად მიუწვდომელია" alone sounded like an outage.
+    expect(note).toContain('that this is a test link, that creation is off only here, and that it works on myavatar.ge');
+    expect(note).toContain('Do not say it is unavailable or broken');
   });
   test('any other failure is told plainly, with a retry', () => {
     expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
@@ -591,7 +624,7 @@ describe('notStartedNote — what the call is told when a voice start counted do
   test('the answer came out in another alphabet: the model hears it, and that nothing broke (GG 2026-10-26 09:29Z)', () => {
     const note = notStartedNote('not_heard', '대자.');
     expect(note).toContain('the app heard only "대자." (in an alphabet the call never speaks');
-    expect(note).toContain('Do not say it started or that something broke');
+    expect(note).toContain('Tell the user you did not catch their answer. Do not say it started or that something broke or went wrong');
     expect(note).toContain('tap the button on the card');
   });
   test('an answer in the call\'s own letters that is no yes is quoted without the alphabet remark', () => {

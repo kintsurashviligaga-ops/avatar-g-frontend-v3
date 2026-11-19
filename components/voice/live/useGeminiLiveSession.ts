@@ -71,6 +71,7 @@ import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResu
 import { useVoicePreferencesContext } from '@/components/voice/experience/VoicePreferencesProvider';
 import { voiceStyleInstruction, VOICE_UI_APPROVAL_RULE, type VoicePreferences } from '@/lib/voice/experience/settings';
 import { offersUnpreparedStart, UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
+import { type CallLanguage, spokenLanguageOf, withReplyLanguage, withReplyLanguageField } from '@/lib/voice/replyLanguage';
 import { voiceStyleCommand } from '@/lib/voice/experience/commands';
 import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
@@ -100,6 +101,20 @@ export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
  * ~1 s later (the avatar model in us-central1; voice in 0.1–0.3 s). 3 s is still twice the slowest healthy handshake.
  */
 export const LIVE_RELAY_READY_AFTER_OPEN_MS = 3000;
+/**
+ * A relay that says hello (lib/voice/relay/wire) acks the setup frame the moment it arrives; that deadline then replaces
+ * the one above. ⚠️ GG's avatar call 2026-10-26 14:37Z: 7 of 8 iPhone sockets opened, handed the 35 KB setup to the
+ * network (bufferedAmount 0 at the deadline) and the relay got it only with the browser's own close 3 s later: ~38 s
+ * before the avatar came up. The close frame, the next write, was what let the setup through, so without an ack by
+ * NUDGE_AFTER the browser writes a nudge (again every NUDGE_EVERY); still no ack by ACK_DEADLINE → a fresh socket at
+ * 1.8 s instead of 3 s. A setup still leaving the browser (bufferedAmount > 0: a slow uplink, not a held frame) keeps
+ * its socket up to LIVE_RELAY_SETUP_TIMEOUT_MS. Once acked the setup is with Vertex, which answers ~1.7 s later for the
+ * avatar (us-central1, via the EU relay): READY_AFTER_ACK, so a slow Vertex is no longer cut at 3 s and retried.
+ */
+export const LIVE_RELAY_NUDGE_AFTER_MS = 500;
+export const LIVE_RELAY_NUDGE_EVERY_MS = 300;
+export const LIVE_RELAY_ACK_DEADLINE_MS = 1800;
+export const LIVE_RELAY_READY_AFTER_ACK_MS = 10_000;
 /** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
  *  relay a held frame struck 2 attempts in a row (16:28Z), 3 in a row twice (17:54Z, 17:56Z) and 4 in a row (18:47Z,
  *  GG's avatar call: the 5th socket opened WITHOUT the UI actions, so „make a picture" had no button and the call never
@@ -227,7 +242,7 @@ export interface LiveSessionDeps {
   /** The context + mic the Live button primed inside its tap (lib/voice/livePrime). */
   takePrimed: () => PrimedLive | null;
   /** Failure telemetry (lib/voice/liveTelemetry). */
-  report: (code: LiveErrorCode | 'handshake_timeout', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
+  report: (code: LiveErrorCode | 'handshake_timeout' | 'handshake_nudged', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
 }
 
 export interface UseGeminiLiveSessionOptions {
@@ -347,9 +362,15 @@ export interface UseGeminiLiveSessionResult {
   avatar: string | null;
   /** Why the server opened a voice call instead of the avatar that was asked for. */
   avatarRefused: LiveAvatarRefusal | null;
+  /**
+   * Whether this account may turn the avatar on at all (the server's answer; lib/voice/liveAudience): false = keep its
+   * switch hidden; null = no answer yet (an older route, or before the first mint).
+   */
+  avatarAllowed: boolean | null;
 }
 
-export type LiveAvatarRefusal = 'disabled' | 'daily_limit';
+export type LiveAvatarRefusal = 'disabled' | 'audience' | 'daily_limit';
+const AVATAR_REFUSALS: readonly LiveAvatarRefusal[] = ['disabled', 'audience', 'daily_limit'];
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────────
 
@@ -630,6 +651,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const [degraded, setDegraded] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarRefused, setAvatarRefused] = useState<LiveAvatarRefusal | null>(null);
+  const [avatarAllowed, setAvatarAllowed] = useState<boolean | null>(null);
   const [activity, dispatchActivity] = useReducer(liveActivityReducer, [] as LiveActivityItem[]);
 
   // Lifecycle
@@ -703,6 +725,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   // Transcript
   const pendingUserRef = useRef('');
   const pendingModelRef = useRef('');
+  /** The language the user last spoke in this call, named in every answer the app gives the model (lib/voice/replyLanguage). */
+  const userLanguageRef = useRef<CallLanguage | null>(null);
   const finalCaptionsRef = useRef<LiveCaption[]>([]);
   const turnSeqRef = useRef(0);
   // Timers
@@ -750,6 +774,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     // ⚠️ The transcription's own text, not the caption's: lib/voice/spokenYes reads it back in Georgian letters itself and
     // must know which words came in another alphabet, whose question mark is a guess („كي?" for „კი", GG 2026-10-26).
+    if ('text' in e) { const lang = spokenLanguageOf(e.text); if (lang) userLanguageRef.current = lang; }
     try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
   }, []);
 
@@ -997,7 +1022,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown; avatarAllowed?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -1019,7 +1044,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (j.actions === false) actionsOffRef.current = true;
     avatarSessionRef.current = typeof j.avatar === 'string' && j.avatar ? j.avatar : null;
     setAvatar(avatarSessionRef.current);
-    setAvatarRefused(j.avatarRefused === 'disabled' || j.avatarRefused === 'daily_limit' ? j.avatarRefused : null);
+    setAvatarRefused((AVATAR_REFUSALS as readonly unknown[]).includes(j.avatarRefused) ? (j.avatarRefused as LiveAvatarRefusal) : null);
+    if (typeof j.avatarAllowed === 'boolean') setAvatarAllowed(j.avatarAllowed);
     return { ok: true };
   }, [deps]);
 
@@ -1125,12 +1151,15 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       type: 'toolDone',
       results: responses.map((r) => ({ id: r.id, ok: !(r.response && typeof r.response === 'object' && 'error' in r.response) })),
     });
+    // ⚠️ GG 2026-10-26 11:34Z: an answer in English made the model reply in English (lib/voice/replyLanguage).
+    responses = withReplyLanguageField(responses, userLanguageRef.current);
     if (sessionRef.current === session) { session.sendToolResponse(responses); return; }
     // ⚠️ A LATE ANSWER WAS DROPPED. ask_agent_g / read_webpage answer after the network (up to a minute); when the
     // connection was renewed meanwhile (goAway, a network blip) the answer went to the dead socket and the model never
     // learned what Agent G found — it could only guess or say nothing. Now the new connection is told, as an [App] note.
-    const note = lateToolAnswerNote(responses);
-    if (!note) return;
+    const late = lateToolAnswerNote(responses);
+    if (!late) return;
+    const note = withReplyLanguage(late, userLanguageRef.current);
     if (readyRef.current && sessionRef.current) sessionRef.current.sendText(note);
     else lateAnswersRef.current.push(note);
   }, []);
@@ -1190,7 +1219,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           && offersUnpreparedStart(said) && readyRef.current && sessionRef.current === session) {
           unpreparedNotesRef.current += 1;
           toolSinceUserRef.current = true; // one note per thing the user said
-          session.sendText(UNPREPARED_START_NOTE);
+          session.sendText(withReplyLanguage(UNPREPARED_START_NOTE, userLanguageRef.current));
         }
         afterTurnBoundary();
         return;
@@ -1265,18 +1294,34 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     clearHandshakeTimer();
     const explicitTimeout = optsRef.current.setupTimeoutMs;
     const timeoutMs = explicitTimeout ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
-    const onDeadline = () => {
-      handshakeTimerRef.current = null;
-      if (!current() || readyRef.current) return;
-      // Where it waited, read before the close below drops the socket (lib/voice/liveTelemetry).
+    // Our relay's acks and the nudges (lib/voice/relay/wire): see LIVE_RELAY_NUDGE_AFTER_MS.
+    let relayHello = false;
+    let ackedAt = 0;
+    let nudges = 0;
+    let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+    const stopNudges = () => { if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; } };
+    const rearm = (fn: () => void, ms: number) => {
+      if (handshakeTimerRef.current) clearTimeout(handshakeTimerRef.current);
+      handshakeTimerRef.current = setTimeout(fn, Math.max(0, ms));
+    };
+    // Where it waited, read before a close drops the socket (lib/voice/liveTelemetry).
+    const handshakeContext = (): LiveFailureContext => {
       const now = Date.now();
-      const context: LiveFailureContext = {
+      return {
         locale: optsRef.current.locale || 'ka',
         mints: mintsRef.current,
         degraded: degradedRef.current,
         relay: !!tok.relayUrl,
         ...(openedAt ? { msToOpen: openedAt - startedAt, msSinceOpen: now - openedAt, bufferedBytes: session.bufferedAmount } : {}),
+        ...(relayHello ? { relayHello: true, nudges } : {}),
+        ...(ackedAt && openedAt ? { msToAck: ackedAt - openedAt } : {}),
       };
+    };
+    const onDeadline = () => {
+      handshakeTimerRef.current = null;
+      stopNudges();
+      if (!current() || readyRef.current) return;
+      const context = handshakeContext();
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
       try { deps().report('handshake_timeout', null, context); } catch { /* telemetry never breaks the call */ }
@@ -1290,6 +1335,19 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       }
       onSessionClosed(true);
     };
+    const onAckDeadline = () => {
+      handshakeTimerRef.current = null;
+      if (!current() || readyRef.current || ackedAt) return;
+      // Still leaving the browser: a slow uplink, not a held frame. Give it the long deadline, not a fresh socket.
+      if (session.bufferedAmount > 0 && Date.now() - startedAt < timeoutMs) { rearm(onAckDeadline, 500); return; }
+      onDeadline();
+    };
+    const nudge = () => {
+      nudgeTimer = null;
+      if (!current() || readyRef.current || ackedAt) return;
+      if (session.bufferedAmount === 0 && session.nudgeRelay()) nudges += 1;
+      nudgeTimer = setTimeout(nudge, LIVE_RELAY_NUDGE_EVERY_MS);
+    };
     handshakeTimerRef.current = setTimeout(onDeadline, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
       { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
@@ -1300,17 +1358,35 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           // Through the relay an open socket gets the short deadline (LIVE_RELAY_READY_AFTER_OPEN_MS); the long one
           // only covers a relay that is still booting, which holds the socket in CONNECTING.
           if (tok.relayUrl && explicitTimeout === undefined && current() && handshakeTimerRef.current) {
-            clearTimeout(handshakeTimerRef.current);
-            handshakeTimerRef.current = setTimeout(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
+            rearm(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
           }
         },
-        onSetupComplete: () => { if (current()) onReady(session); },
+        onRelayHello: () => {
+          if (!current() || readyRef.current || ackedAt) return;
+          relayHello = true;
+          const base = openedAt || Date.now();
+          if (!nudgeTimer) nudgeTimer = setTimeout(nudge, Math.max(0, base + LIVE_RELAY_NUDGE_AFTER_MS - Date.now()));
+          if (explicitTimeout === undefined && handshakeTimerRef.current) rearm(onAckDeadline, base + LIVE_RELAY_ACK_DEADLINE_MS - Date.now());
+        },
+        onRelaySetupAck: () => {
+          if (!current() || readyRef.current || ackedAt) return;
+          ackedAt = Date.now();
+          stopNudges();
+          if (explicitTimeout === undefined && handshakeTimerRef.current) rearm(onDeadline, LIVE_RELAY_READY_AFTER_ACK_MS);
+        },
+        onSetupComplete: () => {
+          stopNudges();
+          if (!current()) return;
+          // Did a nudge get a held setup through? Every such call says so (and how long the ack took).
+          if (nudges > 0) try { deps().report('handshake_nudged', null, handshakeContext()); } catch { /* telemetry never breaks the call */ }
+          onReady(session);
+        },
         onEvent: (ev) => { if (current()) onServerEvent(ev, session); },
         onError: () => {
           // A socket that could not even be constructed reports onError with no close event to follow.
           if (!opened && current()) queueMicrotask(() => { if (current() && !opened) onSessionClosed(); });
         },
-        onClose: () => { if (current()) onSessionClosed(); },
+        onClose: () => { stopNudges(); if (current()) onSessionClosed(); },
       },
     );
     sessionRef.current = session;
@@ -1658,6 +1734,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (pendingModelRef.current) emitSaid({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
+    userLanguageRef.current = null;
     finalCaptionsRef.current = [];
     turnSeqRef.current = 0;
     setCaptions([]);
@@ -1842,7 +1919,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const sendNote = useCallback((text: string): boolean => {
     const t = typeof text === 'string' ? text.trim() : '';
     if (!t || !readyRef.current || !sessionRef.current) return false;
-    sessionRef.current.sendText(t);
+    sessionRef.current.sendText(withReplyLanguage(t, userLanguageRef.current));
     return true;
   }, []);
 
@@ -1885,7 +1962,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
     start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
-    avatar, avatarRefused, audioOutput,
+    avatar, avatarRefused, avatarAllowed, audioOutput,
   };
 }
 

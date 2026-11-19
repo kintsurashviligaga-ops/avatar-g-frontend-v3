@@ -61,9 +61,9 @@ describe('Agent G\'s words on the card', () => {
 
 describe('the product ad ordered in the chat', () => {
   it.each(['make a product ad for my sneakers', 'პროდუქტის რეკლამა გამიკეთე', 'ამ პროდუქტის სარეკლამო ვიდეო გამიკეთე', 'сделай рекламу товара'])(
-    '„%s" opens the product ad, which the chat now offers on its card', (text) => {
+    '„%s" no longer opens the product ad: GG removed it (2026-10-27)', (text) => {
       const r = routeAgentIntent(text);
-      expect(r?.kind === 'open' ? r.tool : null).toBe('product');
+      expect(r?.kind === 'open' ? r.tool : null).not.toBe('product');
     });
 
   it('the card names the photo, the length, the frame and the style — not the order\'s words (the route takes none)', () => {

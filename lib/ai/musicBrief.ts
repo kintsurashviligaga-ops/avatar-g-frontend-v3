@@ -46,6 +46,12 @@ export interface MusicBriefInput {
   lyrics?: string;
   instrumental?: boolean;
   /**
+   * The SONG directions for a sung track (lib/ai/musicVocals `songDirections`): lead vocal, language, lyrics, structure.
+   * Fixed server-side English; reserved in the suffix like the style, because without them Lyria often returns a
+   * backing track with no singer. Ignored on an instrumental.
+   */
+  songDirections?: readonly string[];
+  /**
    * Steering sentences from the granular controls (lib/ai/musicControls `promptDirectives`): fixed server-side text,
    * already English. ⚠️ THE LOWEST-PRIORITY TEXT IN THE BRIEF — they are trimmed before the user's own words ever are:
    * they get only the room the user's prompt and the suffix leave over, and one that does not fit is dropped WHOLE
@@ -86,6 +92,7 @@ export function buildMusicBrief(input: MusicBriefInput): MusicBrief {
   if (descriptor) suffixParts.push(`${descriptor}.`);
   // A vocal descriptor on an instrumental track is a contradiction; the engine is told one thing only.
   if (vocals && !input.instrumental) suffixParts.push(`${vocals}.`);
+  if (!input.instrumental) for (const d of input.songDirections ?? []) { const t = clean(d).replace(/[.\s]+$/, ''); if (t) suffixParts.push(`${t}.`); }
   if (input.instrumental) suffixParts.push('Instrumental, no vocals.');
   const suffix = suffixParts.join(' ');
 

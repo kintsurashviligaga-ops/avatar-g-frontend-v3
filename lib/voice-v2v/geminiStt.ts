@@ -3,8 +3,9 @@ import 'server-only';
 /**
  * Gemini speech-to-text: a multimodal generateContent model given a short "transcribe this audio" prompt.
  *
- * The ONLY engine of /api/voice/transcribe (MASTER TASK v3.1): no Replicate, OpenAI or Deepgram leg runs, whatever
- * AI_GOOGLE_ONLY says.
+ * The Gemini engine of /api/voice/transcribe (MASTER TASK v3.1): no Replicate, OpenAI or Deepgram leg runs, whatever
+ * AI_GOOGLE_ONLY says. Since 2026-11-01 (GG's card) Cloud Speech-to-Text's Chirp 3 answers a clip first
+ * (lib/voice-v2v/chirpStt), and this takes the clips Chirp cannot answer; STT_ENGINE=gemini makes it the whole engine.
  *
  * ⚠️ THE CONTAINER DECIDES WHETHER THIS WORKS AT ALL. Gemini's documented AUDIO inputs are WAV, MP3, AIFF, AAC,
  * OGG and FLAC. The browser's MediaRecorder produces WebM/Opus (Chrome, Firefox) or MP4/AAC (Safari) — neither is
@@ -35,7 +36,7 @@ export function geminiSttBlocker(): string | null {
 // ─── Model chain ─────────────────────────────────────────────────────────────
 
 /**
- * Step-downs after the configured STT model: the default (3.6 Flash), 3.5 Flash, then 3.8 Flash — the chat's Flash
+ * Step-downs after the configured STT model: the default (3.5 Flash; 3.6 Flash until its 2026-11-19 retirement), 3.7 Flash, then 3.8 Flash — the chat's Flash
  * models (DEFAULT_CHAT_MODELS.standard), fastest first. Google RETIRES aliases without notice (gemini-2.0-flash went 404
  * and silently killed Georgian dictation), so a model-missing / overloaded / rate-limited / timed-out answer moves to
  * the next id. Retired ids (gemini-2.0-*, 1.5-*) and 2.5 ids never appear (a new Google project gets 404 "no longer
@@ -46,7 +47,7 @@ export function geminiSttBlocker(): string | null {
  * stopped at the first answer. ⚠️ AND 3.8 FLASH WAS TOO SLOW (2026-10-25): the owner's dictation ended in a
  * TimeoutError on it after 22 s, so it is the LAST step now, not the first (lib/ai/google/models DEFAULT_STT_MODEL).
  */
-const STT_STEP_DOWNS: readonly string[] = [DEFAULT_STT_MODEL, 'gemini-3.5-flash', 'gemini-3.8-flash'];
+const STT_STEP_DOWNS: readonly string[] = [DEFAULT_STT_MODEL, 'gemini-3.7-flash', 'gemini-3.8-flash'];
 
 /**
  * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. Every id is one Vertex AI serves:
@@ -188,6 +189,9 @@ export function sttPrompt(language: string, firm?: string | null): string {
     'Transcribe this audio verbatim, in the language the speaker actually uses. NEVER translate, not even into the language of these instructions.',
     hint,
     'Georgian speech is written in the Georgian (Mkhedruli) alphabet, never in Latin letters; Russian in Cyrillic.',
+    // Dictation, not a court record (owner's test 2026-10-25: "Please check the weather uh in Batumi uh"). Only sounds
+    // that are never words: Georgian "ამ" is "this" and Russian "ну" is a word, so neither is listed.
+    'Leave out hesitation sounds that are not words (uh, um, er, hmm, э-э, мм, ე-ე, მმ); keep every real word.',
     'First write the ISO 639-1 code of the language actually spoken in square brackets ([ka], [ru], [en] …), then a space, then ONLY the exact spoken words — no commentary, no quotes, no other labels. If silent, output nothing.',
   ].join(' ');
 }
@@ -289,9 +293,19 @@ const MINIMAL_OK_RE = /^gemini-3(?:\.[0-6])?-flash(?:-|$)|^gemini-3(?:\.\d+)?-fl
  * costs one unbilled answer, not the dictation.
  */
 function thinkingFor(model: string): Record<string, unknown> | undefined {
+  if (isTranscribeModel(model)) return undefined;
   if (/^gemini-2\.5-flash(?:-lite)?(?:-|$)/i.test(model)) return { thinkingBudget: 0 };
   if (/^gemini-3(?:\.\d+)?-/i.test(model)) return { thinkingLevel: MINIMAL_OK_RE.test(model) && !/(?:^|-)pro(?:-|$)/i.test(model) ? 'minimal' : 'low' };
   return undefined;
+}
+
+/**
+ * A dedicated speech-to-text model (lib/ai/google/models TRANSCRIBE_MODEL): it transcribes what it hears, so it gets
+ * the audio alone, with no prompt, no temperature and no thinking config (so no `[ru]` code either, and no translation
+ * retry). UNVERIFIED which of those it would refuse; the owner's `?stt=` trial shows Google's answer.
+ */
+export function isTranscribeModel(model: string): boolean {
+  return /^gemini-[\d.]+-transcribe(?:-|$)/i.test(model) && !/-live(?:-|$)/i.test(model);
 }
 
 /** A 400 about the thinking config: that model refuses what thinkingFor sent, the next one may not. */
@@ -369,12 +383,17 @@ export async function transcribeWithGeminiDetailed(
         ? Math.max(Math.min(remaining, STT_MIN_ATTEMPT_MS), remaining - STT_FALLBACK_RESERVE_MS)
         : remaining;
       const thinkingConfig = thinkingFor(model);
-      const body = JSON.stringify({
-        // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
-        // accepts `inline_data`, the Developer API's documented spelling this used to send.
-        contents: [{ role: 'user', parts: [{ text: sttPrompt(language, firm) }, { inlineData: { mimeType, data: audioBase64 } }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
-      });
+      // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
+      // accepts `inline_data`, the Developer API's documented spelling this used to send.
+      const audio = { inlineData: { mimeType, data: audioBase64 } };
+      const body = JSON.stringify(
+        isTranscribeModel(model)
+          ? { contents: [{ role: 'user', parts: [audio] }] }
+          : {
+              contents: [{ role: 'user', parts: [{ text: sttPrompt(language, firm) }, audio] }],
+              generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
+            },
+      );
 
       let res: Response;
       try {

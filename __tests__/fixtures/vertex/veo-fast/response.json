@@ -1,0 +1,6 @@
+{
+  "status": 200,
+  "body": {
+    "name": "projects/{project}/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001/operations/0af38053-7153-4cce-856a-e164635a98be"
+  }
+}

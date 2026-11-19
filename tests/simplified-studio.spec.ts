@@ -6,8 +6,9 @@ import { test, expect, type Page } from '@playwright/test';
  * not be found in the Video service). In a real browser:
  *   · the retired addresses land in the studio's own tools: /studio → home, #film → Video, #lipsync → Avatar, #hub → chat;
  *   · the sidebar has no Studio Beta row and no Connectors & plugins row;
- *   · „Music video" is a sidebar row of its own under Video, and it opens the Video panel with Music video picked;
- *   · the Video panel shows Film | Music video at its top, and a tap switches it.
+ *   · the music video is removed entirely (GG 2026-10-25 16:10Z: the video service is one clip, „like Gemini's Veo"): no
+ *     sidebar row, no Film | Music video switch on the panel, an old `?mode=musicvideo` link opens the one-clip panel, and
+ *     a music-video brief is one clip's card, never a storyboard.
  */
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -43,98 +44,66 @@ test('the retired addresses land in the studio\'s own tools', async ({ page }) =
   }
 });
 
-test('the sidebar has no Studio Beta and no Connectors & plugins; Music video has its own row and opens in music-video mode', async ({ page }) => {
+test('the sidebar has no Studio Beta, no Connectors & plugins and no Music video row', async ({ page }) => {
   test.setTimeout(240_000);
   await quiet(page);
   await page.goto('/en/dashboard');
-  const video = page.locator('[data-tour="tool-video"]').first();
-  await expect(video).toBeVisible({ timeout: 45_000 });
+  // The open sidebar's first row is Chat (its service rows live in „+" since the unified composer).
+  const chat = page.getByTestId('sidebar-chat').filter({ visible: true }).first();
+  await expect(chat).toBeVisible({ timeout: 45_000 });
 
-  const sidebar = page.locator('aside, nav').filter({ has: video }).first();
+  const sidebar = page.locator('aside, nav').filter({ has: chat }).first();
   await expect(sidebar.getByText(/Studio\s*Beta/i)).toHaveCount(0);
   await expect(sidebar.getByText(/Connectors|Plugins/i)).toHaveCount(0);
-
-  const row = page.getByTestId('sidebar-service-video.music-video');
-  await expect(row).toBeVisible();
-  await expect(row).toHaveText(/Music video/);
-  await row.click();
-
-  await expect.poll(() => tool(page), { timeout: 30_000 }).toBe('video');
-  const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
-  await expect(panel).toBeVisible({ timeout: 30_000 });
-  await expect(panel.getByTestId('video-mode-musicvideo')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('sidebar-service-video.music-video')).toHaveCount(0);
+  await expect(sidebar.getByText(/Music video/i)).toHaveCount(0);
 });
 
-test('the Video panel shows Film | Music video at its top, and a tap switches it', async ({ page }) => {
+test('the Video panel is one clip: no Film | Music video switch, and an old music-video link opens the same panel', async ({ page }) => {
   test.setTimeout(240_000);
   await quiet(page);
-  await page.goto('/en/dashboard?tool=video');
-  const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
-  await expect(panel).toBeVisible({ timeout: 45_000 });
-
-  const choice = panel.getByTestId('video-mode-choice');
-  await expect(choice).toBeVisible();
-  // At the top of the panel, above its settings — not hidden in a sheet or a closed disclosure (GG 2026-10-18: the panel
-  // has no prompt of its own; the settings card is everything under the switch, length and format).
-  const [c, settings] = await Promise.all([choice.boundingBox(), panel.getByTestId('video-settings').boundingBox()]);
-  expect(c!.y).toBeLessThan(settings!.y);
-
-  await expect(panel.getByTestId('video-mode-documentary')).toHaveAttribute('aria-checked', 'true');
-  await panel.getByTestId('video-mode-musicvideo').click();
-  await expect(panel.getByTestId('video-mode-musicvideo')).toHaveAttribute('aria-checked', 'true');
-  // A music video is vertical: the format tile follows.
-  await expect(panel.getByTestId('video-tiles')).toContainText('9:16');
-  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-mode.png` });
+  for (const path of ['/en/dashboard?tool=video', '/en/dashboard?tool=video&mode=musicvideo']) {
+    await page.goto(path);
+    await expect.poll(() => tool(page), { timeout: 45_000 }).toBe('video');
+    const panel = page.getByTestId('clip-create-panel').filter({ visible: true }).first();
+    if (!(await panel.isVisible().catch(() => false))) await page.getByTestId('options-toggle').click();
+    await expect(panel).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('video-mode-choice')).toHaveCount(0);
+    await expect(page.getByTestId('video-mode-musicvideo')).toHaveCount(0);
+    await expect(page.getByTestId('video-lipsync')).toHaveCount(0);
+    // Lengths of one clip, 8 s picked.
+    await expect(panel.getByTestId('clip-panel-len-8')).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel.getByTestId('clip-panel-len-10')).toBeVisible();
+  }
 });
 
-test('Music video keeps the storyboard: the genre and light typed in the chat box reach the brief, scenes can be edited', async ({ page }) => {
+test('a music-video brief in the Video tool is one clip\'s card, never a storyboard', async ({ page }) => {
   test.setTimeout(240_000);
   await quiet(page);
-  // Nothing is planned or rendered for real: the plan call answers three scenes that already have frames (so none are
-  // generated), every other storyboard call answers empty, and each plan brief is kept.
   const briefs: string[] = [];
   await page.route('**/api/film/storyboard**', async (route) => {
-    if (route.request().method() !== 'POST') return route.fallback();
-    const body = route.request().postDataJSON() as { prompt?: string; planOnly?: boolean };
-    if (!body.planOnly) return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
-    if (typeof body.prompt === 'string') briefs.push(body.prompt);
-    const scenes = [1, 2, 3].map((ordinal) => ({ ordinal, beat: ['wide', 'medium', 'close'][ordinal - 1], prompt: `Scene ${ordinal} on the rooftop`, frameUrl: '/templates/image/product.jpg' }));
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, seed: 7, scenes }) });
+    briefs.push(route.request().postData() ?? '');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
   await page.goto('/en/dashboard?tool=video');
-  const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
-  await expect(panel).toBeVisible({ timeout: 45_000 });
-  // The dummy-Supabase dev server has no session; pin "signed in" so the panel's Generate is not a sign-in wall.
+  await expect.poll(() => tool(page), { timeout: 45_000 }).toBe('video');
+  await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
+  // The dummy-Supabase dev server has no session; pin "signed in" so Send is not a sign-in wall.
   await page.evaluate(() => {
     const el = document.documentElement;
     const pin = () => { if (el.dataset.authed !== '1') el.dataset.authed = '1'; };
     pin();
     new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
   });
-
-  // GG 2026-10-18: the look chips (MusicVideoLook) left the panel — the genre and the light are words in the prompt, typed
-  // in the chat box like the rest of it; the panel keeps the switch and the priced lip-sync.
-  await panel.getByTestId('video-mode-musicvideo').click();
-  await expect(panel.getByTestId('mv-look')).toHaveCount(0);
-  await expect(panel.getByTestId('video-lipsync')).toBeVisible();
-  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-panel.png` });
-
-  await page.getByTestId('composer-input').fill('A singer on a rooftop at dusk, soulful blues, golden-hour sunlight');
+  const done = page.getByTestId('video-settings-done');
+  if (await done.isVisible().catch(() => false)) await done.click();
+  const words = 'A music video: a singer on a rooftop at dusk, soulful blues, golden-hour sunlight';
+  await page.getByTestId('composer-input').fill(words);
   await page.getByTestId('run-button').click();
-  await expect.poll(() => briefs.length, { timeout: 30_000 }).toBeGreaterThan(0);
-  expect(briefs[0]).toContain('A singer on a rooftop at dusk, soulful blues, golden-hour sunlight');
-  // No character photo was given, so the brief does not tell the director to feature one.
-  expect(briefs[0]).not.toContain('uploaded character');
-
-  // The storyboard opens in the Video tool with its scene controls: re-roll, move, delete, add — and Generate.
-  await expect(page.getByTestId('storyboard-generate')).toBeVisible({ timeout: 20_000 });
-  const reroll = page.getByRole('button', { name: 'Re-roll this frame' });
-  await expect(reroll).toHaveCount(3);
-  await expect(page.getByRole('button', { name: 'Move later' }).first()).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Delete scene' }).first()).toBeEnabled();
-  await expect(page.getByText('#4', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Add scene' }).click();
-  // The added scene is #4; it has no frame yet, so it offers its own "generate this frame" button.
-  await expect(page.getByText('#4', { exact: true })).toBeVisible();
-  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-storyboard.png` });
+  const card = page.getByTestId('clip-card').last();
+  await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 20_000 });
+  await expect(card.getByTestId('clip-prompt')).toHaveText(`„${words}“`);
+  await expect(card).toHaveAttribute('data-seconds', '8');
+  await expect(page.getByTestId('storyboard-generate')).toHaveCount(0);
+  expect(briefs).toEqual([]);
 });

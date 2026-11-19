@@ -55,8 +55,25 @@ test('folding hides the steps, never the Stop button', () => {
   const header = screen.getByRole('button', { expanded: true });
   fireEvent.click(header);
   expect(screen.getByRole('button', { expanded: false })).toBeTruthy();
-  expect(document.getElementById('agent-montage-card-steps')!.hidden).toBe(true);
+  const list = document.getElementById('agent-montage-card-steps')!;
+  // Folded smoothly to no height, out of the accessibility tree and out of reach (inert).
+  expect(list.getAttribute('data-folded')).toBe('true');
+  expect(list.getAttribute('aria-hidden')).toBe('true');
+  expect(list.hasAttribute('inert')).toBe(true);
+  expect(list.className).toContain('grid-rows-[0fr]');
   expect(screen.getByTestId('agent-montage-stop')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(list.getAttribute('data-folded')).toBe('false');
+  expect(list.hasAttribute('inert')).toBe(false);
+});
+
+test('the step in progress spins, the steps done carry the blue check', () => {
+  render(<AgentMontageCard state={{ phase: 'running', names: NAMES, quote: MQ, stage: 'stitch', t0: Date.now() }} locale="ka" onStart={noop} onCancel={noop} />);
+  const active = document.querySelector('li[data-state="active"]')!;
+  expect(active.querySelector('[data-icon="spinner"] svg')!.getAttribute('class')).toContain('animate-spin');
+  const done = document.querySelectorAll('li[data-state="done"] [data-icon="check"]');
+  expect(done.length).toBeGreaterThan(0);
+  expect(done[0]!.className).toContain('bg-app-accent');
 });
 
 test('the MP3 card names the user file and its rights, and offers the upload after a refused link', () => {

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "approvedBy": "owner GG 2026-11-12 09:24Z (v5.1 D-02: \"run the paid Georgian probe (~$0.05)\" for gemini-3.8-flash-tts; D-03: free models.list / countTokens probes, no generation, for Carbon, Argon, Omni 1.2, Nano Banana 2.1 and 3.8 TTS)",
+  "capUsd": 0.02,
+  "inputs": {
+    "tts-38-wav": {
+      "file": "probe3/tts-38-ka.wav",
+      "mimeType": "audio/wav",
+      "sha256": "56143b2ff0f33aa24107dd87727a1b68c04a5bd86ac6cbb7da1f2aac84c7b01c",
+      "spoken": "გამარჯობა, ეს არის ხმის მოკლე შემოწმება."
+    }
+  },
+  "calls": [
+    {
+      "id": "chirp-ka-38b",
+      "model": "chirp_3",
+      "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp, Georgian only: hears the 3.8 audio back, so the words can be checked one by one — re-run on the recording plan-3 made (2026-11-12 10:19Z), because the runner skipped Chirp there (3.8 TTS answers in a WAV container)",
+      "kind": "sync",
+      "url": "https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize",
+      "estimateUsd": 0.01,
+      "requires": [
+        "tts-38-wav"
+      ],
+      "body": {
+        "config": {
+          "autoDecodingConfig": {},
+          "model": "chirp_3",
+          "languageCodes": [
+            "ka-GE"
+          ]
+        },
+        "content": "{{tts-38-wav.base64}}"
+      }
+    }
+  ]
+}

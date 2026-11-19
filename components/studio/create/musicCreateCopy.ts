@@ -55,6 +55,8 @@ export interface MusicCreateCopy {
   lyricsWand: string;
   lyricsLibrary: string;
   instrumental: string;
+  /** The quick chip's value for a sung song (the same switch as Instrumental, shown by what it makes). */
+  songWithVocals: string;
   camera: string;
   cameraSoon: string;
   expand: string;
@@ -162,6 +164,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     lyricsWand: 'ლირიკის დაწერა ჩემი სტილიდან',
     lyricsLibrary: 'შენახული ლირიკა',
     instrumental: 'ინსტრუმენტული',
+    songWithVocals: 'ვოკალით',
     camera: 'შთაგონება ფოტოდან',
     cameraSoon: 'ფოტოდან შთაგონება — მალე',
     expand: 'გაშლა',
@@ -217,7 +220,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     enginesPicker: 'აირჩიე, რომელი ძრავა სცადოს პირველად',
     creditsShort: 'კრედ.',
     secondsShort: 'წმ',
-    simplePlaceholder: 'მაგ.: მშვიდი ლო-ფაი ბითი სასწავლად, წვიმის ხმით',
+    simplePlaceholder: 'მაგ.: მხიარული პოპ სიმღერა ბათუმის ზაფხულზე, ქალის ვოკალით',
     simpleCard: 'აღწერე სიმღერა',
   },
   en: {
@@ -258,6 +261,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     lyricsWand: 'Write lyrics from my style',
     lyricsLibrary: 'Saved lyrics',
     instrumental: 'Instrumental',
+    songWithVocals: 'With vocals',
     camera: 'Inspire from a picture',
     cameraSoon: 'Inspire from a picture — soon',
     expand: 'Expand',
@@ -313,7 +317,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     enginesPicker: 'Pick which engine tries first',
     creditsShort: 'cr',
     secondsShort: 's',
-    simplePlaceholder: 'e.g. a calm lo-fi beat for studying, with rain sounds',
+    simplePlaceholder: 'e.g. an upbeat pop song about summer in Batumi, female vocal',
     simpleCard: 'Describe your song',
   },
   ru: {
@@ -354,6 +358,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     lyricsWand: 'Написать текст по моему стилю',
     lyricsLibrary: 'Сохранённые тексты',
     instrumental: 'Инструментал',
+    songWithVocals: 'С вокалом',
     camera: 'Вдохновиться картинкой',
     cameraSoon: 'Вдохновение по фото — скоро',
     expand: 'Развернуть',
@@ -409,7 +414,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     enginesPicker: 'Выберите, какой движок пробует первым',
     creditsShort: 'кр.',
     secondsShort: 'с',
-    simplePlaceholder: 'напр. спокойный лоу-фай бит для учёбы, со звуком дождя',
+    simplePlaceholder: 'напр. весёлая поп-песня о лете в Батуми, женский вокал',
     simpleCard: 'Опишите песню',
   },
 };

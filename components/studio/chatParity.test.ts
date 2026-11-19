@@ -43,18 +43,19 @@ describe('pure chat has no settings (keyed on the TOOL, never on the mode)', () 
   });
 
   it('hides the settings surface with classes and keeps it mounted', () => {
-    expect(omni).toContain("${panelOpen && !chatOnly ? 'flex' : 'hidden'}");
-    expect(omni).toContain("${optionsOpen && !chatOnly ? 'flex' : 'hidden'}");
+    expect(omni).toContain("const settingsLayerOpen = (isDesktop ? panelOpen : optionsOpen) && !chatOnly;");
+    expect(omni).toContain("${settingsLayerOpen ? 'flex' : 'hidden'}");
     expect(omni.match(/id="studio-settings"/g)).toHaveLength(1);
     // panelOpen is the user's choice: nothing in the chat switch writes it.
     expect(omni).not.toMatch(/if \(chatOnly\)[^\n]*setPanelOpen/);
   });
 
   it('renders no settings toggle and no tool chip in the chat', () => {
-    expect(omni).toMatch(/\{!chatOnly && \(\s*<button type="button" onClick=\{\(\) => setPanelOpen\(\(v\) => !v\)\}/);
+    // No settings toggle in the desktop title bar at all (GG's unified composer, 2026-10-25): it opens from the composer.
+    expect(omni).not.toContain('data-testid="settings-panel-toggle"');
     // The phone/desktop settings toggle sits inside the tool chip's pill (GG's service pill, 2026-10-21), which is itself
     // behind `!chatOnly`: nothing between the pill's opening and the toggle closes that block.
-    const pill = omni.match(/\{!chatOnly && \(\s*<div className="inline-flex h-10[\s\S]*?data-testid="options-toggle"/);
+    const pill = omni.match(/\{!chatOnly && \(\s*\/\/ ActiveServiceChip[\s\S]*?<div data-testid="active-service-chip"[\s\S]*?data-testid="options-toggle"/);
     expect(pill).toBeTruthy();
     expect(pill![0]).not.toMatch(/\n\s*\)\}\n/);
     expect(pill![0]).toContain('onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}');

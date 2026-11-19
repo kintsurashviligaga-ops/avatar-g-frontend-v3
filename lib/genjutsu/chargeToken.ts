@@ -38,17 +38,60 @@ export const genjutsuChargeForPolledId = (id: string): { jobId: string; charge: 
 /**
  * The composite the token binds: Veo's operation, the native aspect it renders, and when the job was created. `voiced`
  * (`::v`) marks a talking avatar whose ElevenLabs line is laid over the clip on delivery (lib/avatar/veoAvatar) — inside
- * the signed id, so no caller can add or strip it.
+ * the signed id, so no caller can add or strip it. `clipSec` (`::c8`, `::c4v` …) marks the video service's direct clip
+ * (app/api/video/clip) and its length; its `v` is a Georgian line laid over it the same way (lib/video/voicedClip).
  */
-export function composeVeoJobId(operation: string, aspect: '16:9' | '9:16', createdMs: number, voiced = false): string {
-  return `${operation}::${aspect}::${Math.round(createdMs)}${voiced ? '::v' : ''}`;
+export function composeVeoJobId(operation: string, aspect: '16:9' | '9:16', createdMs: number, voiced = false, clipSec?: 4 | 6 | 8): string {
+  const tail = clipSec ? `::c${clipSec}${voiced ? 'v' : ''}` : voiced ? '::v' : '';
+  return `${operation}::${aspect}::${Math.round(createdMs)}${tail}`;
 }
 
-export function parseVeoJobId(jobId: string): { operation: string; aspect: '16:9' | '9:16'; createdMs: number; voiced: boolean } | null {
+/**
+ * The video service's clip on Gemini Omni Flash (lib/video/omniClip): its interaction id, frame, start and length — `::o10`,
+ * or `::o4` · `::o6` · `::o8` for a clip in which a character says a Georgian line (GG's card 2026-10-26 10:55Z).
+ * An uploaded video Omni edits or extends (app/api/video/omni-edit) names its op and billed seconds: `::oe6`, `::ox8`.
+ * `m2` after it (`::o10m2`, `::ox8m2`) says the interaction was made on Gemini Omni 1.2 Flash (v5.1 M-3): a continuation
+ * must name the model that made it, and an id from before M-3 (no `m2`) was made on 1.1.
+ */
+export function composeOmniJobId(
+  interactionId: string, aspect: '16:9' | '9:16', createdMs: number, edit?: { op: 'edit' | 'extend'; seconds: 4 | 6 | 8 | 10 }, clipSec: 4 | 6 | 8 | 10 = 10,
+  omni12 = false,
+): string {
+  const tail = (edit ? `o${edit.op === 'edit' ? 'e' : 'x'}${edit.seconds}` : `o${clipSec}`) + (omni12 ? 'm2' : '');
+  return `${interactionId}::${aspect}::${Math.round(createdMs)}::${tail}`;
+}
+
+export interface VeoJobId {
+  /** Veo's operation name, or Omni's interaction id when `engine` is 'omni'. */
+  operation: string;
+  aspect: '16:9' | '9:16';
+  createdMs: number;
+  voiced: boolean;
+  /** The direct clip's length (an Omni edit's or extend's billed seconds); null for a VFX scene or an avatar. */
+  clipSec: 4 | 6 | 8 | 10 | null;
+  /** Who renders it: Veo (every id but an Omni clip's and an uploaded video's edit) or Gemini Omni Flash. */
+  engine: 'veo' | 'omni';
+  /** What Omni was asked for: a clip, or an edit / extend of an uploaded video. Null on Veo. */
+  omniOp: 'clip' | 'edit' | 'extend' | null;
+  /** Omni only: made on Gemini Omni 1.2 Flash (`m2`); false = 1.1 (every id from before v5.1 M-3) and on Veo. */
+  omni12: boolean;
+}
+
+const TAIL = /^(?:v|c([468])(v?)|o(4|6|8|10)(m2)?|o([ex])(4|6|8|10)(m2)?)$/;
+
+export function parseVeoJobId(jobId: string): VeoJobId | null {
   const parts = jobId.split('::');
-  if (parts.length !== 3 && !(parts.length === 4 && parts[3] === 'v')) return null;
+  const tail = parts.length === 4 ? TAIL.exec(parts[3]!) : null;
+  if (parts.length !== 3 && !tail) return null;
   const [operation, aspect, created] = parts as [string, string, string];
   const createdMs = Number(created);
   if (!operation || (aspect !== '16:9' && aspect !== '9:16') || !Number.isFinite(createdMs) || createdMs <= 0) return null;
-  return { operation, aspect, createdMs, voiced: parts.length === 4 };
+  if (tail?.[3]) return { operation, aspect, createdMs, voiced: false, clipSec: Number(tail[3]) as 4 | 6 | 8 | 10, engine: 'omni', omniOp: 'clip', omni12: !!tail[4] };
+  if (tail?.[5]) {
+    return {
+      operation, aspect, createdMs, voiced: false, clipSec: Number(tail[6]) as 4 | 6 | 8 | 10, engine: 'omni', omniOp: tail[5] === 'e' ? 'edit' : 'extend', omni12: !!tail[7],
+    };
+  }
+  const clipSec = tail?.[1] ? (Number(tail[1]) as 4 | 6 | 8) : null;
+  return { operation, aspect, createdMs, voiced: !!tail && (clipSec ? tail[2] === 'v' : true), clipSec, engine: 'veo', omniOp: null, omni12: false };
 }

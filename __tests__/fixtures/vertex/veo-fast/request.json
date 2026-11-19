@@ -1,0 +1,23 @@
+{
+  "method": "POST",
+  "url": "https://us-central1-aiplatform.googleapis.com/v1/projects/{project}/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning",
+  "body": {
+    "instances": [
+      {
+        "prompt": "The lantern sways gently in the evening breeze, soft ambient street sounds. No people, no text.",
+        "image": {
+          "bytesBase64Encoded": "{{image.base64}}",
+          "mimeType": "{{image.mimeType}}"
+        }
+      }
+    ],
+    "parameters": {
+      "aspectRatio": "16:9",
+      "durationSeconds": 4,
+      "resolution": "720p",
+      "sampleCount": 1,
+      "personGeneration": "allow_adult",
+      "generateAudio": true
+    }
+  }
+}

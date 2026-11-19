@@ -27,7 +27,7 @@ import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
-import { JOB_COLUMNS, recordCompletedAsset, type GenerationJobRow } from '@/lib/orchestrator/jobs';
+import { JOB_COLUMNS, recordCompletedAsset, type GenerationJobRow, type LibraryKind } from '@/lib/orchestrator/jobs';
 import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
 import {
   createSignedAssetUrls,
@@ -46,7 +46,7 @@ export const runtime = 'nodejs';
 
 export interface LibraryItem {
   id: string;
-  /** service_type — 'film' | 'avatar' | 'image' | 'music' | 'voice' | 'interior'. */
+  /** service_type — 'film' | 'avatar' | 'image' | 'music' | 'voice' | 'interior' | 'document' (a PDF Agent G wrote). */
   kind: string;
   /** Playable / downloadable media URL. */
   url: string;
@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
   // Optional service_type filter: one kind, or a comma list of them (the Library's Video tab is film + avatar). Unknown
   // kinds are dropped; a filter with none left matches nothing rather than everything.
   const kindParam = req.nextUrl.searchParams.get('kind');
-  const kinds = kindParam === null ? null : kindParam.split(',').map((k) => k.trim()).filter((k): k is ProduceKind => (VALID_KINDS as string[]).includes(k));
+  const kinds = kindParam === null ? null : kindParam.split(',').map((k) => k.trim()).filter((k): k is LibraryKind => (LISTED_KINDS as string[]).includes(k));
   // Only the starred works. A signed-out visitor has none (the demo library is nobody's to star).
   const favoritesOnly = req.nextUrl.searchParams.get('favorite') === '1';
   if ((kinds && kinds.length === 0) || (favoritesOnly && !user)) {
@@ -304,6 +304,8 @@ export async function GET(req: NextRequest) {
  * valid signed URL (verifyFileableUrl probes it); anything else must be a public http(s) address (no internal host).
  */
 const VALID_KINDS: ProduceKind[] = ['film', 'avatar', 'interior', 'image', 'music', 'voice'];
+/** What GET can filter by: every kind, plus Agent G's PDFs (the Docs tab). A manual save (POST) is never a document. */
+const LISTED_KINDS: LibraryKind[] = [...VALID_KINDS, 'document'];
 const REFUSAL: Record<string, string> = {
   invalid_url: 'A public http(s) media URL is required.',
   not_media_bucket: 'That storage object cannot be saved to the library.',

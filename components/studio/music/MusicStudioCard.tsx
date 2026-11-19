@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, Music2, RotateCcw, Scissors, X } from 'lucide-react';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
+import { MusicPreviewPlayer } from './MusicPreviewPlayer';
 import type { MusicRequest } from '@/lib/music/studio/contracts';
 import { cancelCall, editCall, isFinal, pollDelayMs, quoteCall, startCall, statusCall, commandCall, type MusicJobView, type MusicQuote, type Refusal } from '@/lib/music/studio/client';
 import { LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
@@ -267,9 +268,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const res = v.result;
   return (
     <div className={shell} data-testid="music-card" data-phase="completed" data-job-id={v.jobId} data-card-state={card.state} ref={rootRef}>
-      <audio controls preload="metadata" src={res.url} className="w-full" aria-label={c.playerAria} data-testid="music-player">
-        <track kind="captions" />
-      </audio>
+      <MusicPreviewPlayer src={res.url} title={r.prompt} durationSec={res.durationSec} locale={locale} />
       <p className="mt-1.5 text-[11.5px] text-app-text/60">{c.delivered(Math.round(res.durationSec), res.credits, res.modelId)}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <a data-testid="music-download" data-primary={primary.action} className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} href={downloadHref(res.url, trackFileName(v.jobId, res.mime))} download={trackFileName(v.jobId, res.mime)}><Download className="h-4 w-4" aria-hidden />{c.download}</a>
@@ -285,7 +284,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
       {edit.versions.map((ver) => (
         <div key={ver.jobId} className="mt-2 rounded-xl border border-app-border/10 p-2" data-testid="music-version" data-job-id={ver.jobId} data-duration={ver.durationSec}>
           <p className="text-[11.5px] text-app-text/70">{c.version(ver.label, Math.round(ver.durationSec))}</p>
-          <audio controls preload="metadata" src={ver.url} className="mt-1 w-full" aria-label={c.version(ver.label, Math.round(ver.durationSec))}><track kind="captions" /></audio>
+          <MusicPreviewPlayer src={ver.url} title={ver.label} durationSec={ver.durationSec} locale={locale} compact />
           <a data-testid="music-version-download" className="mt-1 inline-flex min-h-[44px] items-center text-[12px] text-app-accent underline" href={downloadHref(ver.url, trackFileName(ver.jobId, mimeOfUrl(ver.url), ver.label))} download={trackFileName(ver.jobId, mimeOfUrl(ver.url), ver.label)}>{c.download}</a>
         </div>
       ))}

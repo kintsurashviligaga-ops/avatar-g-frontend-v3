@@ -44,8 +44,9 @@ describe('a card that is merely lit sends nothing', () => {
     expect(p.templateId).toBeNull(); // …and adds nothing, because nobody picked it.
   });
 
-  test('video: the default panel IS the Reel card, and a default film carries no templateId', () => {
-    expect(matchVideoTemplate(VIDEO_PANEL_DEFAULTS)).toBe('reel');
+  // The video starts as ONE 8 s clip (GG 2026-10-25 16:10Z), which is the Teaser card's length: lit, never sent unpicked.
+  test('video: the default panel IS the Teaser card, and a default clip carries no templateId', () => {
+    expect(matchVideoTemplate(VIDEO_PANEL_DEFAULTS)).toBe('teaser');
     expect(panel({ ...VIDEO_PANEL_DEFAULTS }, matchVideoTemplate).templateId).toBeNull();
   });
 
@@ -77,12 +78,12 @@ describe('a picked card is sent while it still matches, and the first edit away 
     expect(p.templateId).toBe('product');
   });
 
-  test('video: picking the Reel card on the default panel is a choice, and sends it', () => {
+  test('video: picking the Teaser card on the default panel is a choice, and sends it', () => {
     const p = panel({ ...VIDEO_PANEL_DEFAULTS } as { mode: 'documentary' | 'musicvideo'; duration: 8 | 24 | 48; orientation: 'landscape' | 'vertical' | 'square' | 'portrait'; style: string }, matchVideoTemplate);
-    p.pick('reel');
-    expect(p.templateId).toBe('reel');
-    // The Teaser shares the Reel's style and mode; shortening the film is an edit away from the Reel.
-    p.set({ ...videoTemplateValues('reel')!, duration: 8 });
+    p.pick('teaser');
+    expect(p.templateId).toBe('teaser');
+    // The Reel shares the Teaser's style and mode; lengthening the film is an edit away from the Teaser.
+    p.set({ ...videoTemplateValues('teaser')!, duration: 24 });
     expect(p.templateId).toBeNull();
   });
 

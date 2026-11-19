@@ -2,21 +2,17 @@
  * lib/connectors/registry.ts — the list of connectors and the honest state of each. GET /api/connectors answers from here.
  *
  *   Local files    WORKS. Upload → extract text → stored per user → attachable to a Deep Research run. (localFiles.ts)
- *   Google Drive   NOT WIRED. A provider object that says so: connect() refuses, listFiles()/read() answer not_connected.
+ *   Google Drive   WIRED when configured (Phase 4, lib/connectors/google/*): scope drive.file, only the files the user
+ *                  picks. Without GOOGLE_OAUTH_CLIENT_ID/SECRET + CONNECTOR_TOKEN_KEY it stays the honest 'soon' provider.
  *   OneDrive · Notion · Dropbox   the same — "soon", named so the Connectors view can show where this is heading.
  *
- * ⚠️ DRIVE IS NOT CONNECTED, AND NOTHING HERE CAN CONNECT IT. No OAuth client, no redirect, no consent screen, no token
- * column, no scope request. What wiring it needs (none of which exists):
- *   1. a Google OAuth client with the `drive.readonly` scope (or the narrower `drive.file` + the Picker), verified by Google;
- *   2. an authorization-code flow (/api/connectors/google_drive/connect → callback) with a signed `state`;
- *   3. refresh tokens stored ENCRYPTED (a new table, written by service_role only), a disconnect route that revokes them;
- *   4. listFiles() over Drive's files.list and read() exporting Docs/Sheets to text (files.export) or downloading PDFs through
- *      /api/utils/extract-text, with the same per-file and total caps as local files;
- *   5. a privacy-policy line and a consent text (lib/legal/content.ts) before any real user can connect.
- * Until then the status stays 'soon' and the UI says "coming soon" — never "connected", never a fake file list.
+ * ⚠️ DRIVE CONNECTS ONLY WHEN FULLY CONFIGURED (lib/connectors/google/oauth driveOAuthConfig), the connector_accounts
+ * table exists (migration 20261101a) and CONNECTORS_DRIVE opens it to this user. Refresh tokens are sealed with
+ * AES-256-GCM; no access token is stored; disconnect revokes at Google. Never a fake "connected", never a fake file list.
  */
 import type { ConnectorFile, ConnectorId, ConnectorProvider, ConnectorState, ConnectorStatus } from './types';
 import type { LocalFilesStore } from './localFiles';
+import { driveProvider, type DriveDeps } from './google/drive';
 
 /** The "coming soon" providers, in the order the Connectors view shows them after Local files. */
 export const SOON_CONNECTORS: ReadonlyArray<{ id: Exclude<ConnectorId, 'local_files'>; label: string }> = [
@@ -43,6 +39,8 @@ export interface RegistryDeps {
   localFiles: LocalFilesStore | null;
   /** The research_context_files table exists (schema probe). */
   filesTableReady: boolean;
+  /** Google Drive (Phase 4). Absent or unconfigured = the old honest 'soon' provider. */
+  drive?: DriveDeps;
 }
 
 export function localFilesProvider(deps: RegistryDeps): ConnectorProvider {
@@ -73,7 +71,10 @@ export function localFilesProvider(deps: RegistryDeps): ConnectorProvider {
 }
 
 export function connectorRegistry(deps: RegistryDeps): ConnectorProvider[] {
-  return [localFilesProvider(deps), ...SOON_CONNECTORS.map((c) => soonProvider(c.id, c.label))];
+  return [
+    localFilesProvider(deps),
+    ...SOON_CONNECTORS.map((c) => (c.id === 'google_drive' && deps.drive?.cfg ? driveProvider(deps.drive) : soonProvider(c.id, c.label))),
+  ];
 }
 
 /** The states the API returns: status per provider, and the file count for Local files. No tokens, no account data. */
@@ -86,6 +87,7 @@ export async function connectorStates(userId: string | null, providers: Connecto
       const listed = await p.listFiles(userId);
       if (listed.ok) state.fileCount = listed.files.length;
     }
+    if (status === 'connectable' && p.isLinked) state.linked = userId ? await p.isLinked(userId).catch(() => false) : false;
     out.push(state);
   }
   return out;

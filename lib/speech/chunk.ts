@@ -42,20 +42,39 @@ export interface SpeechChunkOptions {
    * request returns its audio sooner, and the rest is synthesised while it plays.
    */
   leadSentence?: boolean;
-  /** Default 220. */
+  /** Default SPEECH_LEAD_MAX_CHARS. */
   leadMax?: number;
   /**
    * Let the chunks grow instead of jumping to `maxChars` (see SPEECH_CHUNK_RAMP). Chunk k (k ≥ 1) holds at most
    * `ramp` × the spoken length of the two chunks before it (at least SPEECH_CHUNK_MIN_CHARS, at most `maxChars`), and
    * with `leadSentence` the first chunk holds at most `leadMax`. A sentence longer than its chunk may hold is cut at
    * its last clause mark (, ; : — –) that fits and leaves at least SPEECH_CHUNK_MIN_CHARS after it, and read whole
-   * when it has none (up to `maxChars`; past that it is cut as without the ramp).
+   * when it has none (up to `maxChars`; past that it is cut as without the ramp). The FIRST chunk alone is also cut at
+   * a space when no clause mark fits (see SPEECH_LEAD_MAX_CHARS): it is the one the listener waits for.
    */
   ramp?: number;
 }
 
-export const SPEECH_CHUNK_MAX_CHARS = 600;
+/**
+ * ⚠️ LONG REPLIES STOPPED IN THE MIDDLE, AND EVERY READ STARTED LATE (GG, Production 2026-11-06: "it takes long before
+ * it speaks … on a big text it takes even longer and sometimes stops in the middle"). The owner's trial card that day
+ * (gemini-2.5-flash-preview-tts, iPhone): 23 characters took 4.8 s for 2.1 s of audio, 43 characters 5.7 s for 4.8 s.
+ * So a request costs about 4 s before any audio plus about 0.33 s per second of audio, and Georgian is read at about
+ * 9–11 characters a second. A 600-character chunk was about 60 s of audio and 24 s of synthesis: at the route's 25 s
+ * deadline (lib/speech/deadline), a 504, and the read stopped there. 180 characters is about 18 s of audio and 10 s of
+ * synthesis, inside the deadline with room for one retry and for a slower moment at Google. (Gemini TTS streaming is
+ * no way out: Google acknowledged on 2026-06-23 that streamed TTS audio is cut off.)
+ */
+export const SPEECH_CHUNK_MAX_CHARS = 180;
 export const SPEECH_CHUNK_MIN_CHARS = 40;
+/**
+ * The first chunk, the one every read waits for before any sound (GG 2026-11-06, see SPEECH_CHUNK_MAX_CHARS). It was
+ * up to 220 characters, about 22 s of Georgian audio and 11 s of silence after the tap. 50 characters is about 5 s of
+ * audio and under 6 s before the first sound. A first sentence that long with no clause mark to cut at is cut at a space (never
+ * inside a word), and only when at least SPEECH_CHUNK_MIN_CHARS are left after it: a sentence a little over is read
+ * whole.
+ */
+export const SPEECH_LEAD_MAX_CHARS = 50;
 
 /**
  * ⚠️ THE READ STOPPED IN THE MIDDLE AND THEN WENT ON (GG, Production 2026-10-24). With the lead sentence on its own,
@@ -215,12 +234,28 @@ function clauseCut(source: string, start: number, end: number, limit: number): n
   return -1;
 }
 
+/**
+ * Where to cut [start, end) at a space so that its first piece says at most `limit` characters: at the last space that
+ * fits, keeps the piece above 40% of `limit` and leaves at least SPEECH_CHUNK_MIN_CHARS after it, or -1 when there is
+ * none. Only for the lead (SPEECH_LEAD_MAX_CHARS); the next piece starts at that space, so no character is lost.
+ */
+function spaceCut(source: string, start: number, end: number, limit: number): number {
+  const from = skipSpace(source, start);
+  const windowEnd = Math.min(end - 1, from + limit);
+  const floor = from + Math.floor(limit * 0.4);
+  for (let k = windowEnd; k > floor; k--) {
+    if (!isSpace(source[k]) || isSpace(source[k - 1])) continue;
+    if (spoken(source.slice(k, end)).length >= SPEECH_CHUNK_MIN_CHARS) return k;
+  }
+  return -1;
+}
+
 /** The speech chunks of `source`. Whitespace-only text has none. */
 export function chunkSpeech(source: string, opts: SpeechChunkOptions = {}): SpeechChunk[] {
   const text = source ?? '';
   if (!spoken(text)) return [];
   const max = Math.min(SPEECH_MAX_CHARS, Math.max(SPEECH_CHUNK_MIN_CHARS, Math.floor(opts.maxChars ?? SPEECH_CHUNK_MAX_CHARS)));
-  const leadMax = Math.min(max, opts.leadMax ?? 220);
+  const leadMax = Math.min(max, opts.leadMax ?? SPEECH_LEAD_MAX_CHARS);
   const ramp = opts.ramp !== undefined && Number.isFinite(opts.ramp) && opts.ramp > 0 ? opts.ramp : null;
 
   const ranges: Array<{ start: number; end: number }> = [];
@@ -265,8 +300,10 @@ export function chunkSpeech(source: string, opts: SpeechChunkOptions = {}): Spee
         open = { ...s, limit };
         return;
       }
-      // Longer than this chunk may say: cut at a clause mark, read the rest as the next chunk(s).
-      const cut = clauseCut(text, s.start, s.end, limit);
+      // Longer than this chunk may say: cut at a clause mark, read the rest as the next chunk(s). The first chunk,
+      // which the listener waits for, is cut at a space when no clause mark fits.
+      let cut = clauseCut(text, s.start, s.end, limit);
+      if (cut < 0 && lens.length === 0 && opts.leadSentence) cut = spaceCut(text, s.start, s.end, limit);
       if (cut > 0) {
         push({ start: s.start, end: cut });
         s = { start: cut, end: s.end, hardEnd: s.hardEnd };

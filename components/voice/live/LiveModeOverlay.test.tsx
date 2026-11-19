@@ -79,6 +79,31 @@ describe('LiveModeOverlay', () => {
     expect(screen.getByRole('button', { name: s.copyText })).toBeTruthy();
   });
 
+  it('while the avatar works on its answer, moving dots stand where the answer will appear instead of the previous one', () => {
+    const s = LIVE_OVERLAY_STRINGS.ka;
+    const captions: LiveCaption[] = [
+      { id: 'a1', role: 'assistant', text: 'წინა პასუხი', final: true },
+      { id: 'u1', role: 'user', text: 'დამიხატე ცხენი', final: true },
+    ];
+    const props = { locale: 'ka' as const, captions, muted: false, cameraOn: false, ...handlers() };
+    const video = document.createElement('video');
+    const { rerender } = render(<LiveModeOverlay {...props} status="thinking" avatarVideo={video} />);
+    expect(screen.getByTestId('live-status')).toHaveTextContent(s.status.thinking);
+    expect(screen.getByTestId('live-avatar-thinking')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.queryByTestId('live-avatar-caption')).toBeNull();
+    expect(screen.getByText('დამიხატე ცხენი')).toBeTruthy();
+    // The answer starts: the dots give way to its words.
+    rerender(<LiveModeOverlay {...props} captions={[...captions, { id: 'a2', role: 'assistant', text: 'ახლავე', final: false }]} status="speaking" avatarVideo={video} />);
+    expect(screen.queryByTestId('live-avatar-thinking')).toBeNull();
+    expect(screen.getByTestId('live-avatar-caption')).toHaveTextContent('ახლავე');
+    // Captions off: the dots still show. A voice call keeps its own look (no dots).
+    rerender(<LiveModeOverlay {...props} status="thinking" avatarVideo={video} showCaptions={false} />);
+    expect(screen.getByTestId('live-avatar-thinking')).toBeTruthy();
+    rerender(<LiveModeOverlay {...props} status="thinking" />);
+    expect(screen.queryByTestId('live-avatar-thinking')).toBeNull();
+    expect(screen.getByText('წინა პასუხი')).toBeTruthy();
+  });
+
   it('the avatar caption fades its older lines only when the text is taller than the band', () => {
     const height = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get');
     const client = jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(56);

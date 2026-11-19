@@ -53,14 +53,16 @@ describe('the studio', () => {
     expect(handler).toContain("if (isToolId(d)) { e.preventDefault(); selectTool(d, 'sidebar'); return; }");
     expect(handler).toContain("selectTool(o.tool, o.surface === 'sidebar' ? 'sidebar' : 'search', service?.id ?? null);");
     expect(handler).toContain('serviceModeQuery(service.id)?.mode');
-    expect(handler).toContain("if (o.tool === 'video' && (m === 'musicvideo' || m === 'documentary')) setVideoMode(m);");
+    // No music video any more (GG 2026-10-25 16:10Z): an old link to it opens the clip, never the music-video mode.
+    expect(handler).toContain("if (o.tool === 'video' && m === 'documentary') setVideoMode(m);");
+    expect(handler).not.toMatch(/musicvideo/);
     // A service whose tool is not the one named is ignored, never opened on the wrong tool.
     expect(handler).toContain('if (service && service.tool !== o.tool) return;');
   });
 
-  it('keeps the mode of a ?tool=video deep link', () => {
-    expect(omni).toContain("const videoMode = tl === 'video' && (vm === 'musicvideo' || vm === 'documentary') ? vm : null;");
-    expect(omni).toContain("selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode }));");
-    expect(omni).toContain("if (videoMode) { setVideoMode(videoMode); url.searchParams.delete('mode'); }");
+  it('a ?tool=video deep link opens the clip: an old ?mode=musicvideo is dropped from the address, never applied', () => {
+    expect(omni).toContain("selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode: null }));");
+    expect(omni).toContain("if (tl === 'video' && vm) url.searchParams.delete('mode');");
+    expect(omni).not.toMatch(/setVideoMode\(videoMode\)/);
   });
 });

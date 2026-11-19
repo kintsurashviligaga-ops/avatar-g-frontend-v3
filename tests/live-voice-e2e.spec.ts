@@ -153,7 +153,7 @@ test.describe('voice mode, end to end', () => {
     // 2 — follow the visible composer Tools menu; studios no longer live in the thread sidebar.
     expect(await live.call('click', { target: 'ხელსაწყოები' })).toMatchObject({ ok: true });
     // The user reveals the lower row in the scrollable sheet; the agent only operates visible controls.
-    await page.getByRole('dialog', { name: 'ხელსაწყოები' }).getByRole('button', { name: /^მუსიკა / }).scrollIntoViewIfNeeded();
+    await page.getByRole('dialog', { name: 'სერვისები' }).getByRole('button', { name: /^მუსიკა / }).scrollIntoViewIfNeeded();
     await expect.poll(async () => (await screen()).controls.some(c => c.name.startsWith('მუსიკა'))).toBe(true);
     const clicked = await live.call('click', { target: 'მუსიკა' });
     expect(clicked).toMatchObject({ ok: true, summary: expect.stringMatching(/Pressed/) });
@@ -218,6 +218,11 @@ test.describe('voice mode, end to end', () => {
     await page.route('**/api/agent/approvals', (r) => { approvals.push(r.request().postDataJSON() as Record<string, unknown>); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
     expect(await live.call('prepare_generation', { tool: 'image', prompt: FOX_ORDER, aspectRatio: '9:16' })).toMatchObject({ ok: true });
     await expect.poll(async () => (await waitingForYes(live))?.tool, { timeout: 15_000 }).toBe('image');
+    // The model says the price; the call writes that line into the chat under the card (GG 2026-10-26 12:04Z: the line hid
+    // the card, and the yes found nothing waiting). The card is still the one waiting.
+    live.answer('სურათი 5 კრედიტი ღირს. დავიწყო?');
+    await expect(page.getByText('სურათი 5 კრედიტი ღირს. დავიწყო?')).toBeVisible({ timeout: 10_000 });
+    expect((await waitingForYes(live))?.tool).toBe('image');
     live.hear('კი, დაიწყე');
     expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
     expect(spend).toEqual([]); // the countdown first

@@ -5,8 +5,8 @@ opens Vertex AI with its own Cloud Run service account and pipes frames both way
 The rules live in `lib/voice/relay` (ticket, setup lock, allowed frames, limits, one log line per session) and are
 unit-tested there.
 
-Status: deployed as `live-relay` in us-central1 (2026-10-25), min-instances 1, behind `LIVE_RELAY_URL` (Live is open to
-admins only, `LIVE_AUDIENCE`).
+Status: deployed as `live-relay` in us-central1 (2026-10-25), min-instances 1, behind `LIVE_RELAY_URL` (who may open Live:
+`LIVE_AUDIENCE`; who may turn the talking avatar on: `LIVE_AVATAR_AUDIENCE`, see `lib/voice/liveAudience`).
 
 ## Region
 
@@ -36,6 +36,11 @@ Each `relay.session_end` line also says where the session waited: `setupMs` (con
    It then rewrites the model to `projects/<p>/locations/<l>/publishers/google/models/<m>` and opens Vertex.
 4. From the browser, only `realtimeInput`, `clientContent` and `toolResponse` frames pass. A second `setup` closes the
    session. Everything from Vertex goes back unchanged.
+   The relay also speaks three frames of its own (`lib/voice/relay/wire`): `{"relayHello":{"nudge":1}}` right after
+   the upgrade, `{"relaySetupAck":{}}` when the setup passes, and it drops the browser's `{"relayNudge":{}}`. An
+   iPhone behind iCloud Private Relay held the setup until the browser wrote again (2026-10-26), so a browser that
+   heard hello and has no ack writes a nudge, and gives the socket up at 1.8 s instead of 3 s. Deploy the relay
+   before the app: a browser nudges only a relay that said hello. `relay.session_end` logs `nudges`.
 5. The relay ends a session at its length limit, when idle, on a frame or byte limit, or when either side closes. It
    logs `relay.session_end` with the duration, bytes and the tokens Vertex reported.
 

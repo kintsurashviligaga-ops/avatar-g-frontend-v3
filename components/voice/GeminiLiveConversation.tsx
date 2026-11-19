@@ -113,9 +113,10 @@ export function planNote(n: number, kind: LivePlanKind, what: string): string {
 /** The [App] note for a failed generation. The test link's refusal is no failure to retry: nothing can be made there. */
 export function failedNote(what: string): string {
   if (isTestLinkNotice(what)) {
+    // GG 2026-10-26 13:24Z: the model said only „ფასიანი კონტენტის შექმნა ამჟამად მიუწვდომელია", which sounds like an outage.
     return '[App] This is a test link: paid creation is switched off here on purpose, so nothing can be made in this call '
-      + 'and no credits were spent. Tell the user exactly that in one sentence (real creation works on myavatar.ge); do not '
-      + 'offer to try again here.';
+      + 'and no credits were spent. Tell the user in one sentence that this is a test link, that creation is off only here, '
+      + 'and that it works on myavatar.ge. Do not say it is unavailable or broken, and do not offer to try again here.';
   }
   return `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`;
 }
@@ -136,10 +137,12 @@ export function notStartedNote(reason: LiveResultNote['reason'], what: string): 
       if (what) {
         // GG 2026-10-26 09:29Z: a Georgian answer came out as „대자.", in Korean letters, and the model told the user that
         // „something went wrong". It hears what the answer came out as, and that it may say it again or tap the card.
+        // GG 2026-10-26 12:32Z („ኪ."): the model still said „სამწუხაროდ, რაღაც შეფერხებაა", so it is told what to say first.
         return `[App] Nothing was started: after the price the app heard only "${what}"`
           + `${isMisheardScript(what) ? ' (in an alphabet the call never speaks: the speech recognition missed the words)' : ''}, `
-          + 'and that is no clear yes. Do not say it started or that something broke. Ask the user to answer once more with a '
-          + 'short yes in their language, or to tap the button on the card; start again only after they say yes.';
+          + 'and that is no clear yes. Tell the user you did not catch their answer. Do not say it started or that something '
+          + 'broke or went wrong: nothing did. Ask them to answer once more with a short yes in their language, or to tap the '
+          + 'button on the card; start again only after they say yes.';
       }
       return '[App] Nothing was started: the countdown ended without a clear yes in the user\'s own words after the price or '
         + 'plan. Do not say it started. Ask the user plainly whether to start; start again only after they say yes.';
@@ -255,12 +258,13 @@ export default function GeminiLiveConversation({
     if (renewRef.current()) askedAvatarRef.current = desiredAvatar;
   }, [callReady, desiredAvatar]);
   const sessionAvatar = session.avatar;
-  const { avatarRefused } = session;
+  const { avatarRefused, avatarAllowed } = session;
   useEffect(() => {
     if (!avatarRefused) return;
     askedAvatarRef.current = null;
     setAvatarWanted(false);
-    setAvatarNote(avatarRefused === 'daily_limit' ? 'dailyLimit' : 'disabled');
+    // Not open to this account (lib/voice/liveAudience): the switch goes away, no notice; the call simply stays voice.
+    if (avatarRefused !== 'audience') setAvatarNote(avatarRefused === 'daily_limit' ? 'dailyLimit' : 'disabled');
   }, [avatarRefused]);
   // Cost: one avatar session runs LIVE_AVATAR_MAX_MS at most, then the call goes on by voice.
   useEffect(() => {
@@ -442,7 +446,9 @@ export default function GeminiLiveConversation({
 
   const avatarCopy = LIVE_AVATAR_STRINGS[loc];
   const primeAvatar = avatarPlayer.prime;
-  const avatarSwitch = avatarAvailable ? (
+  // The switch only where the avatar can play AND the server says this account may use it (admins, or everyone once
+  // LIVE_AVATAR_AUDIENCE=everyone). Before the first answer it stays hidden, so it never flashes for a user who can't.
+  const avatarSwitch = avatarAvailable && avatarAllowed === true ? (
     <LiveControl
       label={avatarCopy.toggle}
       ariaLabel={avatarWanted ? avatarCopy.turnOff : avatarCopy.turnOn}

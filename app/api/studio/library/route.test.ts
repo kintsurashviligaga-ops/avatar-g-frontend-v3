@@ -248,6 +248,11 @@ describe('GET — the kind filter', () => {
     const res = await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=bogus'));
     expect(((await res.json()) as { items: unknown[] }).items).toEqual([]);
   });
+
+  test('the Docs tab asks for Agent G\'s PDFs', async () => {
+    await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=document'));
+    expect(serviceFilters()).toEqual([['eq', 'service_type', 'document']]);
+  });
 });
 
 describe('GET — empty, demo, unavailable and failed are told apart (§4.2.7)', () => {
@@ -408,6 +413,12 @@ describe('POST — signed-in only, and only URLs the caller can already read', (
     const res = await POST(post({ url: 'https://replicate.delivery/x/out.mp4', kind: 'film' }));
     expect(res.status).toBe(401);
     expect(mockRecord).not.toHaveBeenCalled();
+  });
+
+  test('a manual save is never filed as a document (only the PDF route files those)', async () => {
+    const res = await POST(post({ url: 'https://replicate.delivery/x/out.pdf', kind: 'document' }));
+    expect(res.status).toBe(200);
+    expect(saved()).toEqual([expect.objectContaining({ serviceType: 'film' })]);
   });
 
   test('a public external URL is filed under the caller, unverified (so never re-signed)', async () => {

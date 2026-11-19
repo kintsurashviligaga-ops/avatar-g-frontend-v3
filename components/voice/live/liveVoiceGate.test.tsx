@@ -194,7 +194,7 @@ describe('agent_task / extract_audio start: Agent G\'s plans by the call\'s own 
     const out = executeLiveToolCall(call('s', 'agent_task', { action: 'start', plan: 1 }), g.env);
     expect(g.actions).toEqual([expect.objectContaining({ type: 'agent_task', action: 'start', plan: 1, planId: 'msg-a', planKind: 'audio' })]);
     expect(out.run).toEqual({ tool: 'audio', priceCredits: 0, target: { kind: 'agent', planId: 'msg-a', planKind: 'audio' }, since: told });
-    expect(String(out.response.response.summary)).toMatch(/Plan 1 \(MP3\) starts in 3 seconds[\s\S]*It is free/);
+    expect(String(out.response.response.summary)).toMatch(/Nothing has started yet: plan 1 \(MP3\) starts in 3 seconds[\s\S]*It is free/);
     expect(g.env.runGeneration).not.toHaveBeenCalled();
   });
 

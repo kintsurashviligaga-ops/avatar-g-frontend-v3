@@ -61,6 +61,9 @@ import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
+import type { CodeQuoteResult } from '@/lib/agent/sandbox/codeQuote';
+import type { BrowserQuoteResult } from '@/lib/agent/browser/quote';
+import type { DriveDeps } from '@/lib/connectors/google/drive';
 import {
   ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
 } from '@/lib/agent/media/editPlan';
@@ -84,6 +87,16 @@ export interface AgentContext extends ImageToolContext {
   onEditQuote?: (quote: Extract<EditQuoteResult, { ok: true }>) => void;
   /** Agent G's whole-file analysis is open to this user (AGENT_G_FILE_ANALYSIS, decided from the session by the route). */
   analyze?: boolean;
+  /** Running code in the sandbox is open to this user (AGENT_G_SANDBOX, decided from the session by the route). */
+  sandbox?: boolean;
+  /** Receives every signed code-run plan; the route hands the last one to the client's Start card. */
+  onCodeQuote?: (quote: Extract<CodeQuoteResult, { ok: true }>) => void;
+  /** The sandboxed browser is switched on for this user (AGENT_G_SANDBOX + BROWSER_ENABLED, decided by the route). */
+  browser?: boolean;
+  /** Receives every signed browser plan; the route hands the last one to the client's Start card. */
+  onBrowserQuote?: (quote: Extract<BrowserQuoteResult, { ok: true }>) => void;
+  /** Google Drive is linked-able for this user (CONNECTORS_DRIVE + configured), wired by the route. Read only. */
+  driveDeps?: DriveDeps;
 }
 
 /** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
@@ -98,7 +111,9 @@ export const AGENT_MONTAGE_NOTE =
   'quote_montage_to_music: it analyses the files, finds the beat and returns the plan and its price. It renders ' +
   'nothing: the user sees the plan with a Confirm button and the edit starts only when they press it. Tell them what ' +
   'the plan is (shots, length, beat, format, any clip left out and why) and that it starts on Confirm; never say it is ' +
-  'already made. For any other video, image or music render, put a ready-to-use brief in your final answer and tell ' +
+  'already made. When they want an intro, the main video and an outro put together (an intro/outro bumper around their ' +
+  'content, the dead start and end cut off), call quote_video_assembly with the file numbers by role and only the times ' +
+  'they said; it finds where each part starts and ends itself. For any other video, image or music render, put a ready-to-use brief in your final answer and tell ' +
   'them to run it in the MyAvatar Studio, where it is created and billed.';
 
 /** Added to either note when the audio tool is on: the agent plans the extraction and never claims it ran. */
@@ -126,6 +141,50 @@ export const AGENT_EDIT_NOTE =
   'on the plan in the MyAvatar chat, and it is free; never say it is done.';
 
 /** Added when the analysis tool is on: what it is for, and that its times are a reading, not a cut. */
+/** Added when the code tool is on: the agent plans a run and never claims it ran. */
+export const AGENT_CODE_NOTE =
+  'When working something out needs a program (a calculation, a data transformation, a check of an algorithm), write a ' +
+  'short Python, JavaScript or shell program that prints its result and call quote_code_run with it. It checks the ' +
+  'program and returns the plan; it runs nothing. The program runs only when the user presses Start on the plan, in an ' +
+  'isolated sandbox with no internet and no keys, for at most 60 seconds (with workspace: true, in their workspace ' +
+  'folder). Never say the program already ran and never invent its output.';
+
+/** Added when the workspace is open to this user (with the sandbox): their own folder of files, every change undoable. */
+export const AGENT_WORKSPACE_NOTE =
+  'The user has a workspace: a folder of their files that stays between chats (data, scripts, results). ' +
+  'workspace_list_files shows it, workspace_read_file reads one file, workspace_write_file saves a text file, ' +
+  'workspace_delete_file removes one, workspace_link gives a download link and workspace_export files one in their ' +
+  'Library. Every write or delete keeps the version before it, so the user can always restore it. To process files ' +
+  'with a program, call quote_code_run with workspace: true: the program runs in that folder, reads the files by their ' +
+  'paths (for example data/sales.csv), and every file it writes (a CSV, a chart PNG, a PDF) is saved back as a new ' +
+  'version. Python can use the standard library only (no internet, so no pip install). Say which files you read and ' +
+  'wrote; never claim a file exists that the list does not show.';
+
+/** Added when the browser tool is on: the agent plans the steps and never claims it saw a page it did not open. */
+export const AGENT_BROWSER_NOTE =
+  'When the answer needs a live public web page (a price, a table, a page\'s current text, a screenshot), or the user ' +
+  'asks to open or visit a site („გახსენი youtube"), plan the ' +
+  'steps and call quote_browser_task: goto a public https address, then click / type / press / wait as needed, text to ' +
+  'read the page (or one element by CSS selector), screenshot to keep a picture. It checks the steps and returns the ' +
+  'plan; it opens nothing. The steps run only when the user presses Start, in a fresh sandboxed browser with no ' +
+  'login, no cookies and no keys (never plan a sign-in or a payment). What it reads and the screenshots are saved in ' +
+  'the user\'s workspace under browser/<task>/ (text-1.txt, <name>.png, steps.json), where a later workspace program ' +
+  'or workspace_read_file can use them. Never say the page was opened and never invent its content. ' +
+  'Sites that show their content only after a login (Instagram, Facebook, TikTok feeds): do not plan them directly; plan a ' +
+  'Google search instead (https://www.google.com/search?q=site:instagram.com+...) and screenshot the results. When the ' +
+  'goal says to continue on an address, the first step is goto that address. Always end with a screenshot so the user ' +
+  'sees the page. To find something (a video, a product, an article), plan goto the site\'s search address, wait 2000, ' +
+  'links (so you can name the results and give the direct link), then screenshot. ' +
+  'Never answer that the browser or search is unavailable without having called quote_browser_task.';
+
+/** Added when Google Drive is open to this user: only the files they picked, read only. */
+export const AGENT_DRIVE_NOTE =
+  'The user can link their Google Drive. You see ONLY the files they picked in Google\'s picker, nothing else in their ' +
+  'Drive. To know which files those are, call drive_list_files; to read one, call drive_read_file with its id. Both ' +
+  'are read only and free. If the answer is not_connected, tell them to link Google Drive in Deep Research → ' +
+  'Connectors and pick the file there. Answer from the file\'s text and say which file you used; never invent ' +
+  'content, and never claim you can see or change other files.';
+
 export const AGENT_ANALYZE_NOTE =
   'To know what is in a video, a sound file, a PDF or a picture the user attached (what happens, the scenes, the best ' +
   'moments, what is said and by whom), or in a public YouTube video they linked, call analyze_media. It reads the whole ' +
@@ -149,6 +208,26 @@ export const MAX_EDIT_QUOTES_PER_RUN = 3;
 export const analyzeToolOn = (ctx: AgentContext): boolean => ctx.analyze === true;
 /** Each analysis is a paid model call over a whole file: two per request. */
 export const MAX_ANALYSES_PER_RUN = 2;
+/** The code tool needs only the sandbox flag open to this user (and a route that hands the plan back). */
+export const codeToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true && typeof ctx.onCodeQuote === 'function';
+/** A code quote is a policy check and a signature: two per request (a fixed second try) is plenty. */
+export const MAX_CODE_QUOTES_PER_RUN = 2;
+/** The Drive tools need the connector configured and open to this user (the route hands the deps). */
+export const driveToolOn = (ctx: AgentContext): boolean => !!ctx.driveDeps?.cfg;
+/** Each read downloads one file (≤ 10 MB): four per request, one list. */
+export const MAX_DRIVE_READS_PER_RUN = 4;
+/** The browser tool: the sandbox gate, the browser switched on, and a route that hands the plan back. */
+export const browserToolOn = (ctx: AgentContext): boolean =>
+  ctx.sandbox === true && ctx.browser === true && typeof ctx.onBrowserQuote === 'function';
+/** A browser quote is a policy check and a signature: two per request is plenty. */
+export const MAX_BROWSER_QUOTES_PER_RUN = 2;
+/** The workspace goes with the sandbox: a workspace is what a code run reads and writes. */
+export const workspaceToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true;
+/** Workspace reads and writes per request: enough for a small task, never a loop over a whole folder. */
+export const MAX_WORKSPACE_READS_PER_RUN = 8;
+export const MAX_WORKSPACE_WRITES_PER_RUN = 6;
+/** A text file Agent G writes in one call (the code itself is capped at 64 KB elsewhere). */
+export const MAX_WORKSPACE_WRITE_CHARS = 200_000;
 
 type RunMeter = ReturnType<typeof newRunMeter>;
 
@@ -174,7 +253,9 @@ export const QUICK_RUN_MS = 60_000;
  * A quick run's step models, fastest first. Vertex probe 2026-10-25 with Agent G's prompt: 3.6 Flash 3.0–3.6 s,
  * 3.1 Flash-Lite 2.1 s; 3.8 Flash 4.9 s with thinking 'low' once, then over 33 s in GG's Live call.
  */
-export const QUICK_STEP_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] as const;
+// 3.6 Flash (the measured fastest) is retired by Vertex on 2026-11-19, so 3.5 Flash takes its place; its speed with this
+// prompt is UNVERIFIED (same thinking 'minimal' family).
+export const QUICK_STEP_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'] as const;
 /** A quick run's attempt never takes longer than this, so the fallback and the next steps keep their time. */
 export const QUICK_STEP_TIMEOUT_MS = 20_000;
 
@@ -231,6 +312,10 @@ type LiveCtx = AgentContext & { goal: string };
 
 /** Numbers a model sends as text ("30") are read as numbers; anything else is left for the schema to refuse. */
 const num = (schema: z.ZodNumber) => z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), schema);
+/** The highest file number a role may name (montageAsk MAX_FILES; the quote refuses one that is not attached). */
+const ASSEMBLY_MAX_FILE = 14;
+/** One part's times in its own clip (quote_video_assembly cut_timestamps): either bound may be left to detection. */
+const cutWindow = z.object({ start_sec: num(z.number().min(0).max(3600)).optional(), end_sec: num(z.number().positive().max(3600)).optional() });
 
 /** A point in a video, in seconds (a 10-hour cap; the quote checks it against the file). */
 const at = () => num(z.number().min(0).max(36_000));
@@ -331,6 +416,27 @@ const editAsk = z.object({
 }).refine((a) => editAskOf(withSource(a)) !== null, { message: 'A field was set that its op does not take.' });
 
 /** A track the model passes on is the user's own lines: typed (lib/agent/media/editWords editAskOf takes no other). */
+/** A task-graph step a run carries out (lib/agent/taskGraphStore TaskRef). */
+const TASK_REF_INPUT = z.object({ graph: z.string().regex(/^tg_[a-z0-9]{6,32}$/), node: z.string().regex(/^[a-z][a-z0-9-]{0,23}$/) });
+
+/** One workspace action on Agent G's default workspace, as an observation (never a throw). */
+async function workspaceCall(
+  ctx: AgentContext,
+  body: Record<string, unknown>,
+  shape?: (b: Record<string, unknown>) => Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const [{ liveWorkspaceStore, liveExportDeps, AGENT_WORKSPACE_TITLE }, { workspaceAction }] = await Promise.all([
+    import('@/lib/agent/workspace/live'),
+    import('@/lib/agent/workspace/actions'),
+  ]);
+  const store = liveWorkspaceStore();
+  const w = await store.ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
+  if (!w.ok) return { error: w.error, message: w.message };
+  const r = await workspaceAction(store, liveExportDeps(), ctx.userId, { ...body, workspaceId: w.workspace.id }, 'agent');
+  if (r.body.ok !== true) return { error: r.body.error, message: r.body.message };
+  return shape ? shape(r.body) : r.body;
+}
+
 function withSource(a: Record<string, unknown>): Record<string, unknown> {
   const t = a.track as Record<string, unknown> | undefined;
   return t ? { ...a, track: { ...t, source: 'typed' } } : a;
@@ -429,6 +535,67 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // quote_video_assembly: an intro + body + outro edit of the request's own clips (GG 2026-11-05 09:03Z), plan and price
+  // only. The model names the files by number and may give the times; whatever it leaves out is found in the clips
+  // themselves (black frames, cuts, silences: lib/services/montage/segmentDetect). Confirmed and rendered exactly like a
+  // montage (the same card, run route, worker and QC), so it adds no new way to start a job.
+  defineTool({
+    name: 'quote_video_assembly',
+    effect: 'quote',
+    confirms: 'montage_run',
+    description:
+      'PLAN ONLY — assemble the attached clips as [intro] + [body] + [outro], each cut where it really starts and ends ' +
+      '(dead black frames and silence trimmed, picture and sound cut on the same frame). Input {intro_source?: number, ' +
+      'body_source: number, outro_source?: number (1 = the first attached file; intro_source and outro_source may be the ' +
+      'same clip, whose first part is the intro and last part the outro), cut_timestamps?: {intro?|body?|outro?: ' +
+      '{start_sec?, end_sec?}} (seconds in that clip; the times the user said, never invented), aspect?}. Every attached ' +
+      'clip needs a role. Returns each part\'s window and what found it; renders nothing until the user confirms.',
+    input: z.object({
+      intro_source: num(z.number().int().min(1).max(ASSEMBLY_MAX_FILE)).optional(),
+      body_source: num(z.number().int().min(1).max(ASSEMBLY_MAX_FILE)),
+      outro_source: num(z.number().int().min(1).max(ASSEMBLY_MAX_FILE)).optional(),
+      cut_timestamps: z.object({
+        intro: cutWindow.optional(),
+        body: cutWindow.optional(),
+        outro: cutWindow.optional(),
+      }).optional(),
+      aspect: z.enum(['9:16', '16:9', '1:1']).optional(),
+    }),
+    offered: (ctx) => montageToolOn(ctx),
+    limit: MAX_QUOTES_PER_RUN,
+    run: async ({ intro_source, body_source, outro_source, cut_timestamps, aspect }, ctx) => {
+      const [{ quoteMontage }, { liveMontageDeps }] = await Promise.all([
+        import('@/lib/agent/media/montageExec'),
+        import('@/lib/agent/media/montageLive'),
+      ]);
+      const win = (w: { start_sec?: number; end_sec?: number } | undefined) =>
+        (w ? { ...(w.start_sec !== undefined ? { startSec: w.start_sec } : {}), ...(w.end_sec !== undefined ? { endSec: w.end_sec } : {}) } : undefined);
+      const cuts = cut_timestamps
+        ? Object.fromEntries((['intro', 'body', 'outro'] as const).flatMap((k) => (cut_timestamps[k] ? [[k, win(cut_timestamps[k])]] : [])))
+        : undefined;
+      const r = await quoteMontage(liveMontageDeps(), {
+        userId: ctx.userId, files: ctx.files, prompt: ctx.goal, aspect,
+        assembly: {
+          body: body_source - 1,
+          ...(intro_source !== undefined ? { intro: intro_source - 1 } : {}),
+          ...(outro_source !== undefined ? { outro: outro_source - 1 } : {}),
+          ...(cuts && Object.keys(cuts).length ? { cuts } : {}),
+        },
+      });
+      if (!r.ok) return { error: r.error, message: r.message, ...(r.files ? { files: r.files.map((f) => f + 1) } : {}) };
+      ctx.onMediaQuote?.(r);
+      const q = r.quote;
+      return {
+        planned: true,
+        rendered: false,
+        credits: q.credits,
+        lengthSec: q.totalSec,
+        aspect: q.aspect,
+        parts: (q.assembly?.parts ?? []).map((p) => ({ role: p.role, file: p.file + 1, start_sec: p.startSec, end_sec: p.endSec, start_by: p.startBy, end_by: p.endBy })),
+        next: 'The user confirms the plan on its card; nothing starts before that.',
+      };
+    },
+  }),
   // quote_audio_from_link: plan only, from a link the user sent (see MEDIA in the header). A platform refusal names the
   // platform so the agent can offer the upload instead; the plan's token never reaches the model.
   defineTool({
@@ -519,6 +686,251 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // quote_code_run: plan only (see AGENT_CODE_NOTE). The program the model wrote is checked and signed; the token goes
+  // to the user's Start card, never back to the model, and the run happens only on that Start (/api/agent/sandbox/run).
+  defineTool({
+    name: 'quote_code_run',
+    effect: 'quote',
+    confirms: 'code_run',
+    description:
+      "PLAN ONLY — run a short program in an isolated sandbox (no internet, no keys, 1 CPU, 60 s). Input {language: 'python'|'node'|'shell', code, workspace?: boolean}. " +
+      'With workspace: true it runs in the user\'s workspace folder: it can read those files, and every file it writes is saved back. ' +
+      'task {graph, node} makes the run carry out that step of a task graph (workspace_task_plan). ' +
+      'The program must print a short summary to stdout. Returns the plan; runs nothing until the user presses Start; free for the user.',
+    input: z.object({
+      language: z.enum(['python', 'node', 'shell']),
+      code: z.string().min(1).max(64 * 1024),
+      workspace: z.boolean().optional(),
+      task: TASK_REF_INPUT.optional(),
+    }),
+    offered: (ctx) => codeToolOn(ctx),
+    limit: MAX_CODE_QUOTES_PER_RUN,
+    run: async ({ language, code, workspace, task }, ctx) => {
+      const [{ quoteCodeRun }, { liveCodeDeps }] = await Promise.all([
+        import('@/lib/agent/sandbox/codeQuote'),
+        import('@/lib/agent/sandbox'),
+      ]);
+      let workspaceId: string | undefined;
+      if (task && !workspace) return { error: 'bad_input', message: 'A task-graph step runs in the workspace: set workspace: true.' };
+      if (workspace && workspaceToolOn(ctx)) {
+        const { liveWorkspaceStore, AGENT_WORKSPACE_TITLE } = await import('@/lib/agent/workspace/live');
+        const w = await liveWorkspaceStore().ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
+        if (!w.ok) return { error: w.error, message: w.message };
+        workspaceId = w.workspace.id;
+      }
+      const r = quoteCodeRun(await liveCodeDeps(), { userId: ctx.userId, request: { language, code, ...(workspaceId ? { workspaceId, ...(task ? { task } : {}) } : {}) } });
+      if (!r.ok) return { error: r.error, message: r.message };
+      ctx.onCodeQuote?.(r);
+      return {
+        planned: true,
+        ran: false,
+        language: r.quote.language,
+        maxSeconds: r.quote.wallSec,
+        network: 'none',
+        workspace: workspaceId ? 'the user\'s workspace: its files are readable, written files are saved back' : 'none',
+        credits: 0,
+        next: 'The user presses Start on the plan; nothing runs before that. Do not state any output.',
+      };
+    },
+  }),
+  // quote_browser_task: plan only (see AGENT_BROWSER_NOTE). The steps are checked and signed for the user's workspace;
+  // the token goes to the user's Start card, never back to the model, and runs only on Start (/api/agent/browser/run).
+  defineTool({
+    name: 'quote_browser_task',
+    effect: 'quote',
+    confirms: 'browser_run',
+    description:
+      'PLAN ONLY — open public web pages in a sandboxed browser (no login, no keys, at most 20 steps, 5 screenshots, 2 minutes). ' +
+      "Input {steps: [{op:'goto',url} | {op:'click',selector} | {op:'type',selector,text} | {op:'press',key} | {op:'wait',ms} | " +
+      "{op:'text',selector?} | {op:'links',selector?} | {op:'screenshot',name?}]} (links = the page's links as „text — address“ lines); the first step is goto. Results are saved in the user's workspace under browser/<task>/. " +
+      'task {graph, node} makes it carry out that step of a task graph. Returns the plan; opens nothing until the user presses Start; free for the user.',
+    input: z.object({
+      steps: z.array(z.object({
+        op: z.enum(['goto', 'click', 'type', 'press', 'wait', 'text', 'links', 'screenshot']),
+        url: z.string().max(2000).optional(),
+        selector: z.string().max(300).optional(),
+        text: z.string().max(500).optional(),
+        key: z.string().max(20).optional(),
+        ms: z.number().optional(),
+        name: z.string().max(40).optional(),
+      })).min(1).max(20),
+      task: TASK_REF_INPUT.optional(),
+    }),
+    offered: (ctx) => browserToolOn(ctx),
+    limit: MAX_BROWSER_QUOTES_PER_RUN,
+    run: async ({ steps, task }, ctx) => {
+      const [{ quoteBrowserTask }, { liveBrowserDeps }, { liveWorkspaceStore, AGENT_WORKSPACE_TITLE }] = await Promise.all([
+        import('@/lib/agent/browser/quote'),
+        import('@/lib/agent/browser'),
+        import('@/lib/agent/workspace/live'),
+      ]);
+      const w = await liveWorkspaceStore().ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
+      if (!w.ok) return { error: w.error, message: w.message };
+      const r = quoteBrowserTask(await liveBrowserDeps(), { userId: ctx.userId, request: { steps, workspaceId: w.workspace.id, ...(task ? { task } : {}) } });
+      if (!r.ok) return { error: r.error, message: r.message };
+      ctx.onBrowserQuote?.(r);
+      return {
+        planned: true,
+        opened: false,
+        sites: r.quote.hosts,
+        steps: r.quote.steps,
+        maxSeconds: r.quote.wallSec,
+        savesTo: `workspace ${r.quote.folder}/`,
+        credits: 0,
+        next: 'The user presses Start on the plan; nothing opens before that. Do not state what the pages say.',
+      };
+    },
+  }),
+  // drive_list_files / drive_read_file: the Drive files the user PICKED (scope drive.file, GG 2026-11-01), read only.
+  defineTool({
+    name: 'drive_list_files',
+    effect: 'inspect',
+    description:
+      'READ ONLY — the Google Drive files the user picked for MyAvatar (nothing else in their Drive is visible). Input {}. ' +
+      'Returns {files: [{id, name, mimeType}]} or {error: not_connected}. Changes nothing; free.',
+    input: z.object({}).passthrough(),
+    offered: (ctx) => driveToolOn(ctx),
+    limit: 1,
+    run: async (_args, ctx) => {
+      const { driveProvider } = await import('@/lib/connectors/google/drive');
+      const r = await driveProvider(ctx.driveDeps!).listFiles(ctx.userId);
+      if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : 'Google Drive did not answer.' };
+      return { files: r.files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType })) };
+    },
+  }),
+  defineTool({
+    name: 'drive_read_file',
+    effect: 'inspect',
+    description:
+      'READ ONLY — the text of one Google Drive file the user picked (Docs, Sheets as CSV, Slides, PDF, DOCX, TXT, MD). Input {id} from drive_list_files. ' +
+      'Returns {name, text} (long files are cut) or {error}. Changes nothing; free.',
+    input: z.object({ id: z.string().trim().regex(/^[A-Za-z0-9_-]{10,200}$/) }),
+    offered: (ctx) => driveToolOn(ctx),
+    limit: MAX_DRIVE_READS_PER_RUN,
+    run: async ({ id }, ctx) => {
+      const { driveProvider } = await import('@/lib/connectors/google/drive');
+      const r = await driveProvider(ctx.driveDeps!).read(ctx.userId, id);
+      if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : r.reason === 'not_found' ? 'That file was not picked or does not exist.' : 'The file could not be read.' };
+      return { name: r.name, text: r.text };
+    },
+  }),
+  // workspace_*: the user's own workspace (lib/agent/workspace), Agent G's default one. Reads are free; a write or delete
+  // is a new version the user can undo (effect 'versioned'), and nothing here starts a job or spends anything.
+  defineTool({
+    name: 'workspace_list_files',
+    effect: 'inspect',
+    description:
+      "The files in the user's workspace (a folder that stays between chats). Input {}. Returns {files: [{path, bytes, v, by, type}], totalBytes}. Changes nothing; free.",
+    input: z.object({}).passthrough(),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async (_a, ctx) => workspaceCall(ctx, { action: 'files' }, (b) => ({
+      files: ((b.files as Array<Record<string, unknown>>) ?? []).map((f) => ({ path: f.path, bytes: f.bytes, v: f.v, by: f.by, type: f.type })),
+      totalBytes: b.totalBytes,
+    })),
+  }),
+  defineTool({
+    name: 'workspace_read_file',
+    effect: 'inspect',
+    description:
+      "One file of the user's workspace. Input {path, v?}. Text files come back as {text} (long ones cut); others as {bytes, type, url}. Changes nothing; free.",
+    input: z.object({ path: z.string().trim().min(1).max(200), v: num(z.number().int().min(1)).optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: MAX_WORKSPACE_READS_PER_RUN,
+    run: async ({ path, v }, ctx) => workspaceCall(ctx, { action: 'read', path, ...(v ? { v } : {}) }),
+  }),
+  defineTool({
+    name: 'workspace_write_file',
+    effect: 'versioned',
+    description:
+      "Save a text file (CSV, JSON, Markdown, code…) in the user's workspace. Input {path, text}. A file already there gets a new version; the old one stays restorable. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200), text: z.string().max(MAX_WORKSPACE_WRITE_CHARS) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: MAX_WORKSPACE_WRITES_PER_RUN,
+    run: async ({ path, text }, ctx) => workspaceCall(ctx, { action: 'write', path, text }, (b) => ({ saved: b.file })),
+  }),
+  defineTool({
+    name: 'workspace_delete_file',
+    effect: 'versioned',
+    description:
+      "Remove a file from the user's workspace. Input {path}. Its versions are kept, so the user can restore it. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path }, ctx) => workspaceCall(ctx, { action: 'delete', path }),
+  }),
+  defineTool({
+    name: 'workspace_link',
+    effect: 'inspect',
+    description: "A download link (7 days) for one file of the user's workspace. Input {path}. Returns {url}. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 4,
+    run: async ({ path }, ctx) => workspaceCall(ctx, { action: 'link', path }, (b) => ({ path: b.path, url: b.url })),
+  }),
+  defineTool({
+    name: 'workspace_export',
+    effect: 'versioned',
+    description:
+      "File a copy of one workspace file in the user's Library (pictures → Images, PDFs and other files → Docs). Input {path}. The workspace file is unchanged; the user can delete the Library copy. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200), task: TASK_REF_INPUT.optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path, task }, ctx) => workspaceCall(ctx, { action: 'export', path, ...(task ? { task } : {}) }),
+  }),
+  defineTool({
+    name: 'workspace_render_pdf',
+    effect: 'versioned',
+    description:
+      "Draw a PDF from a JSON document spec in the workspace ({title, subtitle?, locale:'ka'|'en'|'ru', sections:[{heading, blocks:[" +
+      "{type:'paragraph',text} | {type:'bullets',items} | {type:'table',columns,rows} | {type:'chart',kind:'bar',labels,values,unit?,title?}]}]}). " +
+      'Georgian text is drawn correctly. Input {path: the .json spec, out?: the .pdf path, task?: {graph, node}}. Saves the PDF as a new version. Free.',
+    input: z.object({ path: z.string().trim().min(1).max(200), out: z.string().trim().min(1).max(200).optional(), task: TASK_REF_INPUT.optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path, out, task }, ctx) => workspaceCall(ctx, { action: 'render_pdf', path, ...(out ? { out } : {}), ...(task ? { task } : {}) }, (b) => ({ saved: b.file, from: b.from })),
+  }),
+  defineTool({
+    name: 'workspace_premiere_xml',
+    effect: 'versioned',
+    description:
+      "Turn a montage into a Premiere Pro project the user opens on their computer (Premiere has no web app). Write a JSON spec in the workspace first: " +
+      "{title, fps?: 24|25|30|50|60 (30), width?, height?, clips:[{file, durationSec, inSec?, outSec?, name?}], music?: {file, durationSec, startSec?}} " +
+      "(clips in order; file = the clip's workspace path). Input {path: the .json spec, out?: the .xml path, task?: {graph, node}}. Saves the .xml and returns the media names: " +
+      'tell the user to download the .xml and those files into ONE folder, then in Premiere File → Import the .xml and Link Media on the first clip. Free.',
+    input: z.object({ path: z.string().trim().min(1).max(200), out: z.string().trim().min(1).max(200).optional(), task: TASK_REF_INPUT.optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path, out, task }, ctx) => workspaceCall(ctx, { action: 'premiere_xml', path, ...(out ? { out } : {}), ...(task ? { task } : {}) }, (b) => ({ saved: b.file, from: b.from, media: b.media })),
+  }),
+  defineTool({
+    name: 'workspace_task_plan',
+    effect: 'versioned',
+    description:
+      "Write down a multi-step job as ONE task graph the user can follow (saved as tasks/<id>.json in the workspace). Input {title, nodes:[{id, kind:'browser'|'code'|'pdf'|'export', title, needs?: [earlier ids]}]} " +
+      "(at most 12; a node may only need earlier ones). Every later step names it with task {graph, node}: a step starts only when what it needs is done, and the graph records each run's inputs and outputs. Runs nothing; free.",
+    input: z.object({
+      title: z.string().trim().min(1).max(160),
+      nodes: z.array(z.object({
+        id: z.string().regex(/^[a-z][a-z0-9-]{0,23}$/),
+        kind: z.enum(['browser', 'code', 'pdf', 'export']),
+        title: z.string().trim().min(1).max(200),
+        needs: z.array(z.string()).max(12).optional(),
+      })).min(1).max(12),
+    }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 2,
+    run: async (plan, ctx) => workspaceCall(ctx, { action: 'task_plan', plan }, (b) => ({ graph: (b.graph as { id?: string })?.id, summary: b.summary })),
+  }),
+  defineTool({
+    name: 'workspace_task_read',
+    effect: 'inspect',
+    description: 'Where a task graph stands: one line per step (planned ○, running ✱, done ✓, failed ✗) with its outputs. Input {graph}. Changes nothing; free.',
+    input: z.object({ graph: z.string().regex(/^tg_[a-z0-9]{6,32}$/) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 4,
+    run: async ({ graph }, ctx) => workspaceCall(ctx, { action: 'task_read', graph }, (b) => ({ summary: b.summary })),
+  }),
   // analyze_media: describe one attached file (or a public YouTube video) with Gemini, by reference. The model names the
   // file by its number, never a path; the answer is a description and starts nothing.
   defineTool({
@@ -597,7 +1009,9 @@ export async function runLiveAgent(
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
   const systemExtra = [
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
-    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', opts?.systemExtra?.trim(),
+    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', driveToolOn(ctx) ? AGENT_DRIVE_NOTE : '',
+    workspaceToolOn(ctx) ? AGENT_WORKSPACE_NOTE : '', browserToolOn(ctx) ? AGENT_BROWSER_NOTE : '',
+    opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
     llm: llmAdapterFor(meter, opts?.deadlineMs, opts?.deadlineMs !== undefined && opts.deadlineMs - Date.now() <= QUICK_RUN_MS),

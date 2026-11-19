@@ -50,9 +50,10 @@ describe('the Developer API is not a Veo route (v3.1)', () => {
   });
 });
 
-describe('the existing providers are unaffected', () => {
-  it('Replicate alone still counts', () => {
-    expect(hasVideoProvider(E({ REPLICATE_API_TOKEN: 't' }))).toBe(true);
+describe('only Veo counts (v5.1 M-14)', () => {
+  it('a Replicate token or an LTX key alone is no video route: their routes refuse every call', () => {
+    expect(hasVideoProvider(E({ REPLICATE_API_TOKEN: 't' }))).toBe(false);
+    expect(hasVideoProvider(E({ LTX_VIDEO_API_KEY: 'k' }))).toBe(false);
   });
 
   it('no provider at all is still false — the halt-before-spending guard must survive', () => {

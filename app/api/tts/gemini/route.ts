@@ -48,6 +48,8 @@ import {
   SPEECH_CONTRACT_VERSION, SPEECH_HEADERS, SPEECH_MAX_CHARS, SPEECH_RESPONSE_MIME, speechPacing,
 } from '@/lib/speech/contract';
 import { audioFromGeminiParts } from '@/lib/speech/geminiAudio';
+import { SpeechClock } from '@/lib/speech/timing';
+import { getVertexAccessToken } from '@/lib/veo/vertexAuth';
 import {
   SPEECH_DEADLINE_MS,
   SPEECH_MAX_ATTEMPTS,
@@ -193,14 +195,18 @@ function retryableTtsFailure(status: number, detail: string, hadLanguageCode: bo
 export async function POST(req: NextRequest) {
   // The one deadline is counted from here, so the checks below spend from it too.
   const startedAt = Date.now();
+  // Where the time goes, phase by phase; sent back only to the owner's listening trial (lib/speech/timing).
+  const clock = new SpeechClock();
   // Its own bucket (RATE_LIMITS.TTS): a long reply is ~14 chunk requests, which the shared WRITE bucket 429'd.
   const limited = await checkRateLimit(req, RATE_LIMITS.TTS);
   if (limited) return limited;
+  clock.lap('limit');
 
   const body = (await req.json().catch(() => ({}))) as {
     text?: unknown; locale?: unknown; gender?: unknown; voice?: unknown; personaId?: unknown; customPersona?: unknown;
     model?: unknown;
   };
+  clock.lap('body');
   const text = (typeof body.text === 'string' ? body.text : '').trim();
   if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 });
   const locale = normalizeLocale(body.locale);
@@ -215,11 +221,13 @@ export async function POST(req: NextRequest) {
   // (OmniStudio speakMsg, lib/audio/premium-tts) already treat a non-OK answer as "stay silent".
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+  clock.lap('auth');
   // Per-ACCOUNT daily ceiling, keyed on the verified uid (the IP bucket above is only the burst guard).
   if (user?.id) {
     const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.TTS_USER);
     if (capped) return capped;
   }
+  clock.lap('quota');
 
   // Vertex AI must be able to serve (v3.1: the only transport; an AI Studio key never makes it possible). The error
   // name predates Vertex and is kept for the client.
@@ -231,12 +239,22 @@ export async function POST(req: NextRequest) {
     customPersona: body.customPersona,
   });
   const voiceName = pickVoice(profile, body.voice, body.gender, locale);
+  clock.lap('model');
 
   // Platform budget pre-check, before any provider I/O. Fails CLOSED inside chatBudgetAllows (MASTER TASK v3.1): a guard
   // fault is a 503 here too, never unmetered speech.
   if (!(await chatBudgetAllows(text, model))) {
     return NextResponse.json({ error: 'budget_exhausted' }, { status: 503 });
   }
+  clock.lap('budget');
+  // The trial alone times the Workload Identity token apart from Google: the call below asks the same memoised client,
+  // which then answers from its cache. A failure here changes nothing: the call below meets it and answers as always.
+  if (trial) {
+    await getVertexAccessToken(false).catch(() => null);
+    clock.lap('token');
+  }
+  // What the trial is told, on its answer and on a failure the card shows.
+  const timingHeaders = (): Record<string, string> => (trial ? { 'Server-Timing': clock.header() } : {});
 
   let languageCode = isEnabledByDefault(process.env.GEMINI_TTS_LANGUAGE_CODE) ? TTS_LANGUAGE_CODE[locale] : undefined;
 
@@ -281,6 +299,7 @@ export async function POST(req: NextRequest) {
     let res: Response | null = null;
     for (let attempt = 1; ; attempt++) {
       let detail = '';
+      clock.attempt();
       try {
         res = await callGemini(deadline.signal);
       } catch (e) {
@@ -290,6 +309,7 @@ export async function POST(req: NextRequest) {
       }
       if (res?.ok) break;
       if (res) detail = await res.text().catch(() => '');
+      clock.lap('google');
       const status = res?.status ?? 0;
       const again =
         attempt < SPEECH_MAX_ATTEMPTS &&
@@ -302,7 +322,7 @@ export async function POST(req: NextRequest) {
         const said = trial ? trialDetail(detail) : null;
         return NextResponse.json(
           { error: 'tts_failed', status, ...(reason ? { reason } : {}), ...(said ? { detail: said } : {}) },
-          { status: 502 },
+          { status: 502, headers: timingHeaders() },
         );
       }
       console.warn(`[tts/gemini] upstream ${status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
@@ -310,6 +330,7 @@ export async function POST(req: NextRequest) {
       // goes without it, i.e. exactly the request shape verified live.
       if (status === 400 && languageCode) languageCode = undefined;
       if (!(await pauseUnlessAborted(RETRY_PAUSE_MS, deadline.signal))) return ended();
+      clock.lap('wait');
     }
     // The loop above leaves only through `break`, i.e. with an OK answer in hand.
     const data = (await res!.json().catch(() => null)) as
@@ -321,7 +342,9 @@ export async function POST(req: NextRequest) {
     // Cut off while the answer was still arriving: Google may have charged for it, but there is no audio to give. An
     // answer that did arrive in full is booked and returned below even if the clock ran out a moment later.
     if (!data && deadline.signal.aborted) return ended();
+    clock.lap('google');
     const audio = audioFromGeminiParts(data?.candidates?.[0]?.content?.parts);
+    clock.lap('decode');
 
     // Book what Google reported (TTS-family rates in costModel) — also when the audio it sent is refused below, since
     // Google has charged for it either way. Estimate from the audio length only when it reported nothing. Bounded: the
@@ -343,6 +366,7 @@ export async function POST(req: NextRequest) {
         }),
         1_500,
       );
+      clock.lap('book');
     }
 
     if (!audio.ok && audio.fault === 'no_audio') return NextResponse.json({ error: 'tts_empty' }, { status: 502 });
@@ -373,6 +397,7 @@ export async function POST(req: NextRequest) {
         // Not an HTTP cache: the browser's replay cache (lib/speech/cache) keeps a read, keyed by account and by
         // everything above.
         'Cache-Control': 'no-store',
+        ...timingHeaders(),
       },
     });
   } catch (e) {

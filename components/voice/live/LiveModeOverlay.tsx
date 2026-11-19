@@ -34,7 +34,7 @@ import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
 import LiveActionCards from './LiveActionCards';
-import { LIVE_AVATAR_STRINGS, LiveAvatarCaption, LiveAvatarSlot } from './LiveAvatarStage';
+import { LIVE_AVATAR_STRINGS, LiveAvatarCaption, LiveAvatarSlot, LiveAvatarThinking } from './LiveAvatarStage';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -185,6 +185,7 @@ export function LiveModeOverlay({
   }
 
   const avatarOn = !!avatarVideo && !error;
+  const avatarThinking = avatarOn && status === 'thinking';
 
   const overlay = (
     <div ref={dialogRef} role="dialog" aria-modal="true" data-live-call-ui data-live-status={status} aria-label={t.title} tabIndex={-1} data-theme="dark"
@@ -289,12 +290,14 @@ export function LiveModeOverlay({
             {/* Over the avatar the words keep to a low band (LiveAvatarCaption): the face stays clear. */}
             {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className={avatarOn ? 'space-y-2' : 'space-y-3'}>
               {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className={avatarOn ? 'line-clamp-1 text-[14px] leading-snug text-white/70 drop-shadow' : 'text-[16px] leading-relaxed text-white/60'}>{lastUserLine.text}</p>}
-              {lastAgentLine && (avatarOn
+              {lastAgentLine && !avatarThinking && (avatarOn
                 ? <LiveAvatarCaption text={lastAgentCaption} hidden={!lastAgentLine.final} />
                 : <p aria-hidden={lastAgentLine.final ? undefined : true} className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
                   {lastAgentCaption}
                 </p>)}
             </div>}
+            {/* Where the answer will appear, with or without captions: the avatar heard you and is on it. */}
+            {avatarThinking && <LiveAvatarThinking />}
 
             {/* Over the avatar: only the one-line AI notice (the copy button would push the words up into the face). */}
             {showCaptions && captionsOn && lastAgentCaption && avatarOn && (

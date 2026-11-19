@@ -1,0 +1,24 @@
+{
+  "method": "POST",
+  "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.1-flash-image:generateContent",
+  "body": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "A red paper lantern glowing above a cobblestone street in old Tbilisi at dusk, warm light. No people, no text."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "responseModalities": [
+        "IMAGE"
+      ],
+      "imageConfig": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

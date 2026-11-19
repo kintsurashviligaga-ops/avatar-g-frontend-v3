@@ -144,6 +144,31 @@ export async function bookChatUsage(
   }
 }
 
+/**
+ * Book a speech-to-text call that Google prices by AUDIO, not tokens (Cloud Speech-to-Text Chirp 3: per second of
+ * audio, lib/voice-v2v/chirpStt chirpCostUsd). The caller passes the USD; it lands on the chat line, where every
+ * dictation is booked. Never throws, like bookChatUsage.
+ */
+export async function bookSpeechUsage(usage: { model: string; usd: number; userId?: string | null }): Promise<void> {
+  try {
+    const { recordUsage } = await import('./BillingGuard');
+    const usd = Number.isFinite(usage.usd) && usage.usd > 0 ? Math.round(usage.usd * 1_000_000) / 1_000_000 : 0;
+    await recordUsage(
+      { service: 'chat', model: modelLabel(usage.model), estimatedCost: usd, currency: 'USD' },
+      { userId: ledgerUserId(usage.userId) },
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        event: 'billing.booking_failed',
+        data: { service: 'chat', model: modelLabel(usage?.model), error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) },
+      }),
+    );
+  }
+}
+
 /** A provider-reported count: a finite, non-negative number, else undefined. Never coerces strings. */
 function count(n: unknown): number | undefined {
   return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined;

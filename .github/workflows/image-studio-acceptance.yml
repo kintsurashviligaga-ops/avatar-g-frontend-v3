@@ -15,7 +15,8 @@ env:
   NEXT_TELEMETRY_DISABLED: '1'
 jobs:
   image-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to Ubuntu 26.04, where Playwright 1.58 cannot install its browsers.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

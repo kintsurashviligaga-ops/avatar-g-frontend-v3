@@ -47,6 +47,7 @@
     "apps/**",
     "services/wa-call-bridge/**",
     "services/live-relay/**",
+    "pilots/**",
     "__tests__/**",
     "e2e/**",
     "playwright.config.ts",

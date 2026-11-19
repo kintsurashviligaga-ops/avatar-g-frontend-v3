@@ -47,11 +47,11 @@ describe('the thirteen sentences (ka)', () => {
     expect(act(run(s))).toMatchObject({ missing: ['video'] });
   });
 
-  test('5 „გააკეთე 20-წამიანი რეკლამა." — the product ad, 20 s, and it needs the product photo', () => {
+  test('5 „გააკეთე 20-წამიანი რეკლამა." — a 20 s video (the Product ad service is removed, GG 2026-10-27); a photo is its first frame', () => {
     expect(act(run('გააკეთე 20-წამიანი რეკლამა.'))).toMatchObject({
-      capability: 'video.product-ad', params: { durationSec: 20 }, missing: ['photo'],
+      capability: 'video.generate', target: 'new', params: { durationSec: 20 }, missing: [],
     });
-    expect(act(run('გააკეთე 20-წამიანი რეკლამა.', { attachments: [I] }))).toMatchObject({ target: 'attachment', missing: [] });
+    expect(act(run('გააკეთე 20-წამიანი რეკლამა.', { attachments: [I] }))).toMatchObject({ capability: 'video.generate', target: 'attachment', missing: [] });
   });
 
   test('6 „ეს ფოტო გააცოცხლე." — image→video from the photo; no photo: ask for it', () => {
@@ -119,8 +119,8 @@ describe('the same sentences in English and Russian', () => {
     ['Начни музыку с 5 секунды', { pending: { capability: 'agent.montage' } }, { capability: 'agent.montage', target: 'pending', params: { musicStartSec: 5 } }],
     ['Convert this video to 9:16', { attachments: [V] }, { capability: 'media.edit', params: { aspect: '9:16', editOp: 'aspect' } }],
     ['Переведи это видео в 9:16', { attachments: [V] }, { capability: 'media.edit', params: { aspect: '9:16', editOp: 'aspect' } }],
-    ['Make a 20-second ad', {}, { capability: 'video.product-ad', params: { durationSec: 20 } }],
-    ['Сделай рекламу на 20 секунд', {}, { capability: 'video.product-ad', params: { durationSec: 20 } }],
+    ['Make a 20-second ad', {}, { capability: 'video.generate', params: { durationSec: 20 } }],
+    ['Сделай рекламу на 20 секунд', {}, { capability: 'video.generate', params: { durationSec: 20 } }],
     ['Animate this photo', { attachments: [I] }, { capability: 'video.generate', params: { fromImage: true, editOp: 'animate' } }],
     ['Оживи это фото', { attachments: [I] }, { capability: 'video.generate', params: { fromImage: true, editOp: 'animate' } }],
     ['Add subtitles', { attachments: [V] }, { capability: 'video.remix', params: { editOp: 'captions' } }],
@@ -223,7 +223,7 @@ describe('a change to the plan on screen', () => {
 
   test('asking for something new is not a change to the plan', () => {
     expect(run('make a 30 second video of a dog', pending)).not.toMatchObject({ target: 'pending' });
-    expect(run('გააკეთე 20-წამიანი რეკლამა', pending)).toMatchObject({ capability: 'video.product-ad' });
+    expect(run('გააკეთე 20-წამიანი რეკლამა', pending)).toMatchObject({ capability: 'video.generate', target: 'new' });
   });
 
   test('without a plan on screen the same words are not a change to one', () => {

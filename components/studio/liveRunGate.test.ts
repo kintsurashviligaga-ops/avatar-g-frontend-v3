@@ -53,3 +53,28 @@ describe('a Live call starts a paid render only on the user\'s own told-price ye
     expect(handler).toMatch(/confirmAgentMontage\(plan\.id, approval\)/);
   });
 });
+
+/** The body that starts at `head` in OmniStudio, up to the next `};` at the component's indentation. */
+const body = (head: string, close = '\n  };\n'): string => {
+  const at = src.indexOf(head);
+  const end = src.indexOf(close, at);
+  return at >= 0 && end > at ? code(src.slice(at, end)) : '';
+};
+
+describe('GG 2026-10-26 12:04Z: what the model said in the call never hides the price card the yes is for', () => {
+  test('a spoken call line is the assistant line the call writes into the chat', () => {
+    expect(code(src)).toMatch(/const spokenInCall = \(m: Msg\): boolean => m\.role === 'assistant' && m\.inputMethod === 'voice';/);
+    // The transcript handler (myavatar:live-transcript) writes each spoken turn this way.
+    expect(code(src)).toMatch(/setMessages\(\(prev\) => \[\.\.\.prev, \{ role, text, inputMethod: 'voice' \}\]\);/);
+  });
+
+  test("the call's offer (start_generation, the countdown, get_screen_state) looks past spoken lines", () => {
+    const offer = body('const liveChatOffer = ');
+    expect(offer).toMatch(/m\.role === 'assistant' && !m\.notice && !spokenInCall\(m\)/);
+  });
+
+  test('the yes that presses the card looks past them too', () => {
+    const consent = body('consentRef.current = (text: string): boolean => {');
+    expect(consent).toMatch(/m\.role === 'assistant' && !m\.notice && !spokenInCall\(m\)/);
+  });
+});

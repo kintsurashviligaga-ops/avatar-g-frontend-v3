@@ -16,7 +16,8 @@
 
 export type ConnectorId = 'local_files' | 'google_drive' | 'onedrive' | 'notion' | 'dropbox';
 
-export type ConnectorStatus = 'ready' | 'soon' | 'unavailable';
+/** 'connectable': configured and usable, the user links it with an OAuth redirect (Google Drive). */
+export type ConnectorStatus = 'ready' | 'soon' | 'unavailable' | 'connectable';
 
 /** A file a connector can list (and, once read, hand to research as text). */
 export interface ConnectorFile {
@@ -52,6 +53,8 @@ export interface ConnectorProvider {
   connect(userId: string): Promise<ConnectResult>;
   listFiles(userId: string): Promise<ListResult>;
   read(userId: string, fileId: string): Promise<ReadResult>;
+  /** Cloud drives only: whether THIS user has linked it (a stored, decryptable grant). */
+  isLinked?(userId: string): Promise<boolean>;
 }
 
 /** What GET /api/connectors says about each provider — and ONLY this: no tokens, no account data, no scopes. */
@@ -61,4 +64,6 @@ export interface ConnectorState {
   status: ConnectorStatus;
   /** Files currently held (local files only). */
   fileCount?: number;
+  /** Cloud drives: this signed-in user has linked it. No account data beyond this flag. */
+  linked?: boolean;
 }

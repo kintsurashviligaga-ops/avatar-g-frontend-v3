@@ -171,6 +171,8 @@ const CLIPS_REF = new RegExp(
   'iu',
 );
 /** A message that asks for something NEW („a", "another", „ახალი") is not a change to the plan on screen. */
+// An ad (a promo reel). The Product ad service is removed (GG 2026-10-27), so an ad ask is an ordinary video (step 11d).
+const AD_WORD = new RegExp(`${B0}(?:ads?|advert\\p{L}*|commercial|promo\\s+video)${B1}|რეკლამ\\p{L}*|სარეკლამო|реклам\\p{L}*`, 'iu');
 const NEW_THING = new RegExp(`${B0}(?:a|an|another|new|ახალი|სხვა|новый|новое|новую|другой|другое)${B1}`, 'iu');
 /**
  * „მუსიკალური კლიპი", "music video", «музыкальный клип»: the Video tool's music-video mode when no clips are attached (with
@@ -288,7 +290,7 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   // 5) A change to the montage plan on screen: a new frame shape, length, music start or source selection („მარტო ბოლო
   //    შვიდი", lib/agent/media/sourceSelect), and nothing new asked for. The same files are quoted again.
   if (input.pending?.capability === 'agent.montage' && !kinds.length && (hasPlanParams(params) || parseSelection(text) !== null) && words(text).length <= 10
-    && !NEW_THING.test(text) && !routeAgentIntent(text) && !detectStudioIntent(text)) {
+    && !NEW_THING.test(text) && !AD_WORD.test(text) && !routeAgentIntent(text) && !detectStudioIntent(text)) {
     return act('agent.montage', 'pending', params);
   }
 
@@ -392,6 +394,13 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
     return act('video.remix', videoTarget ?? 'new', params, videoTarget ? [] : ['video']);
   }
 
+  // 11d) „გააკეთე 20-წამიანი რეკლამა", "make a 20-second ad": a video (an attached photo is its first frame). Until
+  //      2026-10-27 this was the Product ad service; GG removed it, so an ad is made like any other clip.
+  if (AD_WORD.test(text) && nVideo === 0 && !TALK_ABOUT.test(text) && !WRITING_LEAD.test(text)
+    && (generative || KA_MAKE.test(text) || WANT.test(text) || params.durationSec !== undefined)) {
+    return act('video.generate', nImage >= 1 ? 'attachment' : 'new', params);
+  }
+
   // 12) The catalog: a service with its own tool, or one that is not available yet.
   const route = routeAgentIntent(text);
   if (route?.kind === 'unavailable') {
@@ -399,8 +408,7 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   }
   if (route?.kind === 'open') {
     const id = route.service.id as CapabilityId;
-    const needsPhoto = id === 'video.product-ad' && nImage === 0 && prev !== 'image';
-    return act(id, nImage >= 1 ? 'attachment' : 'new', params, needsPhoto ? ['photo'] : []);
+    return act(id, nImage >= 1 ? 'attachment' : 'new', params);
   }
 
   // 13) „Make me …": the generate lanes. A Georgian make-verb at the END of a video ask („ერთწუთიანი ვიდეო გამიკეთე

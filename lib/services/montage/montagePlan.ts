@@ -1,13 +1,15 @@
 /**
  * lib/services/montage/montagePlan.ts — the pure core of the Montage studio.
  *
- * PURE + TOTAL: no imports, no I/O, never throws. Everything here is timeline arithmetic, so it can be
+ * PURE + TOTAL: no I/O, never throws; the only import is the (pure) price book, for a generated cutaway's price. Everything here is timeline arithmetic, so it can be
  * unit-tested without ffmpeg, a network or a key.
  *
  * WHAT MONTAGE IS: several existing clips (and/or stills) cut into ONE edited master — ordering, per-shot
  * trims, transitions between shots, an optional music bed. It is deliberately NOT generative: no model is
  * called, which is why both billing tiers for this service are literally 'ffmpeg-local'.
  */
+
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
 
 export type MontageAspect = '16:9' | '9:16' | '1:1';
 /**
@@ -84,6 +86,93 @@ export interface MontageRequest {
   voiceStartSec?: number;
   /** Optional colour grade over the whole master. Absent when neutral, so an ungraded edit encodes as before. */
   grade?: MontageGrade;
+  /**
+   * Cutaway footage laid over the master in a split screen (./insertPlan, ./insertCompose): footage in the top half, the
+   * speaker in the bottom half, his sound untouched. Times are on the master's timeline. Absent = no cutaways.
+   */
+  inserts?: MontageInsert[];
+}
+
+export interface MontageInsert {
+  /**
+   * The footage: a Pexels file (videos.pexels.com) or a file in our own storage (the user's clip). A `veo` cutaway has
+   * none yet: the render generates it from `prompt` (lib/services/montage/montagePipeline) and lays it like the others.
+   */
+  url: string;
+  /** A `veo` cutaway's shot, one English sentence (its price is in the quote: VEO_CUTAWAY_CREDITS each). */
+  prompt?: string;
+  startSec: number;
+  endSec: number;
+  /** Where in the footage the cutaway starts. */
+  clipStartSec: number;
+  source: 'pexels' | 'veo' | 'own';
+  /** The line it covers (for the card). */
+  text?: string;
+  query?: string;
+  pageUrl?: string;
+  author?: string;
+}
+
+export const MAX_INSERTS = 12;
+/** Generated cutaways per edit, at most (each is a paid Veo clip). */
+export const MAX_VEO_INSERTS = 3;
+/** A generated cutaway's length: Veo's shortest clip, longer than any cutaway (insertPlan caps them at 3 s). */
+export const VEO_INSERT_SEC = 4;
+/**
+ * A generated cutaway's price (GG's „Pexels + Veo", 2026-11-05 14:35Z): the price book's own 4 s Veo Fast clip, the
+ * same as any 4 s Veo clip on the site. Stock footage stays free.
+ */
+export const VEO_CUTAWAY_CREDITS = PRICE_BOOK.shortClip.fast[VEO_INSERT_SEC];
+
+/** Hosts a cutaway's footage may come from (the render fetches it): Pexels' file host and Supabase storage. */
+export function insertHostAllowed(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    const h = u.hostname.toLowerCase();
+    return h === 'videos.pexels.com' || h.endsWith('.supabase.co');
+  } catch {
+    return false;
+  }
+}
+
+/** Cutaways from untrusted input: inside the montage, in order, apart, each 0.5–8 s, from an allowed host. */
+export function coerceInserts(raw: unknown, totalSec: number): { ok: true; value: MontageInsert[] } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: 'inserts must be an array' };
+  if (raw.length > MAX_INSERTS) return { ok: false, error: `a montage takes at most ${MAX_INSERTS} cutaways` };
+  const out: MontageInsert[] = [];
+  const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+  const str = (x: unknown, max: number) => (typeof x === 'string' ? x.slice(0, max) : undefined);
+  let last = -1;
+  let veo = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    const r = raw[i] as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object') return { ok: false, error: `cutaway ${i + 1} is invalid` };
+    const url = typeof r.url === 'string' ? r.url.trim() : '';
+    const prompt = typeof r.prompt === 'string' ? r.prompt.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    if (r.source === 'veo') {
+      // Generated at render time: a shot to make, no footage yet, and never more than the quote can price.
+      if (url || prompt.length < 8) return { ok: false, error: `cutaway ${i + 1}: a generated shot needs its description and no file` };
+      veo += 1;
+      if (veo > MAX_VEO_INSERTS) return { ok: false, error: `a montage takes at most ${MAX_VEO_INSERTS} generated cutaways` };
+    } else if (!insertHostAllowed(url)) return { ok: false, error: `cutaway ${i + 1}: the footage must be a Pexels or storage file` };
+    if (!num(r.startSec) || !num(r.endSec) || !num(r.clipStartSec)) return { ok: false, error: `cutaway ${i + 1}: times must be numbers` };
+    const len = r.endSec - r.startSec;
+    if (r.startSec < 0 || r.endSec > totalSec + 1e-3 || len < 0.5 || len > 8 || r.clipStartSec < 0 || r.startSec < last - 1e-6) {
+      return { ok: false, error: `cutaway ${i + 1}: its time is not inside the montage, in order` };
+    }
+    const source = r.source === 'pexels' || r.source === 'veo' || r.source === 'own' ? r.source : null;
+    if (!source) return { ok: false, error: `cutaway ${i + 1}: unknown source` };
+    last = r.endSec;
+    const text = str(r.text, 400), query = str(r.query, 80), pageUrl = str(r.pageUrl, 300), author = str(r.author, 120);
+    out.push({
+      url, startSec: Number(r.startSec.toFixed(3)), endSec: Number(r.endSec.toFixed(3)), clipStartSec: Number(r.clipStartSec.toFixed(3)), source,
+      ...(source === 'veo' ? { prompt } : {}),
+      ...(text ? { text } : {}), ...(query ? { query } : {}), ...(pageUrl ? { pageUrl } : {}), ...(author ? { author } : {}),
+    });
+  }
+  return { ok: true, value: out };
 }
 
 export interface ValidationResult {
@@ -364,6 +453,8 @@ export function validateMontageRequest(body: unknown): ValidationResult {
   }
   const voiceUrl = typeof b.voiceUrl === 'string' ? b.voiceUrl.trim() : '';
   if (voiceUrl && !/^https?:\/\//i.test(voiceUrl)) return { ok: false, error: 'voiceUrl must be an http(s) url' };
+  const inserts = coerceInserts(b.inserts, total);
+  if (!inserts.ok) return { ok: false, error: inserts.error };
   let voiceStartSec = 0;
   if (b.voiceStartSec !== undefined && b.voiceStartSec !== null) {
     if (typeof b.voiceStartSec !== 'number' || !Number.isFinite(b.voiceStartSec) || b.voiceStartSec < 0 || b.voiceStartSec >= total) {
@@ -386,6 +477,7 @@ export function validateMontageRequest(body: unknown): ValidationResult {
       ...(musicGainDb !== undefined ? { musicGainDb } : {}),
       ...(voiceUrl ? { voiceUrl, ...(voiceStartSec > 0 ? { voiceStartSec } : {}) } : {}),
       ...(grade ? { grade } : {}),
+      ...(inserts.value.length ? { inserts: inserts.value } : {}),
     },
   };
 }

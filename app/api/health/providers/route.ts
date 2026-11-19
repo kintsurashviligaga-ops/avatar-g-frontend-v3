@@ -4,7 +4,6 @@ import { assertAdminAccess } from '@/lib/admin/guard';
 import { GEMINI_MODELS } from '@/lib/gemini/client';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
-import { geminiImagenModel, hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { resolveModel } from '@/lib/veo/capabilities';
 import { veoTransport } from '@/lib/veo/engine';
@@ -49,11 +48,9 @@ export async function GET(request: NextRequest) {
       // VIDEO_GOOGLE_ONLY says.
       pipeline: {
         googleOnly: true,
-        // Chat text-to-image (ServiceManager.runTextToImage): Imagen first for a prompt-only request when it is switched
-        // on, then Google's image model. FLUX and NanoBanana are gone, whatever IMAGE_PRIMARY_PROVIDER says.
-        imageBase: hasGeminiImagenProvider()
-          ? `Imagen ${geminiImagenModel()}, then Gemini ${geminiFrameModel()}`
-          : `Gemini ${geminiFrameModel()}`,
+        // Chat text-to-image (ServiceManager.runTextToImage): Google's image model. FLUX, NanoBanana and Imagen 4 are
+        // gone, whatever IMAGE_PRIMARY_PROVIDER says.
+        imageBase: `Gemini ${geminiFrameModel()}`,
         videoClipEngine: 'Veo',
         // null when there is no Veo route at all: every film leg then fails (no other engine).
         videoClipModel: veo ? resolveModel(veo, STUDIO_DEFAULT_VEO_TIER) : null,

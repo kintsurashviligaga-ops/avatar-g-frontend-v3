@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
+import { sendFilm, typeFilmPrompt, waitForClipCard } from './video-core/_shared';
 
 /**
  * A CHAT OPENED FROM HISTORY ON ANOTHER DEVICE SHOWS ALL OF IT (the owner, 2026-10-11, on the computer, opening a chat
@@ -48,7 +49,7 @@ interface Writes { posts: Array<Record<string, unknown>>; patches: Array<{ id: s
 type Task = Record<string, unknown>;
 
 /** Signed in, with the account's saved chats (`rows`, or none) and every montage route mocked; returns the writes. */
-async function openSignedIn(page: Page, baseURL: string | undefined, rows: unknown[] | null, tasks: Task[]): Promise<Writes> {
+async function openSignedIn(page: Page, baseURL: string | undefined, rows: unknown[] | null, tasks: Task[], tool = 'chat'): Promise<Writes> {
   const writes: Writes = { posts: [], patches: [] };
   await page.context().addCookies([{ name: AUTH_COOKIE, value: sessionCookie(), url: baseURL ?? 'http://localhost:3000' }]);
   await page.route(`${SUPABASE_URL}/auth/v1/user`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(USER) }));
@@ -57,7 +58,7 @@ async function openSignedIn(page: Page, baseURL: string | undefined, rows: unkno
     const u = r.request().url();
     const method = r.request().method();
     if (u.includes('/chat_sessions')) {
-      if (method === 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows ? [{ session_id: SID, title: ASK, updated_at: '2026-10-11T10:13:16Z', agent_id: 'agent-g' }] : []) });
+      if (method === 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows ? [{ session_id: SID, title: (rows[0] as { content?: string })?.content ?? ASK, updated_at: '2026-10-11T10:13:16Z', agent_id: 'agent-g' }] : []) });
       if (method === 'POST') return r.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ session_id: SID }) });
     }
     if (u.includes('/chat_messages')) {
@@ -95,7 +96,7 @@ async function openSignedIn(page: Page, baseURL: string | undefined, rows: unkno
       localStorage.setItem('myavatar-cookie-consent', 'necessary');
     } catch { /* storage blocked */ }
   });
-  await page.goto('/en/dashboard?tool=chat');
+  await page.goto(`/en/dashboard?tool=${tool}`);
   await expect(page.locator('html[data-authed="1"]')).toHaveCount(1, { timeout: 60_000 });
   await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 45_000 });
   return writes;
@@ -149,7 +150,8 @@ test('a montage run here is saved for the other devices: the files with the ask,
   await expect(page.getByTitle('song.wav')).toBeVisible({ timeout: 10_000 });
   const box = page.getByTestId('composer-input');
   await box.fill('cut these to the music');
-  await box.press('Enter');
+  // Plain Enter is a new line; the composer sends on its explicit shortcut (tests/video-core/_shared say).
+  await box.press('Control+Enter');
   const card = page.getByTestId('agent-montage-card');
   await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
 
@@ -169,4 +171,77 @@ test('a montage run here is saved for the other devices: the files with the ask,
     .toEqual(expect.arrayContaining(['running', 'done']));
   expect(new Set(writes.patches.map((p) => p.id))).toEqual(new Set([`eq.${cardRow.id as string}`]));
   expect(writes.posts.filter((p) => (p.metadata as { id?: string } | undefined)?.id)).toHaveLength(1);
+});
+
+// ── A delivered clip (GG 2026-10-26 20:14Z „გაასწორე": a chat opened again showed no videos, though the Library had them) ──
+// A clip is a bubble with no words and no card, so nothing saved it: the chat opened from History or on another device showed
+// the question and nothing after it. It is now a row of its own; an Omni clip's job id rides with it, so „გააგრძელე" there
+// continues THAT clip.
+
+const HORSE = 'A boy rides a horse along the beach at dawn';
+const OMNI_CLIP = 'https://e2e-media.supabase.co/renders/video-clip/e2e-omni/omni.mp4?token=signed';
+const OMNI_JOB = 'e2e-omni-interaction-1::9:16::1761500000000::o8';
+const clipTurns = () => [
+  { id: 'd1e1a1b1-0000-4000-8000-0000000000c1', role: 'user', content: HORSE, created_at: '2026-10-26T20:00:00Z', metadata: null },
+  { id: 'd1e1a1b1-0000-4000-8000-0000000000c2', role: 'assistant', content: '[video]', created_at: '2026-10-26T20:02:00Z', metadata: { v: 1, videoUrl: OMNI_CLIP, orientation: 'vertical', omniJob: OMNI_JOB } },
+];
+
+test('a clip made on the phone opens on the computer as its video, without a word, and is not saved a second time', async ({ page, baseURL }) => {
+  const writes = await openSignedIn(page, baseURL, clipTurns(), [DELIVERED]);
+  await page.getByRole('button', { name: new RegExp(`^${HORSE}`) }).first().click();
+
+  await expect(page.locator(`video[src^="${OMNI_CLIP}"]`)).toBeAttached({ timeout: 30_000 });
+  await expect(page.getByText(HORSE, { exact: true }).first()).toBeVisible();
+  // The row's mark is for a voice call reading the thread, never shown in the bubble.
+  await expect(page.getByText('[video]', { exact: true })).toHaveCount(0);
+  await page.waitForTimeout(1_500);
+  expect(writes.posts.filter((p) => p.role === 'assistant')).toHaveLength(0);
+  expect(writes.patches).toHaveLength(0);
+});
+
+test('„გააგრძელე" in a chat opened again continues ITS clip (the edit card on that clip), never a new clip', async ({ page, baseURL }) => {
+  await openSignedIn(page, baseURL, clipTurns(), [DELIVERED]);
+  const made: string[] = [];
+  page.on('request', (r) => { if (r.method() === 'POST' && /\/api\/video\/(clip|omni-edit)$/.test(new URL(r.url()).pathname)) made.push(r.url()); });
+  await page.getByRole('button', { name: new RegExp(`^${HORSE}`) }).first().click();
+  await expect(page.locator(`video[src^="${OMNI_CLIP}"]`)).toBeAttached({ timeout: 30_000 });
+
+  const box = page.getByTestId('composer-input');
+  await box.fill('გააგრძელე, ცხენი ზღვაში შედის');
+  await box.press('Control+Enter');
+  const card = page.getByTestId('edit-card').last();
+  await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 20_000 });
+  await expect(card).toHaveAttribute('data-op', 'extend');
+  await expect(card.getByTestId('edit-video')).toHaveAttribute('src', OMNI_CLIP);
+  await expect(page.getByTestId('clip-card')).toHaveCount(0);
+  expect(made).toEqual([]);
+});
+
+test('a clip made here is saved for the other devices: one row of its own with its link and its job id', async ({ page, baseURL }) => {
+  const writes = await openSignedIn(page, baseURL, null, [DELIVERED], 'video');
+  const clipBodies: Array<Record<string, unknown>> = [];
+  await page.route('**/api/video/clip', async (r: Route) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>;
+    clipBodies.push(body);
+    await r.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ success: true, op: 'clip', jobId: OMNI_JOB, credits: body.expectedCredits, seconds: body.seconds }) });
+  });
+  const views = [{ success: true, done: false, state: 'processing' }, { success: true, done: true, state: 'ready', videoUrl: OMNI_CLIP }];
+  await page.route(/\/api\/genjutsu\/status(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(views.length > 1 ? views.shift() : views[0]) }));
+
+  await typeFilmPrompt(page, HORSE);
+  await sendFilm(page);
+  const card = await waitForClipCard(page);
+  await card.getByTestId('clip-confirm').click();
+  await expect.poll(() => clipBodies.length, { timeout: 15_000 }).toBe(1);
+  await expect(page.locator(`video[src^="${OMNI_CLIP}"]`).first()).toBeAttached({ timeout: 40_000 });
+
+  // The ask went up with its words; the clip went up once, as its own row: the mark, the link, the shape, the job id.
+  await expect.poll(() => writes.posts.filter((p) => p.role === 'assistant').length, { timeout: 15_000 }).toBe(1);
+  const row = writes.posts.find((p) => p.role === 'assistant')!;
+  expect(row.content).toBe('[video]');
+  expect(row.metadata).toEqual({ v: 1, videoUrl: OMNI_CLIP, orientation: 'vertical', omniJob: OMNI_JOB });
+  expect(row.id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(writes.posts.find((p) => p.role === 'user')?.content).toBe(HORSE);
+  await page.waitForTimeout(1_500);
+  expect(writes.posts.filter((p) => p.role === 'assistant')).toHaveLength(1);
 });

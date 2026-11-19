@@ -2,7 +2,7 @@
  * lib/chat/platformPrompt — the Google-only platform prompt. Pins the four things the old prompt got wrong
  * (non-Google engines, USD tiers, two Markdown rules, no reliable date) plus the size budget and the locale variants.
  */
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { buildPlatformPrompt, OUTSIDE_ENGINE_TOOLS, PLATFORM_UI_LABELS, START_QUESTION, VEO_AVATAR_PROMPT_CREDITS, type PlatformPromptLocale } from './platformPrompt';
 import { veoAvatarCredits } from '@/lib/avatar/veoAvatar';
@@ -127,7 +127,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     expect(p).toContain('Lite −30%, Max +210%, music video +3%');
     // The lip-sync pass ran on the old avatar engine, which is always refused, so it is never priced.
     expect(p).not.toContain('film lip-sync');
-    expect(p).toContain('product ad = a Fast film of its length');
+    // The product ad is removed (GG 2026-10-27): never priced.
+    expect(p).not.toContain('product ad = a Fast film of its length');
   });
 
   it('states what creditCostFor actually charges: music by its length bands, a chat clip at 8 s, a video by its length', () => {
@@ -220,7 +221,7 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });
 
-  it('closes exactly the tools whose route always refuses them', () => {
+  it('closes exactly the tools whose route always refuses them (or was removed)', () => {
     // Read as text: mediaPolicy imports next/server, which needs the node test environment this suite does not use.
     const policy = readFileSync(join(process.cwd(), 'lib/providers/mediaPolicy.ts'), 'utf8');
     const gated = new Set([...policy.matchAll(/\{ file: '([^']+)'/g)].map((m) => m[1]));
@@ -230,7 +231,11 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
       motion: 'app/api/motion-control/route.ts',
       model3d: 'app/api/v2/model3d/create/route.ts',
     } as never;
-    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, gated: gated.has(route[id]) }).toEqual({ id, gated: true });
+    // v5.1 M-14 (GG 2026-11-12) deleted the lip-sync and Motion Control routes outright: no file is closed too.
+    const closed = (f: string) => gated.has(f) || !existsSync(join(process.cwd(), f));
+    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, closed: closed(route[id]) }).toEqual({ id, closed: true });
+    expect(existsSync(join(process.cwd(), route.avatar))).toBe(false);
+    expect(existsSync(join(process.cwd(), route.motion))).toBe(false);
   });
 });
 
@@ -285,6 +290,18 @@ describe('buildPlatformPrompt — the persona list is the catalogue (GG 2026-10-
 
   it('lists GG\'s characters in Georgian', () => {
     expect(build('ka')).toContain('მეგობრული, სარკასტული, რეჟისორი, ხუმარა, ბიზნესმენი, პროდიუსერი, ახალი ამბების ჟურნალისტი');
+  });
+});
+
+describe('buildPlatformPrompt — saying a price in lari and tetri', () => {
+  it.each(LOCALES)('a spoken call names the image price in tetri the right way round (%s; GG 2026-10-26 12:32Z: „0.50 თეთრი")', (locale) => {
+    const lari = creditsToGel(CREDIT_COSTS.image_generate).toFixed(2);
+    const tetri = Math.round(creditsToGel(CREDIT_COSTS.image_generate) * 100);
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain(`₾ is lari; 100 tetri = 1 lari, so ${lari} ₾ is ${tetri} tetri, never "${lari} tetri".`);
+    expect(p.length).toBeLessThanOrEqual(5000);
+    // The text chat shows prices on its cards; its prompt keeps its budget for the Veo avatar's line.
+    expect(build(locale)).not.toContain('100 tetri = 1 lari');
   });
 });
 
@@ -458,5 +475,18 @@ describe('buildPlatformPrompt — the self-introduction is in the reply language
     expect(p).toContain(`"${intro}"`);
     // A Georgian prompt never quotes the English line (the model copied it into Georgian answers).
     if (locale !== 'en') expect(p).not.toContain("I'm Agent G");
+  });
+});
+
+describe('buildPlatformPrompt — PDFs (Master Task v2.0, DOC-01)', () => {
+  it.each(LOCALES)('%s: a turn that names a PDF is told the studio makes PDFs, never to claim it cannot', (loc) => {
+    expect(build(loc)).not.toMatch(/^DOCUMENTS:/m);
+    const p = buildPlatformPrompt({ locale: loc, now: NOW, mentionsPdf: true, veoAvatar: true });
+    expect(p.length).toBeLessThanOrEqual(5300);
+    expect(p).toMatch(/^DOCUMENTS: The studio makes real PDFs/m);
+    expect(p).toMatch(/Never say you cannot make a PDF/);
+    // No line may tell the model PDFs or files are beyond it.
+    const others = p.split('\n').filter((l) => !l.startsWith('DOCUMENTS:')).join('\n');
+    expect(others).not.toMatch(/(?:cannot|can't|unable to)\s+(?:create|make|generate|export)\s+(?:a\s+)?(?:pdf|file|document)s?/i);
   });
 });

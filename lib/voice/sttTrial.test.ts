@@ -1,9 +1,9 @@
 /** @jest-environment jsdom */
 /**
  * lib/voice/sttTrial — the owner's dictation-model trial: a `?stt=` link picks the model for the tab, and only a model
- * the route would honour (lib/ai/google/models STT_MODELS) is ever picked.
+ * the route would honour (lib/ai/google/models STT_TRIAL_MODELS: STT_MODELS and Chirp 3) is ever picked.
  */
-import { STT_MODELS } from '../ai/google/models';
+import { CHIRP_STT_MODEL, STT_MODELS, STT_TRIAL_MODELS } from '../ai/google/models';
 import { STT_TRIAL_KEY, sttTrialModel, type SttTrialEnv } from './sttTrial';
 
 const memory = () => {
@@ -27,16 +27,17 @@ test('no link and nothing kept: no trial (the normal case, and always on the ser
   expect(sttTrialModel(null)).toBeNull();
 });
 
-test.each([...STT_MODELS])('?stt=%p picks that model and keeps it for the tab', (id) => {
+test.each([...STT_TRIAL_MODELS])('?stt=%p picks that model and keeps it for the tab', (id) => {
   const storage = memory();
   expect(sttTrialModel(env(`?stt=${id}&micstats=1`, storage))).toBe(id);
   // The studio may drop the query string later: the tab still remembers.
   expect(sttTrialModel(env('', storage))).toBe(id);
 });
 
-test('the id is read case-insensitively, and nothing outside STT_MODELS is ever picked', () => {
+test('the id is read case-insensitively, and nothing outside STT_TRIAL_MODELS is ever picked', () => {
   expect(sttTrialModel(env('?stt=Gemini-3.1-Flash-Lite'))).toBe('gemini-3.1-flash-lite');
-  for (const id of ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-3.8-flash-tts', 'gemini-9-ultra', '']) {
+  expect(sttTrialModel(env('?stt=CHIRP_3'))).toBe('chirp_3');
+  for (const id of ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-3.8-flash-tts', 'gemini-9-ultra', 'chirp_2', 'chirp', '']) {
     expect(sttTrialModel(env(`?stt=${id}`))).toBeNull();
   }
 });
@@ -60,7 +61,7 @@ test('a value kept by hand that is not on the list is ignored; refused storage s
     setItem: () => { throw new Error('denied'); },
     removeItem: () => { throw new Error('denied'); },
   };
-  expect(sttTrialModel(env('?stt=gemini-3.6-flash', refusing))).toBe('gemini-3.6-flash');
+  expect(sttTrialModel(env('?stt=gemini-3.7-flash', refusing))).toBe('gemini-3.7-flash');
   expect(sttTrialModel(env('', refusing))).toBeNull();
 });
 
@@ -70,4 +71,9 @@ test('the browser default reads the page address and the tab storage', () => {
   window.history.replaceState({}, '', '/ka/dashboard');
   expect(sttTrialModel()).toBe('gemini-3.5-flash-lite');
   expect(window.sessionStorage.getItem(STT_TRIAL_KEY)).toBe('gemini-3.5-flash-lite');
+});
+
+test('Chirp 3 is a trial id only: on the link list, never among the generateContent models', () => {
+  expect(STT_TRIAL_MODELS).toEqual([...STT_MODELS, CHIRP_STT_MODEL]);
+  expect(STT_MODELS).not.toContain(CHIRP_STT_MODEL);
 });

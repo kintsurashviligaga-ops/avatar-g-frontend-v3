@@ -171,6 +171,8 @@ export async function GET(req: NextRequest) {
       .from('generation_jobs')
       .select(cols)
       .eq('user_id', user.id)
+      // A PDF Agent G wrote is made while the person watches (Library only): never a task in the tray.
+      .neq('service_type', 'document')
       .order('updated_at', { ascending: false })
       .limit(limit);
     if (onlyActive) query = query.in('status', ['pending', 'processing']);

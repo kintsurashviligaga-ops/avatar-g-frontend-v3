@@ -1,6 +1,6 @@
 /** The studio chat's side of Agent G's montage: which messages it claims, and what it says (ka · en · ru). */
 import type { MontageQuote } from './montageExec';
-import { beatMontageAsk, codeOf, errorText, followUpUnsupportedText, montageFollowUpAsk, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, unsupportedNotes, type AttachmentKind } from './montageChat';
+import { beatMontageAsk, codeOf, errorText, followUpUnsupportedText, hasMontageWords, montageFollowUpAsk, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, unsupportedNotes, type AttachmentKind } from './montageChat';
 import { MIXED_STYLES, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
 
 const V: AttachmentKind = 'video';
@@ -284,5 +284,31 @@ describe('round 3 (AC-23): what this version cannot do is SAID, never applied as
     }
     expect(followUpUnsupportedText('add_clips', 'en')).toMatch(/^Adding clips to a finished edit/);
     expect(followUpUnsupportedText('replace_music', 'en')).toMatch(/^Replacing the music in a finished edit/);
+  });
+});
+
+describe('a line someone says is not a montage ask (GG\'s E2E, 2026-10-25 20:00Z)', () => {
+  test('„…დამონტაჟებული ვიდეო მივიღე!" inside a clip brief asks for no cut; the same words outside the quote do', () => {
+    expect(hasMontageWords('She says in Georgian: „ჩემი ფოტო ავტვირთე და მზა, დამონტაჟებული ვიდეო მივიღე!" Host reacts.')).toBe(false);
+    expect(hasMontageWords('ეს ვიდეოები დაამონტაჟე')).toBe(true);
+    expect(hasMontageWords('დაამონტაჟე, ბოლოს კი ის ამბობს: „მადლობა, რომ უყურეთ"')).toBe(true);
+  });
+});
+
+describe('the bubble narrates the work under the plan (GG 2026-11-05 10:21Z)', () => {
+  const { runningText, readyText } = jest.requireActual('./montageChat') as typeof import('./montageChat');
+  const q = {
+    jobId: 'j', credits: 0, totalSec: 9.4, shots: 3, clips: 2, aspect: '16:9', beatSynced: false, bpm: null, musicStartSec: 0, unusedFiles: [], expiresAt: 1,
+    sound: 'own', musicFile: null, cutting: 'assembly',
+    assembly: { parts: [{ role: 'intro', file: 1, startSec: 0, endSec: 2.1, startBy: 'whole', endBy: 'black' }, { role: 'body', file: 0, startSec: 0, endSec: 6, startBy: 'whole', endBy: 'whole' }] },
+  } as unknown as import('./montageExec').MontageQuote;
+  test('running: the plan stays and the step is added; no „press Start"', () => {
+    const t = runningText(q, ['a.mp4', 'b.mp4'], 'normalize', 'ka');
+    expect(t).toMatch(/ინტრო \(ვიდეო 2\): 0–2\.1 წმ/);
+    expect(t).toMatch(/⏳ ინტროს, ძირითად ნაწილს და აუტროს ზუსტად კადრზე ვჭრი…$/);
+    expect(t).not.toMatch(/დაწყებას/);
+  });
+  test('done: the plan stays and „ready" is added', () => {
+    expect(readyText(q, undefined, 9.4, 'en')).toMatch(/Intro \(video 2\): 0–2\.1 s[\s\S]*\n\n✓ Ready: 9\.4 s/);
   });
 });

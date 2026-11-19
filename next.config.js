@@ -114,6 +114,9 @@ const nextConfig = {
       // inside the poll that delivers it (and crops a Gemini-API clip's mark there). Without the binary a voiced avatar
       // would never deliver and be refunded at the hard cap.
       '/api/genjutsu/status': ['./node_modules/ffmpeg-static/**'],
+      // An uploaded video edited or extended by Omni (lib/video/omniEditInput): ffmpeg measures it and re-encodes it to 720p
+      // before it is priced. Without the binary every upload would read as unreadable and be refused.
+      '/api/video/omni-edit': ['./node_modules/ffmpeg-static/**'],
       // The talking avatar's built-in faces (lib/avatar/curatedFace, MASTER TASK v3.1 PR 9): the route reads the preset it
       // is named from public/, which Vercel serves from its CDN but leaves out of the lambda unless it is listed here.
       '/api/avatar/veo': ['./public/avatars/**'],
@@ -202,6 +205,15 @@ const nextConfig = {
   eslint: {
     // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases
     ignoreDuringBuilds: true,
+  },
+  // BUILD MEMORY (fourth SIGKILL, 2026-11-12): every Vercel build since 09:37Z was killed in "Checking validity of
+  // types", including a docs-only branch with main's exact code (main itself had built at 09:02Z). The whole-program
+  // type check is the largest single memory step left (a local `tsc --noEmit` needs ~8 GB heap) and it runs on top of
+  // webpack's memory in the 8 GB Standard builder. Vercel sets VERCEL=1, so ONLY Vercel skips it. The type gate is not
+  // lost: CI `verify` runs `npm run typecheck` (tsc --noEmit) AND a full `next build` with this check on every PR and
+  // push to main (.github/workflows/ci.yml). Undo: delete this block.
+  typescript: {
+    ignoreBuildErrors: process.env.VERCEL === '1',
   },
   // Strip console.* in production except error/warn — keeps Sentry-routed
   // reportError() noise out of the browser dev console while preserving

@@ -374,10 +374,11 @@ export function templateAddsLine(t: StudioTemplate, lang: TemplateLang): string 
 
 // ─── The studio panels' starting values ────────────────────────────────────────────────────────────────
 // What OmniStudio's image, video and music panels hold before the user touches anything (it initialises its state
-// from these). The video defaults ARE the Reel card, which is why a lit card never sends its context by itself.
+// from these). The video starts as ONE 8 s clip (GG 2026-10-25 16:10Z: "like Gemini's Veo"); a lit card never sends its
+// context by itself.
 
 export const IMAGE_PANEL_DEFAULTS = { aspect: '1:1', quality: 'high', style: 'Auto' } as const;
-export const VIDEO_PANEL_DEFAULTS = { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Cinematic' } as const;
+export const VIDEO_PANEL_DEFAULTS = { mode: 'documentary', duration: 8, orientation: 'vertical', style: 'Cinematic' } as const;
 // The singer starts on Auto (owner decision A-e's first stop): a default song names no singer, so a brief that asks for
 // "a man singing" is no longer contradicted by a "female vocals" the user never chose. Cards still name theirs.
 export const MUSIC_PANEL_DEFAULTS = { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'auto' } as const;

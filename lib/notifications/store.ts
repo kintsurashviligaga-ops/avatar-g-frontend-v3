@@ -79,6 +79,7 @@ const GEN_MESSAGE: Record<string, string> = {
   film: '🎬 თქვენი ვიდეო მზადაა!', avatar: '🎬 თქვენი ავატარი მზადაა!',
   image: '🖼 თქვენი სურათი მზადაა!', music: '🎵 თქვენი მუსიკა მზადაა!',
   voice: '🎤 თქვენი ხმა მზადაა!', interior: '🏠 თქვენი დიზაინი მზადაა!',
+  document: '📄 თქვენი PDF მზადაა!',
 };
 function genType(serviceType: string): NotificationType {
   return serviceType === 'music' ? 'music' : serviceType === 'image' ? 'image' : 'video';

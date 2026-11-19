@@ -10,7 +10,8 @@
  * letters. It is an approximation by sound, good for short words (की/كي/կի → კი, हो/هو/հո → ჰო, कारगी/كارگي → კარგი).
  * GG 2026-10-26 09:29Z: an answer came back in Korean letters („대자."), so Hangul is read the same way (끼/키 → კი, 호 → ჰო),
  * and a letter of any other alphabet but Georgian, Latin or Cyrillic counts as mis-heard too (isMisheardScript), even
- * where no table reads it back. Pure and isomorphic; text in no such alphabet comes back unchanged.
+ * where no table reads it back. GG 2026-10-26 12:32Z: a „კი" came back in Amharic letters („ኪ."), so Ethiopic is read too.
+ * Pure and isomorphic; text in no such alphabet comes back unchanged.
  */
 
 const VIRAMA = '्';
@@ -153,10 +154,44 @@ function hangulWord(run: string): string {
   return out.replace(/ლრ/gu, 'ლ');
 }
 
+/**
+ * Ethiopic (Amharic, Ge'ez) by sound. Each letter is a consonant with its vowel, in rows of eight: the row is the
+ * consonant and the place in it the vowel (ä u i a e ə o wa), so ኪ → კი, ሆ → ჰო, ካርጊ → კარგი, አራ → არა. The sixth
+ * vowel is mostly no vowel at all (ር r), except on the rows that only carry a vowel (እ i). Its ejectives are Georgian's
+ * (ቀ ყ, ጠ ტ, ጨ ჭ, ጰ პ, ጸ წ); the rounded rows (ቈ ኰ ጐ …) add a ვ.
+ */
+const ETHIOPIC_ROWS: Readonly<Record<number, string>> = {
+  0x1200: 'ჰ', 0x1208: 'ლ', 0x1210: 'ჰ', 0x1218: 'მ', 0x1220: 'ს', 0x1228: 'რ', 0x1230: 'ს', 0x1238: 'შ',
+  0x1240: 'ყ', 0x1248: 'ყვ', 0x1250: 'ყ', 0x1258: 'ყვ', 0x1260: 'ბ', 0x1268: 'ვ', 0x1270: 'ტ', 0x1278: 'ჩ',
+  0x1280: 'ხ', 0x1288: 'ხვ', 0x1290: 'ნ', 0x1298: 'ნ', 0x12A0: '', 0x12A8: 'კ', 0x12B0: 'კვ', 0x12B8: 'ხ',
+  0x12C0: 'ხვ', 0x12C8: 'ვ', 0x12D0: '', 0x12D8: 'ზ', 0x12E0: 'ჟ', 0x12E8: 'ი', 0x12F0: 'დ', 0x12F8: 'დ',
+  0x1300: 'ჯ', 0x1308: 'გ', 0x1310: 'გვ', 0x1318: 'გ', 0x1320: 'ტ', 0x1328: 'ჭ', 0x1330: 'პ', 0x1338: 'წ',
+  0x1340: 'წ', 0x1348: 'ფ', 0x1350: 'პ',
+};
+const ETHIOPIC_VOWELS = ['ა', 'უ', 'ი', 'ა', 'ე', '', 'ო', 'ვა'] as const;
+/** Its word space is a space; its stops and question mark are ours. Its digits and other signs are dropped. */
+const ETHIOPIC_MARKS: Readonly<Record<string, string>> = {
+  '\u1361': ' ', '\u1362': '.', '\u1363': ',', '\u1364': ';', '\u1365': ':', '\u1366': ':', '\u1367': '?', '\u1368': '.',
+};
+
+/** One run of Ethiopic letters → Georgian letters. */
+function ethiopicWord(run: string): string {
+  let out = '';
+  for (const ch of run) {
+    const code = ch.codePointAt(0)!;
+    const row = ETHIOPIC_ROWS[code - (code % 8)];
+    if (row === undefined) { out += ETHIOPIC_MARKS[ch] ?? ''; continue; }
+    const vowel = code % 8;
+    out += row + (row === '' && vowel === 5 ? 'ი' : ETHIOPIC_VOWELS[vowel]!);
+  }
+  return out.replace(/ი{2,}/gu, 'ი');
+}
+
 const DEVANAGARI_RUN = /[ऀ-ॿ]+/gu;
 const ARABIC_RUN = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]+/gu;
 const ARMENIAN_RUN = /[԰-֏ﬓ-ﬗ]+/gu;
 const HANGUL_RUN = /[ᄀ-ᇿ㄰-㆏ꥠ-꥿가-힣ힰ-퟿]+/gu;
+const ETHIOPIC_RUN = /[\u1200-\u137F]+/gu;
 const MISHEARD = /[ऀ-ॿ؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿԰-֏ﬓ-ﬗ]/u;
 /** A letter of any alphabet but the call's own three (Hangul, Japanese, Chinese, Greek, Hebrew, Thai, …). */
 const OTHER_LETTER = /(?![\p{Script=Georgian}\p{Script=Latin}\p{Script=Cyrillic}])\p{L}/u;
@@ -166,11 +201,11 @@ export function isMisheardScript(text: string): boolean {
   return typeof text === 'string' && (MISHEARD.test(text) || OTHER_LETTER.test(text));
 }
 
-/** The call's heard words with every Devanagari, Arabic, Armenian or Hangul word in Georgian letters; the rest as it is. */
+/** The call's heard words with every Devanagari, Arabic, Armenian, Hangul or Ethiopic word in Georgian letters; the rest as it is. */
 export function toCallScript(text: string): string {
   if (!isMisheardScript(text)) return typeof text === 'string' ? text : '';
   return text.replace(DEVANAGARI_RUN, devanagariWord).replace(ARABIC_RUN, arabicWord).replace(ARMENIAN_RUN, armenianWord)
-    .replace(HANGUL_RUN, hangulWord);
+    .replace(HANGUL_RUN, hangulWord).replace(ETHIOPIC_RUN, ethiopicWord);
 }
 
 /**

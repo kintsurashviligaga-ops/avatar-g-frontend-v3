@@ -30,7 +30,7 @@
  *   `chatSessionId` = THE SAME CONVERSATION: the id of the text-chat session the call was opened from. The server loads that
  *   session's newest turns for the signed-in OWNER (lib/voice/liveThread) and appends them to the locked instruction, so the
  *   call continues the chat instead of starting cold. Not the caller's / trashed / malformed → simply no history block.
- * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions, avatar, avatarRefused? }.
+ * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions, avatar, avatarRefused?, avatarAllowed }.
  *   `setupMessage` is the complete first WS frame ({ setup }) — pass it as GeminiLiveConfig.setupMessage so the
  *   browser sends exactly what the token was minted for.
  *
@@ -86,7 +86,7 @@ import { loadLiveReportBlock } from '@/lib/research/liveContext';
 import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
 import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
-import { liveAudienceAllows } from '@/lib/voice/liveAudience';
+import { liveAudienceAllows, liveAvatarAccess } from '@/lib/voice/liveAudience';
 import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL, LIVE_AVATAR_TICKET_MS, liveAvatarEnabled, normalizeLiveAvatar } from '@/lib/voice/liveAvatar';
 
 export const dynamic = 'force-dynamic';
@@ -234,11 +234,18 @@ export async function POST(request: NextRequest) {
     const body: Body = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Body) : {};
 
     // ── The session, built server-side ──
-    // A talking avatar: switched on, an allowlisted prebuilt name, and the account's avatar sessions for today not used up.
+    // A talking avatar: switched on, its own audience (lib/voice/liveAudience: admins unless LIVE_AVATAR_AUDIENCE=everyone,
+    // so opening the call to everyone never opens its costly part too), an allowlisted prebuilt name, and the account's
+    // avatar sessions for today not used up (admins 30, everyone else LIVE_AVATAR_DAILY_SESSIONS, default 1).
+    const avatarAccess = liveAvatarEnabled() ? await liveAvatarAccess(user) : null;
     let avatarName = normalizeLiveAvatar(body.avatar);
-    let avatarRefused: 'disabled' | 'daily_limit' | null = null;
-    if (avatarName && !liveAvatarEnabled()) { avatarName = null; avatarRefused = 'disabled'; }
-    if (avatarName && (await checkRateLimitByKey(userId, RATE_LIMITS.LIVE_AVATAR_USER))) { avatarName = null; avatarRefused = 'daily_limit'; }
+    let avatarRefused: 'disabled' | 'audience' | 'daily_limit' | null = null;
+    if (avatarName && !avatarAccess) { avatarName = null; avatarRefused = 'disabled'; }
+    if (avatarName && !avatarAccess?.allowed) { avatarName = null; avatarRefused = 'audience'; }
+    if (avatarName && avatarAccess
+      && (await checkRateLimitByKey(userId, { ...RATE_LIMITS.LIVE_AVATAR_USER, maxRequests: avatarAccess.dailySessions }))) {
+      avatarName = null; avatarRefused = 'daily_limit';
+    }
     const avatar = avatarName ? { avatarName, videoBitrateBps: LIVE_AVATAR_BITRATE_BPS } : null;
     // Allowlisted model: anything malformed, retired or unlisted resolves to the default (never an error).
     const model = avatar ? LIVE_AVATAR_MODEL : resolveLiveModel(typeof body.model === 'string' ? body.model : null);
@@ -394,6 +401,8 @@ export async function POST(request: NextRequest) {
       actions,
       avatar: avatarName,
       ...(avatarRefused ? { avatarRefused } : {}),
+      // Whether this account may turn the avatar on at all: the call shows its switch only then.
+      avatarAllowed: !!avatarAccess?.allowed,
       // The Live relay the token opens (lib/voice/liveMint); absent = Google directly, as before.
       ...(minter.wsUrl ? { relayUrl: minter.wsUrl } : {}),
     });

@@ -37,17 +37,25 @@ describe('no silent snap: the nearest stop is never sold as the length (AC-04)',
   });
 });
 
+/** The chat planner's 'open' step (agentTurnRef), from its case to the next one. */
+const chatOpen = () => {
+  const at = studio.indexOf('const named = clipSecondsFromWords(text);');
+  return studio.slice(studio.lastIndexOf("case 'open': {", at), studio.indexOf("case 'stop':", at));
+};
+
 describe('chat → the Video tool, with the plan said (AC-01 · §3)', () => {
-  test("the chat step 'open' is handled: mode, length through the contract, storyboard planned on that grid", () => {
-    expect(studio).toMatch(/case 'open': \{/);
-    expect(studio).toMatch(/const v = planFinalDuration\(step\.durationSec, videoCaps, videoPlanOpts\);/);
-    expect(studio).toMatch(/lengthNote = describeDurationPlan\(v\.plan, locale\);/);
-    expect(studio).toMatch(/say\(`\$\{describeDurationBlock\(v, locale\)\}/);
-    // Round 3 (browser defect 24): the step hands over the mode it decided, so the plan is a music video in the same tick.
-    expect(studio).toMatch(/void createStoryboard\(text, routeRefs, routeOrientation, \{ nativeSec, musicVideoMode: step\.videoMode === 'musicvideo' \}\);/);
+  // GG 2026-10-25 16:10Z („like Gemini's Veo"): the chat's video order is ONE clip's card — never a storyboard, never a
+  // length guessed from the word count, never a music video.
+  test("the chat step 'open' is handled: one clip's card with the words as typed, no storyboard", () => {
+    const open = chatOpen();
+    expect(open).toMatch(/if \(text\.length > DIRECT_CLIP_PROMPT_MAX\) \{ say\(clipTooLongText\(locale, DIRECT_CLIP_PROMPT_MAX\)\); return true; \}/);
+    expect(open).toMatch(/void proposeClip\(\{\s*prompt: text,/);
+    expect(open).not.toMatch(/createStoryboard|musicVideoMode|setVideoMode|planFinalDuration/);
   });
-  test('no length in the words → the panel default, named — never the last project\'s length', () => {
-    expect(studio).toMatch(/nativeSec = VIDEO_PANEL_DEFAULTS\.duration;/);
+  test('no length in the words → the panel\'s clip length (8 s by default), snapped to the clip\'s 4 · 6 · 8 · 10', () => {
+    expect(studio).toMatch(/const named = clipSecondsFromWords\(text\);/);
+    expect(studio).toMatch(/seconds: input\.seconds \?\? snapDirectClipSeconds\(videoDuration\),/);
+    expect(code(read('lib/studio/templates.ts'))).toMatch(/VIDEO_PANEL_DEFAULTS = \{ mode: 'documentary', duration: 8,/);
   });
   test('the storyboard takes the grid it is planned on, not the closure\'s stale length', () => {
     expect(studio).toMatch(/opts\?: \{ nativeSec\?: number; musicVideoMode\?: boolean \}\) => \{/);
@@ -59,9 +67,15 @@ describe('chat → the Video tool, with the plan said (AC-01 · §3)', () => {
 });
 
 describe('the panel says requested · rendered · final, and a pick on it drops the request', () => {
-  test('OmniStudio binds the request to the panel and clears it on a pick', () => {
-    expect(studio).toMatch(/onSeconds=\{\(s\) => \{ setVideoDuration\(s\); setVideoRequestedSec\(null\); \}\}/);
-    expect(studio).toMatch(/requestedSec=\{videoRequestedSec\}\s*joinOverlapSec=\{videoPlanOpts\.joinOverlapSec\}/);
+  test('OmniStudio binds the clip length to the panel and clears a stale request on a pick', () => {
+    // The panel and the chips share clipSettings: a pick sets the length, drops a stale request, and changes a clip card
+    // waiting for Create (GG 2026-10-26 12:45Z), whose length they show while it waits.
+    expect(studio).toMatch(/onSeconds: \(sec: DirectClipSeconds\) => \{ setVideoDuration\(sec\); setVideoRequestedSec\(null\); toAskingClip\(\{ seconds: sec \}\); \},/);
+    expect(studio).toMatch(/seconds: askingClip \? askingClip\.ask\.seconds : snapDirectClipSeconds\(videoDuration\),/);
+    // One clip is rendered at the length picked (4 · 6 · 8 · 10): there is no trim plan to show on its panel.
+    const clipPanel = /<ClipCreatePanel([\s\S]*?)\n {12}\/>/.exec(studio)?.[1] ?? '';
+    expect(clipPanel).toMatch(/\{\.\.\.clipSettings\}/);
+    expect(clipPanel).not.toMatch(/requestedSec=/);
   });
   test('the panel and the length sheet draw the plan line from the one contract', () => {
     expect(panel).toMatch(/const requestPlan = activePlan\(p\.requestedSec, seconds, caps, \{ joinOverlapSec: p\.joinOverlapSec \?\? 0 \}\);/);
@@ -164,15 +178,11 @@ describe('§5 · a storyboard miss is SAID with a Retry — nothing renders, not
 });
 
 describe('§6 · above the film ceiling it is the long-form route or a refusal with the reason — never a 96 s film', () => {
-  test("the chat step's refusal returns before the board is planned", () => {
-    const open = studio.slice(studio.indexOf("case 'open': {"));
-    const refusal = open.indexOf('if (!v.ok) {');
-    const planned = open.indexOf("void createStoryboard(text, routeRefs, routeOrientation, { nativeSec, musicVideoMode: step.videoMode === 'musicvideo' });");
-    expect(refusal).toBeGreaterThan(0);
-    expect(planned).toBeGreaterThan(refusal);
-    const branch = open.slice(refusal, open.indexOf('nativeSec = v.plan.nativeSec;'));
-    expect(branch).toMatch(/describeDurationBlock\(v, locale\)/);
-    expect(branch).toMatch(/return true;/);
+  test("the chat step never plans a film: a longer length or several scenes asked for is said on the clip's card", () => {
+    const open = chatOpen();
+    expect(open).toMatch(/const tooLong = !named && \(\(step\.durationSec !== undefined && step\.durationSec > 10\)/);
+    expect(open).toMatch(/\.\.\.\(tooLong \? \{ note: clipOneClipNote\(locale\) \} : \{\}\)/);
+    expect(open).not.toMatch(/createStoryboard/);
   });
   test('long-form stays closed by the one switch the owner flips; the picker reads the server, never a stop list', () => {
     const createPanel = code(read('lib/video/createPanel.ts'));

@@ -130,6 +130,23 @@ export function LiveAvatarSlot({ video, className }: { video: HTMLVideoElement; 
   return <div ref={hostRef} data-testid="live-avatar-slot" className={className} />;
 }
 
+/**
+ * The avatar heard the user and is working on its answer. ⚠️ GG 2026-10-26 14:39Z: „დიდხანს ფიქრობს". The avatar model
+ * (us-central1 only, a fixed latency profile with no thinking setting) starts speaking ~2.5 s after the user stops, and
+ * until then the screen kept the PREVIOUS answer under a still face: it looked stuck. Three moving dots now stand where
+ * the answer will appear. The status line above says „ვფიქრობ…" for screen readers, so this is decoration.
+ */
+export function LiveAvatarThinking() {
+  return (
+    <div aria-hidden="true" data-testid="live-avatar-thinking"
+      className="inline-flex items-center gap-1.5 rounded-2xl bg-black/45 px-4 py-3.5 shadow-lg ring-1 ring-white/10 backdrop-blur-md">
+      {[0, 200, 400].map((delay) => (
+        <span key={delay} className="h-2 w-2 animate-pulse rounded-full bg-white motion-reduce:animate-none" style={{ animationDelay: `${delay}ms` }} />
+      ))}
+    </div>
+  );
+}
+
 const CAPTION_FADE = 'linear-gradient(to bottom, transparent 0, #000 1.25rem)';
 
 /**

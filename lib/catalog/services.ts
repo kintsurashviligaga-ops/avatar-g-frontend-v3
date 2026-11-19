@@ -100,9 +100,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── VIDEO ─────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'video.generate', category: 'video', order: 10, tool: 'video', pricingKey: 'video', status: 'live',
-    boundary: 'violation', boundaryNote: 'Veo + Gemini; voice is ElevenLabs until it moves to Cloud TTS; the HeyGen talking-head pass (/api/video/lipsync) is refused before any charge (no Google engine)',
+    boundary: 'violation', boundaryNote: 'Veo + Gemini; voice is ElevenLabs until it moves to Cloud TTS; the HeyGen talking-head pass was removed (v5.1 M-14)',
     label: l('ვიდეოს გენერაცია', 'Generate video', 'Создать видео'),
-    description: l('იდეიდან სცენარი, კადრები და მზა ფილმი', 'From an idea to a storyboard and a finished film', 'От идеи к раскадровке и готовому фильму'),
+    // ONE clip, like Gemini's Veo (GG 2026-10-25 16:10Z): 4 · 6 · 8 · 10 s from the words as typed; no storyboard, no film.
+    description: l('ერთი კლიპი შენი აღწერიდან, 4–10 წამი', 'One clip from your words, 4–10 seconds', 'Один клип по вашему описанию, 4–10 секунд'),
     modes: [
       { id: 'text', label: l('ტექსტიდან', 'From text', 'Из текста') },
       { id: 'documentary', label: l('დოკუმენტური', 'Documentary', 'Документальный'), query: { mode: 'documentary' } },
@@ -111,18 +112,23 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['video', 'ვიდეო', 'видео', 'film', 'ფილმი', 'фильм', 'reel', 'რილი', 'text to video', 'storyboard', 'სთორიბორდი', 'раскадровка'],
   }),
   svc({
-    id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'live',
+    // HIDDEN (GG 2026-10-25 16:10Z: the music video is removed entirely): out of every menu, the search and Agent G's
+    // routing. The video service is one clip whose sound follows its prompt. The id stays (§50 analytics identity).
+    id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundary: 'violation', boundaryNote: 'as video.generate; the HeyGen singer close-ups are refused before any charge (no Google engine)',
     label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'),
     description: l('სიმღერიდან ვიდეოკლიპი', 'A clip for your song', 'Клип для вашей песни'),
     modes: [{ id: 'musicvideo', label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
     shortcuts: ['music'],
-    // A row of its own under Video in the sidebar (lib/catalog/nav.ts modeServices): the mode was not findable otherwise.
-    visibleInSidebar: true,
+    visibleInSidebar: false,
     aliases: ['music video', 'მუსიკალური ვიდეო', 'მუსიკალური კლიპი', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
   }),
   svc({
-    id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'live',
+    // HIDDEN (GG 2026-10-27 05:33Z: „პროდუქტის რეკლამა საერთოდ ამოვიღოთ სერვისებიდან"): out of every menu, the search and
+    // Agent G's routing, and /api/video/remix refuses `productad` before any charge. The id stays (§50 analytics identity).
+    id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false, visibleInSidebar: false,
     boundary: 'google', boundaryNote: 'Veo, then a Ken Burns still (/api/video/remix productad); no other engine',
     label: l('პროდუქტის რეკლამა', 'Product ad', 'Реклама продукта'),
     description: l('პროდუქტის ფოტოდან სარეკლამო რილი', 'An ad reel from a product photo', 'Рекламный ролик из фото продукта'),
@@ -141,7 +147,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     // HIDDEN (Phase 2 PR 7, GG's plan of 2026-10-23), like the video remix: the panel only showed a form the server
     // refused, so no menu, search or Agent G route offers it. The id stays (§50 analytics identity).
     id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'hidden',
-    boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate (/api/motion-control): refused before any charge (no Google engine)',
+    boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate: its route was removed (v5.1 M-14, GG 2026-11-12); nothing runs or charges',
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
     // ⚠️ Says what runs: a photo + a written motion (Kling image-to-video). It used to promise "like a reference video",
     // but no engine here reads one (Replicate's Kling has no video-to-video) and the panel's video slot never left the
@@ -207,7 +213,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── AVATAR ────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'avatar.talking', category: 'avatar', order: 30, tool: 'avatar', pricingKey: 'avatar', status: 'live',
-    boundary: 'violation', boundaryNote: 'HeyGen talking photo / Replicate SadTalker (/api/video/lipsync): refused before any charge (no Google engine); the Veo avatar (/api/avatar/veo) runs for whoever may use it',
+    boundary: 'violation', boundaryNote: 'HeyGen talking photo / Replicate SadTalker: removed (v5.1 M-14, GG 2026-11-12); the Veo avatar (/api/avatar/veo) runs for whoever may use it',
     label: l('მოლაპარაკე ავატარი', 'Talking avatar', 'Говорящий аватар'),
     description: l('ფოტო ალაპარაკდება შენი ტექსტით ან ხმით', 'A photo speaks your script or voice', 'Фото говорит вашим текстом или голосом'),
     visibleInSidebar: true,

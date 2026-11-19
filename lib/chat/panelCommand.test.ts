@@ -144,7 +144,7 @@ describe('what the studio does', () => {
 describe('what Agent G says', () => {
   const name = (t: ToolId) => toolName(t, 'ka');
   test('opened, in the UI language, with the next step for a generator', () => {
-    expect(panelCommandReply({ did: 'opened', tool: 'video' }, 'ka', name)).toBe('გავხსენი **ვიდეო**. მითხარი, რაზე იყოს ფილმი.');
+    expect(panelCommandReply({ did: 'opened', tool: 'video' }, 'ka', name)).toBe('გავხსენი **ვიდეო**. მითხარი, რა უნდა ჩანდეს კლიპში.');
     expect(panelCommandReply({ did: 'opened', tool: 'avatar' }, 'en', (t) => toolName(t, 'en'))).toBe('Opened **Avatar**. Write what the avatar says, or attach a photo.');
     expect(panelCommandReply({ did: 'opened', tool: 'dubbing' }, 'ru', (t) => toolName(t, 'ru'))).toBe('Открыл **Дубляж**.');
   });

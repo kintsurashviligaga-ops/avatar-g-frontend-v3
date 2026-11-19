@@ -12,6 +12,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
+import { replyLanguageNote } from '@/lib/voice/replyLanguage';
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
@@ -23,6 +24,10 @@ import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
   LIVE_MIC_MUTED_GRACE_MS,
+  LIVE_RELAY_ACK_DEADLINE_MS,
+  LIVE_RELAY_NUDGE_AFTER_MS,
+  LIVE_RELAY_NUDGE_EVERY_MS,
+  LIVE_RELAY_READY_AFTER_ACK_MS,
   LIVE_RELAY_READY_AFTER_OPEN_MS,
   LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
@@ -698,6 +703,8 @@ test('through the relay an OPEN socket with no setupComplete gives up after 3 s,
     expect(result.current.status).toBe('listening');
     expect(result.current.degraded).toBe(false);
     expect(h.report).toHaveBeenCalledTimes(4);
+    // A relay that never said hello (an older revision) never gets a nudge: it would close on the unknown frame.
+    for (const ws of FakeSocket.all) expect(ws.sent.some((f) => 'relayNudge' in f)).toBe(false);
     unmount();
   } finally {
     jest.useRealTimers();
@@ -722,6 +729,83 @@ test('through the relay a long run of held sockets never opens the call without 
     // 1 + 6 same-setup tries, then the legacy wire — never the parity wire stripped of its actions.
     expect(result.current.degraded).toBe(true);
     for (const body of h.mintBodies) if (body.transcribe === true) expect(body).toMatchObject({ actions: true });
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a relay that says hello: a held setup gets nudged, and its ack keeps the socket while Vertex answers (GG 14:37Z)', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    const ws = FakeSocket.last;
+    const nudges = () => ws.sent.filter((f) => 'relayNudge' in f).length;
+    act(() => ws.open());
+    act(() => ws.receive({ relayHello: { nudge: 1 } }));
+    await elapse(LIVE_RELAY_NUDGE_AFTER_MS - 1);
+    expect(nudges()).toBe(0); // a healthy setup is acked well before this
+    await elapse(1);
+    expect(nudges()).toBe(1);
+    await elapse(LIVE_RELAY_NUDGE_EVERY_MS);
+    expect(nudges()).toBe(2);
+    act(() => ws.receive({ relaySetupAck: {} })); // the nudge pushed the setup through
+    await elapse(LIVE_RELAY_NUDGE_EVERY_MS * 3);
+    expect(nudges()).toBe(2); // no more once acked
+    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS); // the avatar's Vertex is slow today: past 3 s is no reason to retry now
+    expect(FakeSocket.all).toHaveLength(1);
+    act(() => ws.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(ws.sent.filter((f) => !('relayNudge' in f)).map((f) => Object.keys(f)[0])).toEqual(['setup']);
+    expect(h.report).toHaveBeenCalledTimes(1);
+    expect(h.report).toHaveBeenCalledWith('handshake_nudged', null, expect.objectContaining({
+      relay: true, relayHello: true, nudges: 2, msToAck: LIVE_RELAY_NUDGE_AFTER_MS + LIVE_RELAY_NUDGE_EVERY_MS, bufferedBytes: 0,
+    }));
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a relay that says hello but never acks: a fresh socket at 1.8 s, not 3 s; a setup still leaving the browser keeps its socket', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    act(() => FakeSocket.last.open());
+    act(() => FakeSocket.last.receive({ relayHello: { nudge: 1 } }));
+    await elapse(LIVE_RELAY_ACK_DEADLINE_MS - 1);
+    expect(FakeSocket.all).toHaveLength(1);
+    await elapse(1);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
+      relay: true, relayHello: true, nudges: 5, msSinceOpen: LIVE_RELAY_ACK_DEADLINE_MS, bufferedBytes: 0,
+    }));
+    expect(h.mintBodies[1]).toMatchObject({ actions: true }); // the same setup again
+
+    // A slow uplink: the setup is still leaving the browser — not held, so no nudge and no fresh socket yet.
+    const slow = FakeSocket.last as FakeSocket & { bufferedAmount?: number };
+    act(() => slow.open());
+    act(() => slow.receive({ relayHello: { nudge: 1 } }));
+    slow.bufferedAmount = 20_000;
+    await elapse(LIVE_RELAY_ACK_DEADLINE_MS + 1000);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(slow.sent.some((f) => 'relayNudge' in f)).toBe(false);
+    slow.bufferedAmount = 0;
+    act(() => slow.receive({ relaySetupAck: {} }));
+    await elapse(LIVE_RELAY_READY_AFTER_ACK_MS - 1);
+    act(() => slow.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(FakeSocket.all).toHaveLength(2);
     unmount();
   } finally {
     jest.useRealTimers();
@@ -810,7 +894,7 @@ test('actions: the mint asks for the declarations; the host answers each call by
 
 // ─── An offer to start with nothing prepared (lib/voice/liveUnprepared) ───────────
 
-const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => f.realtimeInput?.text === UNPREPARED_START_NOTE);
+const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => String(f.realtimeInput?.text ?? '').startsWith(UNPREPARED_START_NOTE));
 const answer = (calls: Array<{ id: string; name: string }>) => calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true } }));
 
 test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ONE [App] note per thing the user said', async () => {
@@ -823,8 +907,8 @@ test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ON
   // The model's next answer repeats itself before the user speaks: no second note.
   act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
   expect(noteFrames(ws)).toHaveLength(1);
-  // The note is the app's, never the user's words.
-  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: UNPREPARED_START_NOTE } });
+  // The note is the app's, never the user's words — and it names the language the user spoke (lib/voice/replyLanguage).
+  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: `${UNPREPARED_START_NOTE}\n${replyLanguageNote('Georgian')}` } });
   unmount();
 });
 
@@ -861,6 +945,42 @@ test(`a call without the functions is never told to call one; a call sends at mo
     act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
   }
   expect(noteFrames(ws)).toHaveLength(UNPREPARED_START_NOTES_MAX);
+  unmount();
+});
+
+// ─── The user's language in every app answer (lib/voice/replyLanguage) ──────────
+
+test('GG 2026-10-26 11:34Z: once the user spoke Georgian, each function answer and [App] note says to reply in Georgian', async () => {
+  const h = harness();
+  const onToolCall = jest.fn((calls: Array<{ id: string; name: string }>) =>
+    calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true, summary: 'The price is waiting for approval.' } })));
+  const { result, ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall });
+  const lastAnswer = () => [...ws.sent].reverse().find((f) => f.toolResponse)?.toolResponse.functionResponses[0].response;
+  const lastNote = () => [...ws.sent].reverse().find((f) => typeof f.realtimeInput?.text === 'string')?.realtimeInput.text;
+
+  // Before the user says anything, nothing is added.
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c0', name: 'open_studio', args: {} }] } }));
+  await waitFor(() => expect(lastAnswer()).toEqual({ ok: true, summary: 'The price is waiting for approval.' }));
+
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: '9,16 ფორმატის სურათი' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'image' } }] } }));
+  await waitFor(() => expect(lastAnswer()).toEqual({
+    ok: true, summary: 'The price is waiting for approval.', reply_in: replyLanguageNote('Georgian'),
+  }));
+  act(() => { result.current.sendNote('[App] Nothing was started. Tell the user plainly.'); });
+  expect(lastNote()).toBe(`[App] Nothing was started. Tell the user plainly.\n${replyLanguageNote('Georgian')}`);
+
+  // Georgian heard in Latin letters is no English: the language stays.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'ფასი 5 კრედიტია.' }, turnComplete: true } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'Da-adasture.' } } }));
+  act(() => { result.current.sendNote('[App] A new image is ready on screen.'); });
+  expect(lastNote()).toBe(`[App] A new image is ready on screen.\n${replyLanguageNote('Georgian')}`);
+
+  // The user switches to English: so do the answers.
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'now make it a video please' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c2', name: 'prepare_generation', args: { tool: 'video' } }] } }));
+  await waitFor(() => expect(lastAnswer()).toMatchObject({ reply_in: replyLanguageNote('English') }));
   unmount();
 });
 
@@ -1577,6 +1697,19 @@ test('avatar: the mint asks for it, its fMP4 goes to onVideo, its words mean spe
   act(() => result.current.stop());
   expect(result.current.avatar).toBeNull();
   unmount();
+});
+
+test('the server says whether this account may turn the avatar on; an older route says nothing (null)', async () => {
+  let h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null, avatarRefused: 'audience', avatarAllowed: false }));
+  let c = await connected({ avatar: 'Kira', deps: h.deps });
+  expect(c.result.current.avatarRefused).toBe('audience');
+  expect(c.result.current.avatarAllowed).toBe(false);
+  c.unmount();
+  h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null }));
+  c = await connected({ deps: h.deps });
+  expect(c.result.current.avatarAllowed).toBeNull();
+  expect(c.result.current.avatarRefused).toBeNull();
+  c.unmount();
 });
 
 test('avatar refused by the server: a voice call, and the reason is surfaced', async () => {

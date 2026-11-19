@@ -17,9 +17,11 @@
  *   · with ONE clip and nothing else, only a cut / montage word: „add music to this video" wants the whole clip with a song under it
  *     (the remix's add_music), not the clip chopped into shots — and a trim („cut the first 10 seconds") stays a trim.
  */
+import { cutawayWords } from './cutawayAsk';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
+import { withoutQuotedSpeech } from '@/lib/chat/quotedSpeech';
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
-import type { MontageAspect } from '@/lib/services/montage/montagePlan';
+import { VEO_CUTAWAY_CREDITS, type MontageAspect } from '@/lib/services/montage/montagePlan';
 import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/services/montage/beatPlan';
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
@@ -55,7 +57,8 @@ const TRIM = /\btrim\b|\bcut\s+(?:the\s+)?(?:first|last|off|out|beginning|end)\b
 
 /** Does the message ask for a cut / montage („დაამონტაჟე", „cut these together", „склей")? Shapes aside. */
 export function hasMontageWords(text: string): boolean {
-  const t = (text || '').trim();
+  // A line someone says („…დამონტაჟებული ვიდეო…“) asks for no cut (lib/chat/quotedSpeech).
+  const t = withoutQuotedSpeech((text || '').trim()).trim();
   return !!t && (CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage');
 }
 
@@ -91,6 +94,9 @@ export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
   const pictures = videos + photos;
   if (pictures < 1 || pictures > MAX_CLIPS || audios > MAX_SOUNDS || pictures + audios !== kinds.length) return false;
   const montageWords = CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage' || (photos > 0 && SLIDESHOW.test(t));
+  // Footage of what the speaker says over his video, in a split screen (./cutawayAsk, GG 2026-11-05 14:32Z): a montage
+  // of his clip(s) with the cutaways laid on, even from one video and with no montage word.
+  if (videos >= 1 && cutawayWords(t) && !asksNarration(t)) return true;
   if (!audios) {
     // A narration asked with no recording sent is not this edit as sent: the chat asks for the file (lib/agent/intent).
     if (pictures < 2 || !montageWords || TRIM.test(t) || asksNarration(t)) return false;
@@ -148,8 +154,14 @@ export function priceLabel(credits: number, locale: string): string {
 }
 
 /** What Agent G says while it uploads and reads the files. */
-export function readingText(locale: string): string {
+export function readingText(locale: string, names?: readonly string[]): string {
   const lang = pick(locale);
+  // Videos alone: there is no beat to read; the agent watches them and thinks the edit through (./montageDirector).
+  if (names?.length && !names.some((n) => /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|weba)$/i.test(n))) {
+    return lang === 'en' ? 'Watching your videos and thinking the edit through: what each one is, the order, and anything the request leaves out…'
+      : lang === 'ru' ? 'Смотрю ваши видео и продумываю монтаж: что в каждом, в каком порядке и что в задаче не уточнено…'
+        : 'ვუყურებ შენს ვიდეოებს და ვფიქრობ მონტაჟზე: რა არის თითოეულში, რა თანმიმდევრობით და რა გამოგრჩა დავალებაში…';
+  }
   return lang === 'en' ? 'Reading your files: lengths, format, the sound and the beat…'
     : lang === 'ru' ? 'Читаю файлы: длительность, формат, звук и бит…'
       : 'ვკითხულობ ფაილებს: ხანგრძლივობას, ფორმატს, ხმას და ბითს…';
@@ -466,9 +478,37 @@ function soundNotes(q: MontageQuote, lang: Lang): string[] {
   return notes;
 }
 
+/** The assembly's parts, each with the window it plays and what found its bounds (./montageExec MontageQuote.assembly). */
+function assemblyText(parts: NonNullable<MontageQuote['assembly']>['parts'], lang: Lang): string {
+  const ROLE: Record<string, Record<Lang, string>> = {
+    intro: { ka: 'ინტრო', en: 'Intro', ru: 'Интро' },
+    body: { ka: 'ძირითადი', en: 'Body', ru: 'Основная часть' },
+    outro: { ka: 'აუტრო', en: 'Outro', ru: 'Аутро' },
+  };
+  const BY: Record<string, Record<Lang, string>> = {
+    black: { ka: 'შავი კადრით', en: 'by the black frames', ru: 'по чёрным кадрам' },
+    scene: { ka: 'ჭრით', en: 'by the cut', ru: 'по склейке' },
+    silence: { ka: 'პაუზით', en: 'by the pause', ru: 'по паузе' },
+    speech: { ka: 'ხმით', en: 'by the voice', ru: 'по голосу' },
+    asked: { ka: 'შენი დროით', en: 'at your time', ru: 'по вашему времени' },
+  };
+  const u = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
+  const by = (a: string, b: string) => [...new Set([a, b])].filter((k) => BY[k]).map((k) => BY[k]![lang]).join(', ');
+  const lines = parts.map((p) => {
+    const how = by(p.startBy, p.endBy);
+    const vid = lang === 'en' ? `video ${p.file + 1}` : lang === 'ru' ? `видео ${p.file + 1}` : `ვიდეო ${p.file + 1}`;
+    return `${ROLE[p.role]![lang]} (${vid}): ${sec(p.startSec)}–${sec(p.endSec)} ${u}${how ? ` (${how})` : ''}`;
+  });
+  const head = lang === 'en' ? 'Each part is cut where it really starts and ends, picture and sound on the same frame:'
+    : lang === 'ru' ? 'Каждая часть обрезана там, где она реально начинается и кончается, картинка и звук — на одном кадре:'
+      : 'ყოველი ნაწილი იქ ვჭერი, სადაც რეალურად იწყება და მთავრდება, სურათი და ხმა ერთ კადრზე:';
+  return `${head} ${lines.join('; ')}.`;
+}
+
 /** How the pictures are cut: on the beat (what the track's tempo allowed), or each clip whole in the user's order. */
 function cuttingText(q: MontageQuote, lang: Lang): string {
   const st = q.stills ?? 0;
+  if (q.cutting === 'assembly' && q.assembly?.parts.length) return assemblyText(q.assembly.parts, lang);
   if (q.cutting === 'whole') {
     if (q.shortened) {
       const pct = Math.round(q.shortened.share * 100);
@@ -492,9 +532,34 @@ function cuttingText(q: MontageQuote, lang: Lang): string {
         : 'მკაფიო ბითი ვერ ვიპოვე, ამიტომ კადრებს თანაბარ, ნახევარწამიან ბადეზე ვჭრი.');
 }
 
+const KIND_WORD: Record<string, Record<Lang, string>> = {
+  presenter: { ka: 'წამყვანი', en: 'presenter', ru: 'ведущий' },
+  intro: { ka: 'ინტრო', en: 'intro', ru: 'интро' },
+  outro: { ka: 'აუტრო', en: 'outro', ru: 'аутро' },
+  logo: { ka: 'ლოგოს სცენა', en: 'logo scene', ru: 'сцена с логотипом' },
+  broll: { ka: 'კადრები წამყვანის გარეშე', en: 'footage, no speaker', ru: 'кадры без ведущего' },
+  other: { ka: 'სხვა', en: 'other', ru: 'другое' },
+};
+
+/**
+ * The agent's thinking, before its plan (./montageDirector): what it saw in each video, why it plans the edit this way,
+ * and what it decided that the words did not say — the way a chat agent shows its reasoning (GG 2026-11-05 17:29Z).
+ */
+export function directorText(d: NonNullable<MontageQuote['director']>, lang: Lang): string {
+  const head = lang === 'en' ? '🧠 What I saw and decided:' : lang === 'ru' ? '🧠 Что я увидел и решил:' : '🧠 რა დავინახე და რა გადავწყვიტე:';
+  const vid = lang === 'en' ? 'Video' : lang === 'ru' ? 'Видео' : 'ვიდეო';
+  const seen = d.files.map((f) => `· ${vid} ${f.file + 1} — ${KIND_WORD[f.kind]?.[lang] ?? f.kind}${f.summary ? `: ${f.summary}` : ''}`);
+  const why = d.reasoning.map((r) => `· ${r}`);
+  const filled = d.filled.length
+    ? [(lang === 'en' ? 'You did not say it, so I decided:' : lang === 'ru' ? 'Вы этого не уточнили, поэтому я решил:' : 'ეს არ გითქვამს, ამიტომ მე გადავწყვიტე:'), ...d.filled.map((r) => `· ${r}`)]
+    : [];
+  return [head, ...seen, ...why, ...filled].join('\n');
+}
+
 /** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
-export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string): string {
+export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string, withGo = true): string {
   const lang = pick(locale);
+  const thought = q.director ? `${directorText(q.director, lang)}\n\n` : '';
   const found = cuttingText(q, lang);
   const st = q.stills ?? 0;
   const what = lang === 'en'
@@ -526,13 +591,81 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     : '';
   const ramp = q.ramp ? `\n${rampText(q.ramp, locale)}` : '';
   const trans = q.transitions ? `\n${transitionsText(q.transitions, locale)}` : '';
+  const cuts = q.cutaways ? `\n${cutawaysText(q.cutaways, lang)}` : '';
   const engine = lang === 'en' ? 'Engine: FFmpeg montage.' : lang === 'ru' ? 'Движок: FFmpeg-монтаж.' : 'ძრავი: FFmpeg მონტაჟი.';
   const price = q.credits > 0
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${noted}${ramp}${trans}${files}${left}\n${engine} ${price} ${go}`;
+  return `${thought}${found}\n${plan}${from}${noted}${ramp}${trans}${cuts}${files}${left}\n${engine} ${price}${withGo ? ` ${go}` : ''}`;
 }
+
+/**
+ * The bubble's words while the edit runs and once it is ready: the plan stays (what was found, what is being made) and
+ * the step it is on is added under it, the way a chat assistant narrates its work. GG 2026-11-05 10:21Z: the plan used
+ * to be replaced by a bare „მონტაჟს ვიწყებ", so the chat said nothing about what was being done.
+ */
+export function runningText(q: MontageQuote | undefined, names: string[] | undefined, stage: string | null | undefined, locale: string): string {
+  const lang = pick(locale);
+  const words = q?.cutting === 'assembly' && stage && ASSEMBLY_STAGE[stage] ? ASSEMBLY_STAGE[stage]![lang] : stageText(stage, locale);
+  const now = `${stageMark(stage)} ${words}…`;
+  return q ? `${quoteText(q, names, locale, false)}\n\n${now}` : now;
+}
+
+export function readyText(q: MontageQuote | undefined, names: string[] | undefined, durationSec: number, locale: string): string {
+  const done = `✓ ${doneText(durationSec, locale, q?.sound)}`;
+  return q ? `${quoteText(q, names, locale, false)}\n\n${done}` : done;
+}
+
+/**
+ * The cutaways, line by line: at which second, which footage (the search it came from, its Pexels author), and what
+ * the speaker says there — so the user sees WHY each shot is where it is. Lines that found nothing are said too.
+ */
+export function cutawaysText(c: NonNullable<MontageQuote['cutaways']>, lang: Lang): string {
+  const clip = (t: string) => (t.length > 60 ? `${t.slice(0, 57)}…` : t);
+  if (c.unavailable && !c.items.length) {
+    const why = c.unavailable === 'not_configured'
+      ? { ka: 'კადრების ძებნა ამ სერვერზე ჩართული არ არის', en: 'footage search is not switched on here', ru: 'поиск кадров здесь не включён' }
+      : c.unavailable === 'analysis_failed'
+        ? { ka: 'ვერ წავიკითხე, რას ამბობს წამყვანი', en: 'I could not read what the speaker says', ru: 'не удалось разобрать, что говорит ведущий' }
+        : { ka: 'შესაფერისი კადრი ვერ ვიპოვე', en: 'no matching footage was found', ru: 'подходящих кадров не нашлось' };
+    return lang === 'en' ? `Split screen: none, ${why.en}; the speaker stays full screen.`
+      : lang === 'ru' ? `Разделённый экран: нет, ${why.ru}; ведущий остаётся на весь экран.`
+        : `გაყოფილი ეკრანი: არა, ${why.ka}; წამყვანი მთელ ეკრანზე რჩება.`;
+  }
+  const gen = c.items.filter((x) => x.source === 'veo').length;
+  const real = c.items.length - gen;
+  const parts = {
+    en: [real ? `${real} real shot${real === 1 ? '' : 's'} (Pexels)` : '', gen ? `${gen} generated (Veo, ✦ ${VEO_CUTAWAY_CREDITS} each)` : ''].filter(Boolean).join(' + '),
+    ru: [real ? `${real} реальных кадров (Pexels)` : '', gen ? `${gen} сгенерированных (Veo, ✦ ${VEO_CUTAWAY_CREDITS} каждый)` : ''].filter(Boolean).join(' + '),
+    ka: [real ? `${real} რეალური კადრი (Pexels)` : '', gen ? `${gen} შექმნილი კადრი (Veo, თითო ✦ ${VEO_CUTAWAY_CREDITS})` : ''].filter(Boolean).join(' + '),
+  };
+  const head = lang === 'en' ? `Split screen: ${parts.en} on top, the speaker below, his voice throughout:`
+    : lang === 'ru' ? `Разделённый экран: ${parts.ru} сверху, ведущий снизу, его голос без перерыва:`
+      : `გაყოფილი ეკრანი: ზემოთ ${parts.ka}, ქვემოთ წამყვანი, მისი ხმა არ წყდება:`;
+  const veoTag = { en: ' [Veo]', ru: ' [Veo]', ka: ' [Veo]' }[lang];
+  const rows = c.items.map((x) => `· ${clockOf(x.startSec)}–${clockOf(x.endSec)} „${x.query}“ — ${quoted(lang, clip(x.text))}${x.source === 'veo' ? veoTag : x.author ? ` (${x.author})` : ''}`);
+  const genNote = gen
+    ? [lang === 'en' ? 'A generated shot Veo cannot make leaves the speaker on that line, and its credits come back.'
+      : lang === 'ru' ? 'Если Veo не сможет сделать кадр, там останется ведущий, а кредиты вернутся.'
+        : 'თუ Veo რომელიმე კადრს ვერ შექმნის, იქ წამყვანი დარჩება და იმ კადრის კრედიტი დაგიბრუნდება.']
+    : [];
+  const miss = c.missed.length
+    ? [lang === 'en' ? `No footage found for ${c.missed.length} line${c.missed.length === 1 ? '' : 's'}: ${c.missed.map((m) => `„${m.query}“`).join(', ')}; the speaker stays there.`
+      : lang === 'ru' ? `Не нашлось кадров для ${c.missed.length}: ${c.missed.map((m) => `„${m.query}“`).join(', ')}; там остаётся ведущий.`
+        : `${c.missed.length} ფრაზაზე კადრი ვერ ვიპოვე (${c.missed.map((m) => `„${m.query}“`).join(', ')}); იქ წამყვანი რჩება.`]
+    : [];
+  return [head, ...rows, ...genNote, ...miss].join('\n');
+}
+
+/** An intro + body + outro edit says its own steps: there are no shots or music to speak of. */
+const ASSEMBLY_STAGE: Record<string, Record<Lang, string>> = {
+  normalize: { ka: 'ინტროს, ძირითად ნაწილს და აუტროს ზუსტად კადრზე ვჭრი', en: 'Cutting the intro, the body and the outro on the exact frame', ru: 'Режу интро, основную часть и аутро точно по кадру' },
+  stitch: { ka: 'ნაწილებს ერთ ვიდეოდ ვაბამ', en: 'Joining the parts into one video', ru: 'Склеиваю части в одно видео' },
+  qc: { ka: 'ვამოწმებ, რომ ხმა და სურათი სინქრონშია და ყველა ნაწილი შედეგშია', en: 'Checking the sound is in sync and every part is in the output', ru: 'Проверяю синхрон звука и что все части в итоге' },
+};
+
+const stageMark = (stage: string | null | undefined) => (stage === 'qc' || stage === 'completed' ? '🔎' : '⏳');
 
 /**
  * The quote's files, in the user's order: number, name, video or music, length. „Every clip is used" closes it: the
@@ -568,6 +701,7 @@ const STAGE: Record<string, Record<Lang, string>> = {
   bridge: { ka: 'ფაილებს ვამზადებ', en: 'Preparing the files', ru: 'Готовлю файлы' },
   normalize: { ka: 'კადრებს ვჭრი და ერთ ფორმატში მოვყავარ', en: 'Cutting the shots to one format', ru: 'Нарезаю кадры в один формат' },
   stitch: { ka: 'კადრებს ვაერთებ', en: 'Joining the shots', ru: 'Склеиваю кадры' },
+  inserts: { ka: 'კადრებს ვსვამ ზედა ნახევარში, წამყვანი ქვემოთ', en: 'Laying the footage in the top half, the speaker below', ru: 'Ставлю кадры в верхнюю половину, ведущий снизу' },
   music: { ka: 'ხმას ვამატებ: მუსიკას და ნარაციას', en: 'Mixing the sound: the music and the narration', ru: 'Свожу звук: музыку и озвучку' },
   qc: { ka: 'ვამოწმებ, რომ ყველა კლიპი შედეგშია', en: 'Checking every clip is in the output', ru: 'Проверяю, что все клипы в итоге' },
   completed: { ka: 'ვამოწმებ შედეგს', en: 'Checking the result', ru: 'Проверяю результат' },
@@ -620,6 +754,8 @@ const ERR: Record<Exclude<ChatErrorCode, `budget_${string}`>, Record<Lang, strin
   music_too_short: { ka: 'მუსიკა ({f}) ძალიან მოკლეა, რომ ყველა კლიპს თითო კადრი მაინც ერგოს, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. დაიწყე მუსიკა უფრო ადრე, მიამაგრე უფრო გრძელი მუსიკა, ან გამოიყენე ნაკლები კლიპი.', en: 'The music ({f}) is too short to give every clip one shot, so I am not starting the edit: I will not leave a clip out. Start the music earlier, attach a longer track, or use fewer clips.', ru: 'Музыка ({f}) слишком короткая, чтобы каждому клипу досталось хотя бы по кадру, поэтому монтаж не начинаю: ни один клип я не пропущу. Начните музыку раньше, прикрепите трек подлиннее или используйте меньше клипов.' },
   target_too_short: { ka: 'ამ სიგრძეში ყველა კლიპი ({f}) ვერ ეტევა, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. მთხოვე უფრო გრძელი მონტაჟი, ან გამოიყენე ნაკლები კლიპი.', en: 'Not every clip ({f}) fits in the length you asked for, so I am not starting the edit: I will not leave a clip out. Ask for a longer edit, or use fewer clips.', ru: 'В заданную длину помещаются не все клипы ({f}), поэтому монтаж не начинаю: ни один клип я не пропущу. Попросите монтаж подлиннее или используйте меньше клипов.' },
   footage_too_short: { ka: 'კლიპები ერთად ({f}) შენს მიერ თხოვნილ სიგრძეზე მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: კადრებს არ გავიმეორებ და მონტაჟს ჩუმად არ შევამოკლებ. დაამატე კლიპები, ან მთხოვე უფრო მოკლე მონტაჟი.', en: 'Your clips ({f}) together are shorter than the length you asked for, so I am not starting the edit: I will not repeat shots or quietly make it shorter. Add clips, or ask for a shorter edit.', ru: 'Ваши клипы ({f}) вместе короче заданной длины, поэтому монтаж не начинаю: повторять кадры или молча укорачивать я не буду. Добавьте клипы или попросите монтаж короче.' },
+  assembly_invalid: { ka: 'ინტრო, ძირითადი ნაწილი და აუტრო ამ ფაილებით ვერ დავგეგმე, ამიტომ არაფერი დამიწყია: {f}. თქვი, რომელი კლიპია ინტრო, რომელი ძირითადი და რომელი აუტრო (ყოველ კლიპს თავისი როლი უნდა ჰქონდეს).', en: 'I could not plan the intro, body and outro from these files, so I started nothing: {f}. Say which clip is the intro, which the body and which the outro (every clip needs a role).', ru: 'Не получилось спланировать интро, основную часть и аутро из этих файлов, поэтому я ничего не начал: {f}. Скажите, какой клип интро, какой основной и какой аутро (у каждого клипа должна быть роль).' },
+  assembly_no_boundary: { ka: '{f}-ში ინტროსა და აუტროს შორის საზღვარი (შავი კადრი, ჭრა ან პაუზა) ვერ ვიპოვე, ამიტომ არაფერი დამიწყია. მითხარი, რომელ წამზე მთავრდება ინტრო და საიდან იწყება აუტრო.', en: 'I found no break (a black frame, a cut or a pause) between the intro and the outro in {f}, so I started nothing. Tell me the second the intro ends and the second the outro starts.', ru: 'В {f} не нашлось границы (чёрного кадра, склейки или паузы) между интро и аутро, поэтому я ничего не начал. Скажите, на какой секунде кончается интро и с какой начинается аутро.' },
   selection_invalid: { ka: 'შენს სიტყვებში დასახელებული ვიდეო არ არის მიმაგრებულ ფაილებში, ამიტომ არაფერი დამიწყია. თქვი ზუსტად, რომელი კლიპები გამოვიყენო.', en: 'Your words name a clip that is not among the attached files, so I started nothing. Say exactly which clips to use.', ru: 'В ваших словах указан клип, которого нет среди файлов, поэтому я ничего не начал. Скажите точно, какие клипы использовать.' },
   target_too_long: { ka: 'ერთი მონტაჟი მაქსიმუმ 5 წუთია. მთხოვე უფრო მოკლე.', en: 'One edit is at most 5 minutes. Ask for a shorter one.', ru: 'Один монтаж — не длиннее 5 минут. Попросите покороче.' },
   manifest_invalid: { ka: 'გეგმაში აღარ ჩანს ყველა ფაილი, რაც გამომიგზავნე, ამიტომ არ დავიწყე. გამომიგზავნე ფაილები თავიდან.', en: 'The plan no longer lists every file you sent, so I did not start it. Send the files again.', ru: 'В плане больше нет всех отправленных файлов, поэтому я не начал. Отправьте файлы снова.' },

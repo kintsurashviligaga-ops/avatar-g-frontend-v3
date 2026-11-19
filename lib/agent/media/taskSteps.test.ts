@@ -253,3 +253,70 @@ describe('the montage card holds every part of the words (owner 2026-10-11)', ()
     expect(montageTask({ phase: 'quoted', names: NAMES4, quote: MQ, prompt: 'cut these to the music, 9:16' }, 'en').notice).toBeUndefined();
   });
 });
+
+describe('an intro + body + outro edit has its own card (GG 2026-11-05 10:21Z)', () => {
+  const GG = 'პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო და ბოლო ლოგოს სცენა ამოიღე';
+  const names = ['gemini_generated_video.mp4', 'MyAvatar_News.mp4'];
+  const AQ2: MontageQuote = {
+    ...MQ, shots: 3, clips: 2, totalSec: 9.4, beatSynced: false, bpm: null, cutting: 'assembly',
+    assembly: { parts: [
+      { role: 'intro', file: 1, startSec: 0, endSec: 2.1, startBy: 'whole', endBy: 'black' },
+      { role: 'body', file: 0, startSec: 0.4, endSec: 6.2, startBy: 'speech', endBy: 'speech' },
+      { role: 'outro', file: 1, startSec: 9.5, endSec: 11.9, startBy: 'scene', endBy: 'whole' },
+    ] },
+  } as MontageQuote;
+
+  test('from the words, before the plan is back: its steps, no beat, no music', () => {
+    const m = montageTask({ phase: 'reading', names, uploaded: 2, prompt: GG }, 'ka');
+    expect(m.title).toBe('ინტრო + ვიდეო + აუტრო');
+    expect(m.steps.map((s) => s.key)).toEqual(['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'syncqc', 'finish']);
+    expect(m.steps[1]).toMatchObject({ state: 'active', note: 'ვეძებ შავ კადრებს, სცენის ჭრებს და პაუზებს' });
+    expect(m.steps[0]!.detail).toBe('2 ვიდეო');
+    // „ბოლო ლოგოს სცენა" is the outro, not a logo the plan leaves out.
+    expect(m.notice).toBeUndefined();
+  });
+
+  test('the plan says what was found in each video, and the stages are its own', () => {
+    const q = montageTask({ phase: 'quoted', names, prompt: GG, quote: AQ2 }, 'ka');
+    expect(q.steps[1]!.detail).toBe('ინტრო · ვიდეო 2 · 0:00–0:02.1 (შავი კადრი)\nძირითადი · ვიდეო 1 · 0:00.4–0:06.2 (ხმა)\nაუტრო · ვიდეო 2 · 0:09.5–0:11.9 (სცენის ჭრა)');
+    expect(q.steps[2]!.detail).toContain('3 ნაწილი · 9.4 წმ');
+    const run = montageTask({ phase: 'running', names, prompt: GG, quote: AQ2, stage: 'stitch', pct: 60 }, 'ka');
+    expect(states(run)).toBe('done done done done done active pending pending');
+  });
+
+  test('a plain montage of two videos no longer says „1 მუსიკა"', () => {
+    const m = montageTask({ phase: 'reading', names, uploaded: 2, prompt: 'დაამონტაჟე' }, 'ka');
+    expect(m.steps[0]!.detail).toBe('2 კლიპი');
+  });
+});
+
+describe('the card lists only the steps this edit really has (GG 2026-11-05 17:29Z)', () => {
+  const names = ['gemini_generated_video.mp4', 'intro.mov', 'logo.mov'];
+  test('videos alone: no music step, the second step is the agent thinking, not the beat', () => {
+    const m = montageTask({ phase: 'reading', names, uploaded: 3 }, 'ka');
+    expect(m.steps.map((s) => s.key)).not.toContain('music');
+    expect(m.steps[1]).toMatchObject({ label: 'ვიდეოების ნახვა და დავალების გააზრება', state: 'active', note: 'ვუყურებ ყველა ვიდეოს და ვფიქრობ, როგორ ჯობს' });
+    expect(m.title).toBe('ვიდეოს მონტაჟი');
+  });
+  test('the plan with the agent thinking, three parts and a split screen', () => {
+    const q = {
+      ...MQ, shots: 3, clips: 3, totalSec: 12, beatSynced: false, bpm: null, cutting: 'assembly', musicFile: null,
+      assembly: { parts: [
+        { role: 'intro', file: 1, startSec: 0, endSec: 1.9, startBy: 'whole', endBy: 'whole' },
+        { role: 'body', file: 0, startSec: 0, endSec: 8, startBy: 'speech', endBy: 'speech' },
+        { role: 'outro', file: 2, startSec: 0, endSec: 2.1, startBy: 'whole', endBy: 'whole' },
+      ] },
+      cutaways: { items: [{ startSec: 3, endSec: 6, text: 'x', query: 'hospital', source: 'pexels' }], missed: [], generated: 0, speakerFile: 0 },
+      director: { files: [{ file: 0, kind: 'presenter', summary: '' }, { file: 1, kind: 'intro', summary: '' }, { file: 2, kind: 'logo', summary: '' }], reasoning: ['ინტრო პირველია.'], filled: [] },
+    } as unknown as MontageQuote;
+    const m = montageTask({ phase: 'quoted', names, quote: q }, 'ka');
+    expect(m.title).toBe('ინტრო + ვიდეო + აუტრო · გაყოფილი ეკრანი');
+    expect(m.steps.map((s) => s.key)).toEqual(['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'inserts', 'syncqc', 'finish']);
+    expect(m.steps[1]!.detail).toMatch(/^ვიდეო 1: წამყვანი · ვიდეო 2: ინტრო · ვიდეო 3: ლოგოს სცენა\n🧠 ინტრო პირველია\.\nინტრო · ვიდეო 2/);
+    expect(m.steps[6]!.detail).toBe('1 რეალური კადრი (Pexels) · ქვემოთ წამყვანი');
+    const run = montageTask({ phase: 'running', names, quote: q, stage: 'inserts' }, 'ka');
+    expect(states(run)).toBe('done done done done done done active pending pending');
+    const qc = montageTask({ phase: 'running', names, quote: q, stage: 'qc' }, 'ka');
+    expect(qc.steps[7]!.state).toBe('active');
+  });
+});

@@ -82,6 +82,7 @@ import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 import { ResearchHost } from '@/components/studio/research';
+import { DriveSettingsButton } from '@/components/studio/research/DriveSettingsButton';
 import { dedupeConversations } from '@/lib/chat/conversationSync';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -1477,6 +1478,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
+                  <DriveSettingsButton className={drawerRow} onOpen={() => setMenuOpen(false)} />
                   <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow} data-tour={TWIN_ENABLED ? 'twin' : undefined}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>

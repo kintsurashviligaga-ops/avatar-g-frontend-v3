@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "url": "https://texttospeech.googleapis.com/v1/text:synthesize",
+  "body": {
+    "input": {
+      "text": "ეს არის ქართული ხმის შემოწმება ვიდეოსთვის."
+    },
+    "voice": {
+      "languageCode": "ka-GE",
+      "name": "Kore",
+      "modelName": "gemini-2.5-flash-tts"
+    },
+    "audioConfig": {
+      "audioEncoding": "MP3"
+    }
+  }
+}

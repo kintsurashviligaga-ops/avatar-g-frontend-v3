@@ -1,0 +1,69 @@
+# The Google ADK read-only pilot (MASTER TASK v3.1 §2.4, Phase 5).
+#
+# The pilot keeps @google/adk in its own package (pilots/adk, own lockfile), out of the app's dependency tree, so the
+# app's CI never installs or compiles it. This job installs both, typechecks the pilot and runs its tests: the real
+# ADK runtime driven by fake models over fake reads. No secrets, no network calls to a model, no cost.
+name: ADK pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pilots/adk/**'
+      - 'lib/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'jest.config.cjs'
+      - 'tsconfig.json'
+      - '.github/workflows/adk-pilot.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'pilots/adk/**'
+      - 'lib/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/adk-pilot.yml'
+
+concurrency:
+  group: adk-pilot-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pilot:
+    name: adk-pilot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            pilots/adk/package-lock.json
+
+      # The app's packages: jest, the SWC transform, typescript, zod (the pilot's tools are the app's code).
+      - name: Install the app's packages
+        run: npm ci
+
+      # The pilot's own lockfile; no install scripts (the SDK's optional native extras are never built).
+      - name: Install the pilot's packages
+        run: npm ci --prefix pilots/adk --ignore-scripts
+
+      - name: Typecheck the pilot
+        run: npm run --prefix pilots/adk typecheck
+
+      - name: Pilot tests (ADK with fake models)
+        if: ${{ !cancelled() }}
+        run: npm test --prefix pilots/adk

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient, authedClientFromRequest } from '@/lib/supabase/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { UPLOAD_MAX_BYTES } from '@/lib/uploads/policy';
 import { sniffMatches, type SniffKind } from '@/lib/uploads/sniff';
 import { ownsUploadObject, uploadBucket } from '@/lib/security/callerMedia';
@@ -67,11 +67,14 @@ function totalSize(res: Response): number | null {
 }
 
 export async function POST(req: NextRequest) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.READ);
-  if (rl) return rl;
+  // Per account, like /api/upload/sign (RATE_LIMITS.UPLOAD_VERIFY): the per-IP READ bucket is shared with every read route.
+  const ipRl = await checkRateLimit(req, RATE_LIMITS.UPLOAD_IP);
+  if (ipRl) return ipRl;
 
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'auth required' }, { status: 401 });
+  const rl = await checkRateLimitByKey(user.id, RATE_LIMITS.UPLOAD_VERIFY);
+  if (rl) return rl;
 
   const body = (await req.json().catch(() => ({}))) as { path?: unknown; kind?: unknown };
   const path = typeof body.path === 'string' ? body.path.trim() : '';

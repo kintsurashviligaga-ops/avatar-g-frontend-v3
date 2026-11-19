@@ -68,6 +68,12 @@ const fail = (error: string) => NextResponse.json({ url: null, error });
 /** The remix ops with no Google / ElevenLabs engine (MEDIA_GOOGLE_ONLY refuses them). */
 const OUTSIDE_ENGINE_OPS = new Set(['restyle', 'character', 'background_remove', 'redub']);
 
+const PRODUCT_AD_REMOVED = {
+  ka: 'პროდუქტის რეკლამა აღარ არის სერვისებში. ვიდეო შექმენი ვიდეოს სერვისით.',
+  en: 'The product ad is no longer offered. Make a video with the Video service.',
+  ru: 'Рекламы продукта больше нет в сервисах. Создайте видео в сервисе «Видео».',
+} as const;
+
 // FIX 3 — preset-appropriate background score for a SINGLE-clip product ad, hosted to a
 // fetchable URL. (Multi-clip ads already get a music bed from /api/video/assemble.)
 // Lyria on Vertex (instrumental, the clip model) → null (caller ships the clip without music and says so: `music: false`).
@@ -118,6 +124,14 @@ export async function POST(req: NextRequest) {
   // before the charge, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The ffmpeg ops, the Cloud TTS voiceover, the
   // Lyria music bed and the Veo product ad run.
   if (OUTSIDE_ENGINE_OPS.has(op)) return refuseOutsideEngine(req);
+  // The product ad is removed (GG 2026-10-27: „პროდუქტის რეკლამა საერთოდ ამოვიღოთ სერვისებიდან"): refused here, before
+  // the auth, the charge and any Veo or Lyria call. An old tab or a stored link gets a plain answer instead of a render.
+  if (op === 'productad') {
+    return NextResponse.json(
+      { error: 'service_removed', code: 'service_removed', tool: 'product', message: PRODUCT_AD_REMOVED.ka, messages: PRODUCT_AD_REMOVED },
+      { status: 410, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
     // Admin service switch (lib/server/serviceSwitches): the op names the tool — product ad, character swap, or touch-up.
     const serviceOff = await serviceOffResponse(op === 'productad' ? 'product' : op === 'character' ? 'swap' : 'remix');
     if (serviceOff) return serviceOff;

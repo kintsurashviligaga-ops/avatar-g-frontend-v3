@@ -15,9 +15,11 @@ jest.mock('../../../../lib/orchestrator/rate-limit', () => ({
 }));
 const mockOpen = jest.fn(() => false);
 const mockAnalyzeOpen = jest.fn(() => false);
+const mockSandboxOpen = jest.fn(() => false);
 jest.mock('../../../../lib/agent/media/access', () => ({
   agentMediaOpenTo: (...a: unknown[]) => (mockOpen as (...x: unknown[]) => boolean)(...a),
   agentAnalyzeOpenTo: (...a: unknown[]) => (mockAnalyzeOpen as (...x: unknown[]) => boolean)(...a),
+  agentSandboxOpenTo: (...a: unknown[]) => (mockSandboxOpen as (...x: unknown[]) => boolean)(...a),
 }));
 const mockReport = jest.fn();
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReport(...a) }));
@@ -174,6 +176,21 @@ describe('files and the media quote', () => {
     const res = await call({ goal: 'make it 9:16', files: ['u-1/a.mp4'] });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', editQuote: q });
+  });
+
+  it('the code tool is offered only where AGENT_G_SANDBOX is open; its signed plan comes back as codeQuote, nothing runs here', async () => {
+    await call({ goal: 'compute 2+2' });
+    expect(ctxOf()).not.toHaveProperty('sandbox');
+    expect(ctxOf()).not.toHaveProperty('onCodeQuote');
+    mockSandboxOpen.mockReturnValueOnce(true);
+    const q = { ok: true, quote: { jobId: 'c', credits: 0 }, request: { language: 'python', code: 'print(4)' }, token: 't' };
+    mockRun.mockImplementationOnce(async (_g: string, ctx: { sandbox?: boolean; onCodeQuote?: (x: unknown) => void }) => {
+      expect(ctx.sandbox).toBe(true);
+      ctx.onCodeQuote?.(q);
+      return { answer: 'Press Start', steps: [], stopReason: 'final' };
+    });
+    const res = await call({ goal: 'compute 2+2' });
+    expect(await res.json()).toEqual({ answer: 'Press Start', steps: [], stopReason: 'final', codeQuote: q });
   });
 
   it('the plan the tool signed comes back as mediaQuote; nothing about it is run here', async () => {

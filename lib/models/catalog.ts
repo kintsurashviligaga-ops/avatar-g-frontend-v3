@@ -68,7 +68,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['text', 'code', 'reasoning', 'transcribe'],
       focusModes: ['code', 'search', 'files', 'stt'],
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Chat Fast chain, second. ${NEW_KEY}`,
+      notes: 'Vertex retires it on 2026-11-19 (model-versions page). Removed from the chat chain, the mic fallback and Live quick steps on 2026-11-12.',
     }),
     text('gemini-3.5-flash', 'Gemini 3.5 Flash', {
       enabled: true,
@@ -134,8 +134,8 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['image'],
       focusModes: ['media'],
       transport: 'gemini_api',
-      enabled: true,
-      notes: 'lib/ai/geminiImagen (opt-in GEMINI_IMAGEN_ENABLED). 404 on Vertex AI for this project (Part 0, 2026-10-08), so API key only. No runtime record here.',
+      enabled: false,
+      notes: 'Retired by Google (2026-06-30) and 404 on Vertex AI for this project (Part 0, 2026-10-08). The opt-in lib/ai/geminiImagen leg was removed (v5.1 M-14); kept here so a saved choice gets an explicit "disabled".',
     },
 
     // ── Video (Veo on Vertex AI, lib/veo/capabilities DEFAULT_MODEL_IDS; the Gemini API ids are history, v3.1) ─────
@@ -200,7 +200,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       transport: 'either',
       enabled: true,
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Read-aloud default, verified in Georgian (/api/tts/gemini). ${NEW_KEY} Not yet tried on Vertex AI.`,
+      notes: `Read-aloud default until 2026-11-12; now only the GEMINI_TTS_MODEL rollback. On Vertex AI it answered HTTP 500 twice (certification #269) and its Developer-API id shuts down 2026-11-17.`,
     },
     ...(
       [
@@ -218,8 +218,38 @@ export const MODEL_CATALOG: ModelCatalog = {
       transport: 'either',
       enabled: true,
       verifiedAt: NEW_KEY_2026_10_02,
-      notes: `Allowlisted by GEMINI_TTS_MODEL. ${NEW_KEY} Georgian not checked.`,
+      notes: id === 'gemini-3.8-flash-tts'
+        ? 'Read-aloud default since 2026-11-12 (GA on Vertex AI 2026-10-26). Georgian paid probe: scripts/certify/vertex-contract-plan-3.json.'
+        : `Allowlisted by GEMINI_TTS_MODEL. ${NEW_KEY} Georgian not checked.`,
     })),
+    {
+      id: 'gemini-3.5-transcribe-preview',
+      label: 'Gemini 3.5 Transcribe Preview',
+      provider: 'google',
+      family: 'gemini',
+      capabilities: ['transcribe'],
+      focusModes: ['stt'],
+      transport: 'either',
+      enabled: true,
+      notes:
+        'Owner-only mic trial (`?stt=`, lib/voice/sttTrial; lib/ai/google/models STT_MODELS), never the default or a step-down. ' +
+        'Sent audio only, no prompt (lib/voice-v2v/geminiStt isTranscribeModel). The id comes from public model listings: ' +
+        'no runtime record here, not checked on Vertex AI or in Georgian.',
+    },
+    {
+      id: 'chirp_3',
+      label: 'Chirp 3 (Cloud Speech-to-Text)',
+      provider: 'google',
+      family: 'specialty',
+      capabilities: ['transcribe'],
+      focusModes: ['stt'],
+      transport: 'vertex',
+      enabled: true,
+      notes:
+        'Owner-only mic trial (`?stt=chirp_3`, lib/voice/sttTrial; lib/ai/google/models CHIRP_STT_MODEL), never the default or a step-down. ' +
+        'Speech-to-Text V2 recognize at `us` on the Vertex project and Workload Identity token (lib/voice-v2v/chirpStt), told to expect ' +
+        'ka-GE (Preview), ru-RU and en-US; $0.016 per audio minute. No runtime record here: the API may still be off on the project.',
+    },
     {
       id: 'gemini-2.5-flash-native-audio-latest',
       label: 'Gemini 2.5 Flash Native Audio (Live)',

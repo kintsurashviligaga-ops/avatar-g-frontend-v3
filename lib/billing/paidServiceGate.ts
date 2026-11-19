@@ -44,7 +44,7 @@ export function serviceQuoteKey(env: NodeJS.ProcessEnv = process.env): string {
 /** What renders each gated service: the model its route's budget estimate names, and how it is reached. */
 export const SERVICE_ENGINE: Readonly<Record<GatedService, { model: string; transport: string }>> = {
   dubbing: { model: 'eleven-multilingual-v2', transport: 'elevenlabs' },
-  presentation: { model: 'gemini-imagen', transport: 'vertex' },
+  presentation: { model: 'gemini-3.1-flash-image', transport: 'vertex' },
 };
 
 /** The binding a service quote signs and its confirmation requires again (quoteToken v2). `units` is what the price counts. */

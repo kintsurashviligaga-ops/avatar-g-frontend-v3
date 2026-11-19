@@ -28,7 +28,8 @@ concurrency:
 jobs:
   read-aloud:
     name: read-aloud (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to Ubuntu 26.04, where Playwright 1.58 cannot install its browsers.
     # `playwright install --with-deps` alone can take 10-12 minutes on a slow runner (see e2e.yml).
     timeout-minutes: 30
     strategy:

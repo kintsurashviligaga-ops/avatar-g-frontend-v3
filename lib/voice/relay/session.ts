@@ -11,11 +11,14 @@
  *   4. forwards only `realtimeInput`, `clientContent` and `toolResponse` frames from the browser (a second `setup`
  *      would replace the lock), and every Vertex frame back unchanged;
  *   5. ends the session on its limits (length, idle, frame size, bytes) and logs one line per session, with the
- *      token usage Vertex reported, so every paid call is accounted for.
+ *      token usage Vertex reported, so every paid call is accounted for;
+ *   6. says hello on connect, acks the setup frame and drops the browser's nudges (lib/voice/relay/wire): an iPhone
+ *      behind iCloud Private Relay held the setup until the browser wrote again.
  *
  * Sockets and the clock are injected, so all of this runs under unit tests without a network.
  */
 import { setupDigest, type TicketClaims } from './ticket';
+import { RELAY_HELLO_FRAME, RELAY_NUDGE_FRAME, RELAY_SETUP_ACK_FRAME } from './wire';
 
 export interface RelayConfig {
   project: string;
@@ -175,6 +178,7 @@ export class RelaySession {
   private bytesIn = 0;
   private bytesOut = 0;
   private framesDropped = 0;
+  private nudges = 0;
   private totalTokens = 0;
   private model = '';
   private location = '';
@@ -194,6 +198,12 @@ export class RelaySession {
 
   get isClosed(): boolean { return this.state === 'closed'; }
 
+  /** The browser's socket is open: tell it this relay acks the setup and takes nudges. */
+  onClientOpen(): void {
+    if (this.state === 'closed') return;
+    this.d.client.send(RELAY_HELLO_FRAME, false);
+  }
+
   onClientMessage(data: string | Buffer): void {
     if (this.state === 'closed') return;
     const size = typeof data === 'string' ? Buffer.byteLength(data, 'utf8') : data.length;
@@ -202,6 +212,8 @@ export class RelaySession {
     if (this.bytesIn > this.d.cfg.maxClientBytes) return this.end(RELAY_CLOSE.bytesLimit, 'bytes_limit', 'relay');
     this.armIdle();
     const text = typeof data === 'string' ? data : data.toString('utf8');
+    // Only a write that pushes a held setup through: never the setup, never forwarded.
+    if (text === RELAY_NUDGE_FRAME) { this.nudges++; return; }
 
     if (this.state === 'awaiting_setup') return this.startUpstream(text);
     if (!clientFrameAllowed(text)) {
@@ -239,6 +251,7 @@ export class RelaySession {
     if (!check.ok) return this.end(check.code, check.reason, 'relay');
     this.state = 'connecting';
     this.setupAt = this.d.now();
+    this.d.client.send(RELAY_SETUP_ACK_FRAME, false);
     this.model = check.model;
     this.location = check.location;
     this.resume = check.resume;
@@ -307,6 +320,7 @@ export class RelaySession {
       bytesIn: this.bytesIn,
       bytesOut: this.bytesOut,
       framesDropped: this.framesDropped,
+      nudges: this.nudges,
       totalTokens: this.totalTokens,
     });
   }
