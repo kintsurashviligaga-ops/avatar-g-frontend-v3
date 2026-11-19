@@ -296,7 +296,7 @@ const LibraryCard = memo(function LibraryCard({
               <button
                 type="button"
                 onClick={togglePlay}
-                aria-label="Play"
+                aria-label={locale === 'en' ? 'Play' : locale === 'ru' ? 'Воспроизвести' : 'დაკვრა'}
                 className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/10"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 ring-1 ring-app-border/20 backdrop-blur-sm">

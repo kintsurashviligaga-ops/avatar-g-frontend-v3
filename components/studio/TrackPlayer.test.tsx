@@ -18,14 +18,14 @@ afterEach(() => jest.restoreAllMocks());
 
 test('the note follows the engine on the provenance line', () => {
   const note = musicControlsNote('prompt', { weirdness: 90, styleInfluence: 50 }, 'en');
-  const { container } = render(<TrackPlayer url="https://storage.example/t.mp3" label="Music" engine="Lyria" note={note} />);
+  const { container } = render(<TrackPlayer url="https://storage.example/t.mp3" label="Music" locale="en" engine="Lyria" note={note} />);
   expect(screen.getByText('Generated with Lyria')).toBeTruthy();
   expect(container.querySelector('[data-track-note]')!.textContent).toBe('≈ sliders approximate');
 });
 
 test('no note when the sliders were left alone — the line reads exactly as before', () => {
   const note = musicControlsNote('prompt', { weirdness: 50, styleInfluence: 50 }, 'en');
-  const { container } = render(<TrackPlayer url="https://storage.example/t.mp3" label="Music" engine="Lyria" note={note} />);
+  const { container } = render(<TrackPlayer url="https://storage.example/t.mp3" label="Music" locale="en" engine="Lyria" note={note} />);
   expect(screen.getByText('Generated with Lyria')).toBeTruthy();
   expect(container.querySelector('[data-track-note]')).toBeNull();
 });
@@ -40,7 +40,7 @@ test('primary Music Create player renders the new preview card, not the retired 
   expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
   expect(screen.getByRole('slider', { name: 'გადახვევა' })).toBeTruthy();
   expect(screen.getByTestId('music-equalizer')).toBeInTheDocument();
-  expect(screen.getByText('Generated with Lyria')).toBeTruthy();
+  expect(screen.getByText('შექმნილია: Lyria')).toBeTruthy();
 });
 
 test('English labels, supplied cover and real signed URL survive primary-player handoff', () => {
@@ -58,6 +58,16 @@ test('provider metadata is folded by default but remains inspectable', () => {
   const details = document.querySelector('details') as HTMLDetailsElement;
   expect(details).toBeInTheDocument();
   expect(details.open).toBe(false);
-  expect(screen.getByText('Generated with Lyria')).toBeInTheDocument();
+  expect(screen.getByText('შექმნილია: Lyria')).toBeInTheDocument();
+  expect(screen.getByLabelText('ტრეკის ინფორმაცია')).toBeInTheDocument();
   expect(screen.queryByText('MyAvatar Music Studio')).not.toBeInTheDocument();
+});
+
+test('the provenance line speaks the visitor\'s language (no English left for ka/ru)', () => {
+  const { unmount } = render(<TrackPlayer url="https://storage.example/t.mp3" label="Музыка" locale="ru" engine="Lyria" />);
+  expect(screen.getByText('Создано с помощью Lyria')).toBeInTheDocument();
+  expect(screen.getByLabelText('Информация о треке')).toBeInTheDocument();
+  unmount();
+  render(<TrackPlayer url="https://storage.example/t.mp3" label="მუსიკა" engine="Lyria" />);
+  expect(screen.queryByText(/Generated with/)).toBeNull();
 });

@@ -9958,7 +9958,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.audioUrl && !m.audioJob && !m.runJob && (
                   <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                     {/* Polished Suno-style player (album art + play/scrub/time). */}
-                    <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={m.audioName ?? t.modeMusic} engine={m.engine} note={m.audioInfo ?? musicControlsNote(m.musicControlsMode, m.regen?.kind === 'music' ? m.regen : undefined, locale)} />
+                    <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={m.audioName ?? t.modeMusic} engine={m.engine} note={m.audioInfo ?? musicControlsNote(m.musicControlsMode, m.regen?.kind === 'music' ? m.regen : undefined, locale)} locale={locale} />
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
@@ -10346,7 +10346,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {/* VECTOR 3 — a generated track referenced in text ([Audio: url]) renders as a native player + actions. */}
                       {parsed.audioUrls.map((url, k) => (
                         <div key={`audblk-${k}`} className="mt-2 w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
-                          <TrackPlayer url={url} label={t.modeMusic} />
+                          <TrackPlayer url={url} label={t.modeMusic} locale={locale} />
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                             <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.mp3`)} title={t.imgDownload} aria-label={t.imgDownload}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90"><Download size={15} /></button>
