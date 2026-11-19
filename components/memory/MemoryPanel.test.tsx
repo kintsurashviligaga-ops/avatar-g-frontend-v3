@@ -73,3 +73,36 @@ test('a delete-all that fails says so and shows what is left', async () => {
   expect(await screen.findByText('That did not work. Try again.')).toBeInTheDocument();
   expect(await screen.findByText('Gaga')).toBeInTheDocument();
 });
+
+test('a failed save shows readable copy, never the server text (Phase 7.6)', async () => {
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const base = (global as unknown as { fetch: jest.Mock }).fetch;
+  (global as unknown as { fetch: unknown }).fetch = jest.fn(async (url: string, init?: RequestInit) => {
+    if ((init?.method ?? 'GET').toUpperCase() === 'POST') {
+      return { ok: false, status: 500, json: async () => ({ error: 'PostgresError: relation "memories" does not exist' }) } as Response;
+    }
+    return base(url, init);
+  });
+  render(<MemoryPanel />);
+  await screen.findByText('Gaga');
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'I prefer short answers' } });
+  fireEvent.click(screen.getByRole('button', { name: /დამახსოვრება|შენახვა/ }));
+  expect(await screen.findByText('ვერ შევინახეთ. სცადე თავიდან.')).toBeInTheDocument();
+  expect(screen.queryByText(/PostgresError/)).not.toBeInTheDocument();
+  warn.mockRestore();
+});
+
+test('a rate-limited save says so in the page language', async () => {
+  const base = (global as unknown as { fetch: jest.Mock }).fetch;
+  (global as unknown as { fetch: unknown }).fetch = jest.fn(async (url: string, init?: RequestInit) => {
+    if ((init?.method ?? 'GET').toUpperCase() === 'POST') {
+      return { ok: false, status: 429, json: async () => ({ error: 'rate_limited' }) } as Response;
+    }
+    return base(url, init);
+  });
+  render(<MemoryPanel locale="en" />);
+  await screen.findByText('Gaga');
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'I prefer short answers' } });
+  fireEvent.click(screen.getByRole('button', { name: /save/i }));
+  expect(await screen.findByText('Too many requests. Wait a minute and try again.')).toBeInTheDocument();
+});
