@@ -25,6 +25,7 @@ import { langOf } from '../copy';
 import { newId, totalSec as editTotal, type Edit, type MediaSource } from '../project';
 import { applyBeat, applySilence, applyTemplate, captionSeconds, captionSources, glitchEveryCut, type SmartState } from './smartEdit';
 import { SMART_COPY, STYLE_LABEL, FX_LABEL, type SmartCopyKey } from './smartCopy';
+import type { RunResult, SmartStep } from './smartActions';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -40,6 +41,8 @@ export interface SmartPanelProps {
   onDone: () => void;
   /** Injected for tests; the browser's fetch otherwise. */
   fetcher?: typeof fetch;
+  /** What Agent G's smart edit just did (PR C): listed at the top, and its captions choice preselected (not bought). */
+  agentRun?: { steps: readonly SmartStep[]; captionsOp: RunResult['captionsOp'] } | null;
 }
 
 type Busy = null | 'quote' | 'captions' | 'pauses' | 'beat';
@@ -94,6 +97,19 @@ function Primary({ onClick, children, testId, disabled, busy }: { onClick: () =>
   );
 }
 
+/** One line per step of Agent G's run, in the person's language; null for a step with nothing to say. */
+function agentLine(s: SmartStep, l: 'ka' | 'en' | 'ru', t: (k: SmartCopyKey, v?: Record<string, string | number>) => string): string | null {
+  if (s.op === 'removeSilence' && (s.status === 'done' || s.status === 'too_many_pieces')) {
+    const [n, sec] = String(s.detail ?? '0|0').split('|');
+    return s.status === 'done' ? t('agent_removeSilence_done', { n: n ?? 0, sec: sec ?? 0 }) : t('agent_removeSilence_too_many_pieces');
+  }
+  if (s.op === 'beatSync' && s.status === 'done') return s.detail === 'even' ? t('agent_beatSync_even') : t('agent_beatSync_done', { bpm: s.detail ?? '' });
+  if (s.op === 'template' && s.status === 'done') return t('agent_template_done', { v: s.detail && s.detail in TEMPLATES ? TEMPLATES[s.detail as TemplateId].name[l] : String(s.detail) });
+  if ((s.op === 'aspect' || s.op === 'transition') && s.status === 'done') return t(`agent_${s.op}_done`, { v: String(s.detail ?? '') });
+  const key = `agent_${s.op}_${s.status}`;
+  return key in SMART_COPY ? t(key as SmartCopyKey) : null;
+}
+
 export function SmartPanel(p: SmartPanelProps) {
   const l = langOf(p.locale);
   const t = useCallback((k: SmartCopyKey, vars: Record<string, string | number> = {}) => {
@@ -104,9 +120,10 @@ export function SmartPanel(p: SmartPanelProps) {
   const f = p.fetcher ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const [busy, setBusy] = useState<Busy>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [lang, setLang] = useState<CaptionLang>(p.smart.captions?.lang ?? (l === 'ka' ? 'ka' : l === 'ru' ? 'ru' : 'en'));
-  const [style, setStyle] = useState<CaptionStyleId>(p.smart.captions?.style ?? 'bold-word');
-  const [pos, setPos] = useState<CaptionPos>(p.smart.captions?.pos ?? 'bottom');
+  const asked = p.agentRun?.captionsOp ?? null;
+  const [lang, setLang] = useState<CaptionLang>(asked?.lang ?? p.smart.captions?.lang ?? (l === 'ka' ? 'ka' : l === 'ru' ? 'ru' : 'en'));
+  const [style, setStyle] = useState<CaptionStyleId>(asked?.style ?? p.smart.captions?.style ?? 'bold-word');
+  const [pos, setPos] = useState<CaptionPos>(asked?.pos ?? p.smart.captions?.pos ?? 'bottom');
   const [sensitivity, setSensitivity] = useState<Sensitivity>('normal');
   const [fillers, setFillers] = useState(true);
   const [pausePlans, setPausePlans] = useState<Array<{ clipId: string; plan: SilencePlan }> | null>(null);
@@ -225,6 +242,17 @@ export function SmartPanel(p: SmartPanelProps) {
 
   return (
     <PanelShell title={t('title')} onDone={p.onDone} doneLabel={t('done')} testId="montage-panel-smart">
+      {p.agentRun && p.agentRun.steps.length > 0 && (
+        <div className="mb-3 rounded-xl bg-app-elevated px-3 py-2.5" data-testid="smart-agent-run">
+          <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-app-text"><Wand2 size={13} aria-hidden="true" />{t('agentTitle')}</p>
+          <ul className="space-y-1 text-[12px] text-app-muted">
+            {p.agentRun.steps.map((s, i) => {
+              const line = agentLine(s, l, t);
+              return line ? <li key={`${s.op}-${i}`} data-testid={`smart-agent-step-${s.op}`} data-status={s.status}>{s.status === 'done' || s.status === 'waits_for_tap' ? '✓ ' : '· '}{line}</li> : null;
+            })}
+          </ul>
+        </div>
+      )}
       {note && <p role="status" className="mb-3 rounded-lg bg-app-elevated px-3 py-2 text-[12px] text-app-text" data-testid="smart-note">{note}</p>}
 
       <Section icon={<Sparkles size={14} aria-hidden="true" />} title={t('template')} testId="smart-templates">

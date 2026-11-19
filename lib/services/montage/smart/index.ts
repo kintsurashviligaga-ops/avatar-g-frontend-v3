@@ -12,3 +12,4 @@ export * from './price';
 export * from './ops';
 export * from './beat';
 export * from './captionSvg';
+export * from './sentence';
