@@ -23,7 +23,8 @@ enabled = false
 [studio]
 enabled = false
 
-[inbucket]
+# Supabase CLI 3.0.0 renamed [inbucket] to [local_smtp] and refuses the old name. The workflows install the latest CLI.
+[local_smtp]
 enabled = false
 
 [realtime]

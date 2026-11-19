@@ -4337,3 +4337,8 @@ html:has(.app-native-shell), body:has(.app-native-shell) {
   background-repeat: no-repeat !important;
   background-size: 100% 100% !important;
 }
+
+/* Agent G's computer beside the page (components/agent/AgentScreenPanel, GG 2026-11-07 09:36Z): on a wide screen the page
+   moves left to make room while the panel is open. */
+:root { --agent-screen-w: min(42vw, 600px); }
+html.agent-screen-open body { padding-right: var(--agent-screen-w); }

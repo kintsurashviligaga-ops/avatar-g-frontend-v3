@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "approvedBy": "owner decision card 2026-11-06 06:01Z \"Chirp + Gemini TTS ერთხელ\": Chirp 3 twice on the recorded Georgian MP3 and Gemini TTS once more, about $0.03; inside the 2026-11-05 $5 cap (first run about $2.18)",
+  "capUsd": 0.1,
+  "inputs": {
+    "ka-mp3": {
+      "file": "out/media/cloud-tts-ka.mp3",
+      "mimeType": "audio/mpeg",
+      "sha256": "5d16adfc9851ceacc95345b10e8c8e04f7d2ba2c241acecd0ef7b1a7b6deb6f5",
+      "spoken": "ეს არის ქართული ხმის შემოწმება ვიდეოსთვის."
+    }
+  },
+  "calls": [
+    {
+      "id": "gemini-tts-2",
+      "model": "gemini-2.5-flash-preview-tts",
+      "adapter": "app/api/tts/gemini/route.ts (read-aloud): Georgian, default voice Aoede, no languageCode (the first run's call answered 500 INTERNAL)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent",
+      "estimateUsd": 0.01,
+      "body": {
+        "contents": [{ "role": "user", "parts": [{ "text": "Read aloud verbatim: გამარჯობა, ეს არის ხმის მოკლე შემოწმება." }] }],
+        "generationConfig": {
+          "responseModalities": ["AUDIO"],
+          "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Aoede" } } }
+        }
+      }
+    },
+    {
+      "id": "chirp-listed",
+      "model": "chirp_3",
+      "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp: the listed-languages request",
+      "kind": "sync",
+      "url": "https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize",
+      "estimateUsd": 0.01,
+      "requires": ["ka-mp3"],
+      "body": {
+        "config": { "autoDecodingConfig": {}, "model": "chirp_3", "languageCodes": ["ka-GE", "ru-RU", "en-US"] },
+        "content": "{{ka-mp3.base64}}"
+      }
+    },
+    {
+      "id": "chirp-ka",
+      "model": "chirp_3",
+      "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp: the Georgian-only request sent beside it",
+      "kind": "sync",
+      "url": "https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize",
+      "estimateUsd": 0.01,
+      "requires": ["ka-mp3"],
+      "body": {
+        "config": { "autoDecodingConfig": {}, "model": "chirp_3", "languageCodes": ["ka-GE"] },
+        "content": "{{ka-mp3.base64}}"
+      }
+    }
+  ]
+}

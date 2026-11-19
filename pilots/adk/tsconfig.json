@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": { "@/*": ["*"] },
+    "typeRoots": ["../../node_modules/@types"],
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*.ts"]
+}

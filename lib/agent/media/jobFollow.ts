@@ -24,6 +24,7 @@ export const SEND_TRIES = 3;
 export const FOLLOW_MS = 25 * 60_000;
 
 import type { TaskView } from '@/lib/tasks/taskView';
+import { STREAM_WAIT_MS, type TaskWatch } from './taskStream';
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -40,6 +41,11 @@ export interface FollowDeps {
    * afresh) ends quietly instead of reading the job for 25 more minutes on behalf of nothing: the new studio follows it.
    */
   alive?: () => boolean;
+  /**
+   * The task's live stream (./taskStream watchTask), when the browser can hold one: the follow waits on it instead of a
+   * fixed interval, so each step change reaches the card at once. Absent or dead: the follow reads every POLL_MS.
+   */
+  watch?: (jobId: string) => TaskWatch | null;
 }
 
 /** The `run` answer as a job's route reports it (an executor's JobView). */
@@ -132,36 +138,53 @@ export async function followTask<R>(
   let readNow = !!from.readNow;
   const until = deps.now() + FOLLOW_MS;
   let unknown = 0;
-  while (deps.now() < until) {
-    if (deps.alive && !deps.alive()) return spec.lost('network');
-    if (readNow) readNow = false;
-    else await deps.sleep(POLL_MS);
-    if (deps.alive && !deps.alive()) return spec.lost('network');
-    let res: Response;
-    let body: Record<string, unknown> | null;
-    try {
-      res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(spec.jobId)}`, { credentials: 'include', cache: 'no-store' });
-      body = await readJson(res);
-    } catch {
-      continue; // offline for a moment: the job goes on
+  // The live stream, once the job is known to exist (a run never queued has nothing to stream yet).
+  let watch: TaskWatch | null = null;
+  try {
+    while (deps.now() < until) {
+      if (deps.alive && !deps.alive()) return spec.lost('network');
+      if (!watch && queued && deps.watch) watch = deps.watch(spec.jobId);
+      if (readNow) readNow = false;
+      else if (watch && !watch.dead) {
+        // The stream hands the task over the moment it changes; a quiet stream still gets a read of our own.
+        const streamed = await watch.next(STREAM_WAIT_MS);
+        if (deps.alive && !deps.alive()) return spec.lost('network');
+        if (streamed) {
+          const end = spec.done(streamed);
+          if (end) return end;
+          report(streamed);
+          continue;
+        }
+      } else await deps.sleep(POLL_MS);
+      if (deps.alive && !deps.alive()) return spec.lost('network');
+      let res: Response;
+      let body: Record<string, unknown> | null;
+      try {
+        res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(spec.jobId)}`, { credentials: 'include', cache: 'no-store' });
+        body = await readJson(res);
+      } catch {
+        continue; // offline for a moment: the job goes on
+      }
+      const task = body?.ok === true && body.task && typeof body.task === 'object' ? (body.task as TaskView) : null;
+      if (res.ok && task) {
+        queued = true;
+        const end = spec.done(task);
+        if (end) return end;
+        report(task);
+        continue;
+      }
+      if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
+        // No such job: the run never got through (or this is not the user's). Give it a few reads, then say so.
+        if (queued || ++unknown >= 3) return spec.lost(queued ? 'not_found' : from.neverFound);
+        continue;
+      }
+      if (res.status === 401 || res.status === 404) return spec.refused(res.status, body);
+      // 429 or a 5xx: read again on the next tick.
     }
-    const task = body?.ok === true && body.task && typeof body.task === 'object' ? (body.task as TaskView) : null;
-    if (res.ok && task) {
-      queued = true;
-      const end = spec.done(task);
-      if (end) return end;
-      report(task);
-      continue;
-    }
-    if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
-      // No such job: the run never got through (or this is not the user's). Give it a few reads, then say so.
-      if (queued || ++unknown >= 3) return spec.lost(queued ? 'not_found' : from.neverFound);
-      continue;
-    }
-    if (res.status === 401 || res.status === 404) return spec.refused(res.status, body);
-    // 429 or a 5xx: read again on the next tick.
+    return spec.lost('network');
+  } finally {
+    watch?.close();
   }
-  return spec.lost('network');
 }
 
 /** When a task ended, in ms (its row's last write): a card taken back later stops its clock there, not on the reload. */

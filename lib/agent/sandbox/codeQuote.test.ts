@@ -1,7 +1,8 @@
 /** @jest-environment node */
 import { CODE_RUN_LIMITS, codeRequestOf, quoteCodeRun, runCodeQuote, type CodeDeps } from './codeQuote';
 import { worstCaseUsd } from './budget';
-import type { SandboxPlan, SandboxRunner } from './policy';
+import type { SandboxIO, SandboxPlan, SandboxRunner } from './policy';
+import { memoryBlobs, workspaceStore } from '@/lib/agent/workspace/store';
 
 const U = '11111111-2222-3333-4444-555555555555';
 
@@ -30,10 +31,12 @@ function deps(over: Partial<CodeDeps> = {}) {
 const sig = new AbortController().signal;
 
 describe('codeQuote', () => {
-  it('reads python / node (and js / py) only', () => {
+  it('reads python / node / shell (and js / py / bash / sh) only', () => {
     expect(codeRequestOf({ language: 'py', code: 'x' })).toEqual({ language: 'python', code: 'x' });
     expect(codeRequestOf({ language: 'javascript', code: 'x' })).toEqual({ language: 'node', code: 'x' });
-    expect(codeRequestOf({ language: 'bash', code: 'x' })).toBeNull();
+    expect(codeRequestOf({ language: 'bash', code: 'x' })).toEqual({ language: 'shell', code: 'x' });
+    expect(codeRequestOf({ language: 'ruby', code: 'x' })).toBeNull();
+    expect(codeRequestOf({ language: 'python', code: 'x', workspaceId: '../etc' })).toBeNull();
     expect(codeRequestOf({ language: 'python', code: 3 })).toBeNull();
   });
 
@@ -97,5 +100,65 @@ describe('codeQuote', () => {
     const q = quoteCodeRun(d, { userId: U, request: { language: 'python', code: 'print(1)' } });
     if (!q.ok) throw new Error('quote');
     expect(await runCodeQuote(d, { userId: U, request: q.request, token: q.token }, sig)).toEqual({ ok: false, error: 'refused', message: 'Sandbox budget of $20 is used up.' });
+  });
+
+  describe('workspace run', () => {
+    async function wsSetup() {
+      const store = workspaceStore(memoryBlobs());
+      const w = await store.create(U, 'Agent G');
+      if (!w.ok) throw new Error('create');
+      await store.write(U, w.workspace.id, 'data/in.csv', Buffer.from('a,b\n1,2\n'), 'user');
+      await store.write(U, w.workspace.id, 'notes.txt', Buffer.from('keep'), 'user');
+      const seen: SandboxIO[] = [];
+      const runner: SandboxRunner = {
+        async run(_plan, _sig, io) {
+          seen.push(io!);
+          return {
+            ok: true, exitCode: 0, stdout: 'ok\n', stderr: '', outputs: [], wallMs: 10,
+            collected: [
+              { path: 'out/chart.png', bytes: Buffer.from('png') },
+              { path: 'notes.txt', bytes: Buffer.from('keep') },
+            ],
+            skipped: ['huge.bin (over 10 MB)'],
+          };
+        },
+      };
+      const { d } = deps({ runner: () => runner, workspace: () => store });
+      return { store, id: w.workspace.id, d, seen };
+    }
+
+    it('binds the workspace into the signed plan: another workspace is a changed plan', async () => {
+      const { d, id } = await wsSetup();
+      const q = quoteCodeRun(d, { userId: U, request: { language: 'python', code: 'x', workspaceId: id } });
+      if (!q.ok) throw new Error(q.message);
+      expect(q.quote.workspaceId).toBe(id);
+      const r = await runCodeQuote(d, { userId: U, request: { language: 'python', code: 'x', workspaceId: 'ws_another1' }, token: q.token }, sig);
+      expect(r).toMatchObject({ ok: false, error: 'quote_changed' });
+    });
+
+    it('puts the live files in, saves what the program wrote as versions of this run, lists only real changes', async () => {
+      const { d, id, store, seen } = await wsSetup();
+      const request = { language: 'python', code: 'x', workspaceId: id };
+      const q = quoteCodeRun(d, { userId: U, request });
+      if (!q.ok) throw new Error(q.message);
+      const r = await runCodeQuote(d, { userId: U, request, token: q.token }, sig);
+      if (!r.ok) throw new Error(r.message);
+      expect(seen[0]!.inputs.map((f) => f.path)).toEqual(['data/in.csv', 'notes.txt']);
+      expect(seen[0]!.accept('../x')).toBe(false);
+      expect(r.workspace!.written.map((f) => [f.path, f.by])).toEqual([['out/chart.png', `run:${q.quote.jobId}`]]);
+      expect(r.workspace!.skipped).toEqual(['huge.bin (over 10 MB)']);
+      const l = await store.files(U, id);
+      expect(l.ok && l.files.map((f) => f.path)).toEqual(['data/in.csv', 'notes.txt', 'out/chart.png']);
+    });
+
+    it('an unknown workspace runs nothing; no store configured refuses the quote', async () => {
+      const { d } = await wsSetup();
+      const request = { language: 'python', code: 'x', workspaceId: 'ws_missing1' };
+      const q = quoteCodeRun(d, { userId: U, request });
+      if (!q.ok) throw new Error(q.message);
+      expect(await runCodeQuote(d, { userId: U, request, token: q.token }, sig)).toMatchObject({ ok: false, error: 'bad_input' });
+      const { d: bare } = deps();
+      expect(quoteCodeRun(bare, { userId: U, request })).toMatchObject({ ok: false, error: 'not_configured' });
+    });
   });
 });

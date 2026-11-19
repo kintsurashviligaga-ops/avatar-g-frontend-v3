@@ -20,7 +20,9 @@ describe('the live registry as declarations', () => {
       expect(d.name in CONFIRMED_ACTIONS).toBe(false);
       expect(d.description.length).toBeGreaterThan(20);
     }
-    for (const s of LIVE_TOOL_SPECS) expect(['read', 'inspect', 'prepare', 'quote']).toContain(s.effect);
+    for (const s of LIVE_TOOL_SPECS) expect(['read', 'inspect', 'prepare', 'quote', 'versioned']).toContain(s.effect);
+    // 'versioned' is the user's own workspace only, where every change keeps the version before it.
+    for (const s of LIVE_TOOL_SPECS.filter((t) => t.effect === 'versioned')) expect(s.name).toMatch(/^workspace_/);
   });
 
   test('analyze_media: a file by its number or a link, a focus enum, all optional; no path field', () => {

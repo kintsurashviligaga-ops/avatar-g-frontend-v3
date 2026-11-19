@@ -71,9 +71,13 @@ export function missCause(body: unknown): string | null {
   return [head, detail].filter(Boolean).join(': ') || null;
 }
 
+/**
+ * `timing` is the route's `Server-Timing` header (lib/speech/timing), which it sends to the owner's listening trial
+ * only; absent otherwise.
+ */
 export type SpeechResult =
-  | { readonly ok: true; readonly answer: SpeechAnswer }
-  | { readonly ok: false; readonly miss: SpeechMiss };
+  | { readonly ok: true; readonly answer: SpeechAnswer; readonly timing?: string }
+  | { readonly ok: false; readonly miss: SpeechMiss; readonly timing?: string };
 
 const NO_ANSWER: SpeechResult = { ok: false, miss: { status: 0, error: null } };
 
@@ -101,18 +105,21 @@ export async function speechResult(
     });
     // Signed out (the session ended while the page stayed open): the app's sign-in prompt opens instead of a silent miss.
     if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+    const timing = res.headers?.get?.('Server-Timing') ?? null;
+    const withTiming = timing ? { timing } : {};
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
       const cause = missCause(body);
       return {
         ok: false,
         miss: { status: res.status, error: typeof body?.error === 'string' ? body.error : null, ...(cause ? { cause } : {}) },
+        ...withTiming,
       };
     }
     const blob = await res.blob();
     // Cancelled while the body was arriving: the caller has moved on, so nothing is handed back to play.
     if (deadline.signal.aborted || !blob.size) return NO_ANSWER;
-    return { ok: true, answer: { blob, profile: speechProfile(res.headers) } };
+    return { ok: true, answer: { blob, profile: speechProfile(res.headers) }, ...withTiming };
   } catch {
     return NO_ANSWER;
   } finally {

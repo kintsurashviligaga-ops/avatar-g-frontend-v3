@@ -22,7 +22,7 @@ import { OUTPUT_FPS } from '@/lib/services/montage/beatPlan';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, mustStop, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
-import { BUDGET_REASONS, MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
+import { BUDGET_REASONS, MONTAGE_KIND, VEO_CUTAWAY_CREDITS, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
 import { budgetReasonOf, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, audioTiming, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, sourceContribution, type ClipVerdict, type QcOutcome } from './montageAsk';
 import { checkManifest, isPictureKind, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
@@ -154,6 +154,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     try {
       outcome = await deps.render(request, {
         jobId,
+        userId: row.userId,
         signal: ctl.signal,
         onStage: (step, pct) => deps.store.progress(jobId, worker, step, pct),
       });
@@ -219,6 +220,15 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
       result: { videoUrl, subtype: 'montage', via: 'agent-g', durationSec: qc.durationSec, aspect: request.aspect, ...evidence },
     });
     if (!delivered) return halted(await afterLoss());
+    // Generated cutaways Veo could not make were charged in the quote: their share is paid back now, once (the
+    // delivered row can no longer fail, so this is the only refund the ref ever gets).
+    const missed = outcome.result.veoMissed ?? 0;
+    const reserve = reserveOf(row);
+    if (missed > 0 && reserve) {
+      const back = Math.min(reserve.credits, missed * VEO_CUTAWAY_CREDITS);
+      const paid = await deps.billing.refund(userId, reserve.ref, back).catch(() => 'error' as const);
+      await deps.audit({ ...run, userId, op: 'montage', phase: 'refund', outcome: paid === 'error' ? 'failed' : 'ok', jobId, credits: back, detail: `generated cutaways not made: ${missed} (${paid})` });
+    }
     await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, credits, attempt, durationSec: qc.durationSec, detail: 'delivered' });
     return { ran: true, outcome: 'delivered', videoUrl };
   } finally {

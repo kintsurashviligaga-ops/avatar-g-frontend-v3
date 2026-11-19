@@ -1,0 +1,16 @@
+{
+  "body": {
+    "name": "projects/{project}/locations/us-central1/publishers/google/models/veo-3.1-generate-001/operations/43d02fd2-d535-4f8f-a0f2-6cbccd36f287",
+    "done": true,
+    "response": {
+      "@type": "type.googleapis.com/cloud.ai.large_models.vision.GenerateVideoResponse",
+      "raiMediaFilteredCount": 0,
+      "videos": [
+        {
+          "bytesBase64Encoded": "<media bytes=572910 sha256=d8c2cf1feefbf84b402fe1d920f50482545a3fe58502b02865cb2c24fd67c463>",
+          "mimeType": "video/mp4"
+        }
+      ]
+    }
+  }
+}

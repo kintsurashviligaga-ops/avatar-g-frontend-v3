@@ -39,7 +39,8 @@ import { SPEECH_CHUNK_RAMP, chunkSpeech, type SpeechChunk, type SpeechChunkOptio
 import type { SpeechLocale } from './contract';
 import { speechLocaleOf } from './locale';
 import { fetchSpeech, requestSpeech, speechResult, type SpeechMiss } from './request';
-import { speechTrialModel, speechTrialRecorder, wavAudioMs } from './trial';
+import { parseSpeechTiming, speechTimingRow } from './timing';
+import { speechTrialModel, speechTrialRecorder, wavAudioMs, type SpeechTrialChunk } from './trial';
 import { inspectWav } from './wav';
 import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
@@ -478,11 +479,12 @@ export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlaye
       const result = await speechResult(text, locale, signal);
       if (!signal.aborted) {
         const synthMs = Date.now() - askedAt;
-        speechTrialRecorder().onChunk(
-          result.ok
-            ? { chars: text.length, synthMs, audioMs: wavAudioMs(result.answer.blob.size, result.answer.profile) }
-            : { chars: text.length, synthMs, audioMs: null, miss: trialMiss(result.miss) },
-        );
+        // Where the route's time went (Google, our checks, the network), when it said (GG 2026-11-06: ~4 s a chunk).
+        const timing = parseSpeechTiming(result.timing);
+        const chunk: SpeechTrialChunk = result.ok
+          ? { chars: text.length, synthMs, audioMs: wavAudioMs(result.answer.blob.size, result.answer.profile) }
+          : { chars: text.length, synthMs, audioMs: null, miss: trialMiss(result.miss) };
+        speechTrialRecorder().onChunk(timing ? { ...chunk, timing: speechTimingRow(timing, synthMs) } : chunk);
       }
       return result.ok ? result.answer.blob : null;
     },

@@ -23,13 +23,12 @@ import {
 import { DEFAULT_MODEL_IDS } from '@/lib/veo/capabilities';
 import { RESEARCH_AGENT_ID } from '@/lib/research/pricing';
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
-import { geminiImagenModel } from '@/lib/ai/geminiImagen';
 import { lyriaModel } from '@/lib/ai/lyriaMusic';
 import { GEMINI_EMBED_MODEL } from '@/lib/memory/embed';
 
 const ENV = { ...process.env };
 beforeEach(() => {
-  for (const k of ['GEMINI_FRAME_MODEL', 'GEMINI_IMAGEN_MODEL', 'LYRIA_MODEL']) delete process.env[k];
+  for (const k of ['GEMINI_FRAME_MODEL', 'LYRIA_MODEL']) delete process.env[k];
 });
 afterAll(() => {
   process.env = { ...ENV };
@@ -64,7 +63,7 @@ test('every Google model the code calls by default is catalogued and enabled (D3
   ];
   for (const id of defaults) expect([id, catalogEntry(id)?.enabled]).toEqual([id, true]);
   // Opt-in / env-allowlisted ids must be catalogued too, so a saved or configured choice gets an explicit answer.
-  for (const id of [...STT_MODELS, ...TTS_MODELS, ...LIVE_MODELS, geminiImagenModel()]) expect([id, !!catalogEntry(id)]).toEqual([id, true]);
+  for (const id of [...STT_MODELS, ...TTS_MODELS, ...LIVE_MODELS, 'imagen-4.0-generate-001']) expect([id, !!catalogEntry(id)]).toEqual([id, true]);
 });
 
 test('Veo ids match lib/veo/capabilities per transport, and none is verified before Part 0 T1', () => {
@@ -98,12 +97,13 @@ test('verifiedAt is dated evidence: not after updatedAt, and the notes say where
   expect(resolveModelPreference(MODEL_CATALOG, 'lyria-3-pro-preview')).toEqual({ ok: false, reason: 'disabled' });
 });
 
-test('a selector shows only enabled, verified entries; Imagen 4 and Veo wait for a runtime record', () => {
+test('a selector shows only enabled, verified entries; retired Imagen 4 is off and Veo waits for a runtime record', () => {
   const shown = uiModelEntries(MODEL_CATALOG).map((e) => e.id);
   expect(shown).toEqual(expect.arrayContaining(['gemini-3.8-flash', 'gemini-3.1-flash-image', 'lyria-3-clip-preview']));
   for (const id of ['imagen-4.0-generate-001', 'veo-3.1-fast-generate-001', 'lyria-3-pro-preview']) {
     expect(shown).not.toContain(id);
   }
   expect(resolveModelPreference(MODEL_CATALOG, 'veo-3.1-fast-generate-001')).toEqual({ ok: false, reason: 'not_verified' });
+  expect(resolveModelPreference(MODEL_CATALOG, 'imagen-4.0-generate-001')).toEqual({ ok: false, reason: 'disabled' });
   expect(resolveModelPreference(MODEL_CATALOG, 'gpt-5')).toEqual({ ok: false, reason: 'not_in_catalog' });
 });

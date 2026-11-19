@@ -1,0 +1,43 @@
+{
+  "status": 200,
+  "body": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "inlineData": {
+                "mimeType": "image/png",
+                "data": "<media bytes=1873637 sha256=fb282f114b35a3a2c0a44f36cf805980bdace9569d79aa6c2c12696ed0526c65>"
+              },
+              "thoughtSignature": "<media bytes=1233153 sha256=96b7d6210cb70c6b0b2c0ecbcce0d5874faeba14156abf51a75b1757188438eb>"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 25,
+      "candidatesTokenCount": 1120,
+      "totalTokenCount": 1145,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 25
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "IMAGE",
+          "tokenCount": 1120
+        }
+      ]
+    },
+    "modelVersion": "gemini-3.1-flash-image",
+    "createTime": "2026-11-06T05:54:11.976779Z",
+    "responseId": "g2vtaovPO7by3PQP5_fh6QY"
+  }
+}

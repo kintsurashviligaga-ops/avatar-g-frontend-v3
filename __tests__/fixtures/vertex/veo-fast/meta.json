@@ -1,0 +1,18 @@
+{
+  "model": "veo-3.1-fast-generate-001",
+  "adapter": "lib/veo/vertexClient.ts submitVertexVeo + pollVertexVeo (buildVertexPayload): photo as the first frame, 4 s, 720p, sound",
+  "ms": 52295,
+  "polls": 3,
+  "estimateUsd": 0.4,
+  "at": "2026-11-06T05:54:48.140Z",
+  "media": {
+    "bytes": 1219125,
+    "sha256": "e7ee2467e544fca6af8f564daad80f09645bd8b6a5d4315433b8a28dd065cee9",
+    "mimeType": "video/mp4",
+    "durationSec": 4.011,
+    "width": 1280,
+    "height": 720,
+    "hasVideoTrack": true,
+    "hasAudioTrack": true
+  }
+}

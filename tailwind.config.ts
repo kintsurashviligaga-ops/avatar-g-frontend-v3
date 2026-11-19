@@ -206,6 +206,12 @@ const config: Config = {
           '0%': { opacity: '0', transform: 'translateY(30px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // A step's ✓ as it lands (components/studio/AgentTaskCard).
+        'step-pop': {
+          '0%': { transform: 'scale(0.4)', opacity: '0.4' },
+          '70%': { transform: 'scale(1.12)', opacity: '1' },
+          '100%': { transform: 'scale(1)' },
+        },
         'scale-in': {
           '0%': { opacity: '0', transform: 'scale(0.9)' },
           '100%': { opacity: '1', transform: 'scale(1)' },

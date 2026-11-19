@@ -60,16 +60,3 @@ export function hasElevenLabsApiKey(env: NodeJS.ProcessEnv = process.env): boole
   return resolveElevenLabsApiKey(env) !== null;
 }
 export const ELEVENLABS_API_KEY_ALIASES = ELEVENLABS_KEY_ALIASES;
-
-// ─── Nano Banana (storyboard architect — Gemini 2.5 Flash Image) ─────────────
-// Nano Banana is the Gemini image model, so a bare GEMINI_API_KEY is a valid
-// last-resort alias when no dedicated key is provisioned.
-const NANOBANANA_KEY_ALIASES = ['NANOBANANA_API_KEY', 'NANO_BANANA_API_KEY', 'NANOBANANA_KEY', 'GEMINI_API_KEY'] as const;
-
-export function resolveNanoBananaApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
-  return resolveFromAliases(NANOBANANA_KEY_ALIASES, env);
-}
-export function hasNanoBananaApiKey(env: NodeJS.ProcessEnv = process.env): boolean {
-  return resolveNanoBananaApiKey(env) !== null;
-}
-export const NANOBANANA_API_KEY_ALIASES = NANOBANANA_KEY_ALIASES;

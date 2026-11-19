@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "url": "https://texttospeech.googleapis.com/v1/text:synthesize",
+  "body": {
+    "input": {
+      "text": "Это короткая проверка голоса."
+    },
+    "voice": {
+      "languageCode": "ru-RU",
+      "name": "{{voices-ru.pick}}"
+    },
+    "audioConfig": {
+      "audioEncoding": "MP3",
+      "speakingRate": 1,
+      "pitch": 0
+    }
+  }
+}

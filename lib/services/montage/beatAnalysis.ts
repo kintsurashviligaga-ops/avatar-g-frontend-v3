@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { parseFrameCrc, parseProbeBanner, type BannerProbe, type StreamDurations } from '@/lib/video/probeBanner';
+import { buildDetectArgs, buildSignatureArgs, parseDetectLog, transitionSpans, type ClipSignals } from './segmentDetect';
 import { ANALYSIS_HOP, ANALYSIS_RATE, MAX_ANALYSIS_SEC, energyEnvelope, estimateBeatGrid, onsetStrength, type BeatGrid, type EnergyEnvelope } from './beatPlan';
 
 function bin(): string | null {
@@ -138,4 +139,38 @@ export async function streamDurations(url: string, timeoutMs = 120_000): Promise
   } catch {
     return null;
   }
+}
+
+/**
+ * Where a clip's black runs, hard cuts and silences are (one decode of its first MAX_DETECT_SEC): the evidence the
+ * assembly (./assemblyPlan) cuts its intro, body and outro by. Null = the clip could not be read.
+ */
+export async function detectSegments(url: string, probe?: BannerProbe | null, timeoutMs = 180_000): Promise<ClipSignals | null> {
+  const b = bin();
+  if (!b) return null;
+  const known = probe ?? (await probeMedia(url));
+  if (!known || !known.hasVideo || !(known.durationSec > 0)) return null;
+  let text = '';
+  try {
+    const r = await ffmpegExec(b, buildDetectArgs(url), { maxBuffer: 1 << 24, timeout: timeoutMs });
+    text = r.stderr;
+  } catch (e) {
+    text = stderrOf(e);
+    if (/^ffmpeg input refused/i.test(text) || !/Stream #\d+:\d+/.test(text)) return null;
+  }
+  const sig = parseDetectLog(text, known.durationSec, known.hasAudio);
+  // The picture's own changes (dissolves, wipes): a second, tiny decode; a failure leaves the other evidence standing.
+  const dir = await mkdtemp(join(tmpdir(), 'asm-sig-')).catch(() => null);
+  if (dir) {
+    try {
+      const out = join(dir, 'sig.gray');
+      await ffmpegExec(b, buildSignatureArgs(url, out), { maxBuffer: 1 << 22, timeout: timeoutMs });
+      sig.changes = transitionSpans(new Uint8Array(await readFile(out)));
+    } catch {
+      /* no changes read: blacks, cuts and silences still decide */
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+  return sig;
 }

@@ -1,0 +1,15 @@
+{
+  "model": "gemini-2.5-flash-tts",
+  "adapter": "lib/audio/google-tts.ts synthesizeGoogleTts: Georgian reads with Gemini-TTS on Cloud Text-to-Speech",
+  "ms": 3799,
+  "estimateUsd": 0.01,
+  "at": "2026-11-06T05:54:43.614Z",
+  "media": {
+    "bytes": 18336,
+    "sha256": "5d16adfc9851ceacc95345b10e8c8e04f7d2ba2c241acecd0ef7b1a7b6deb6f5",
+    "mimeType": "audio/mpeg",
+    "durationSec": 4.584,
+    "frames": 191,
+    "sampleRate": 24000
+  }
+}

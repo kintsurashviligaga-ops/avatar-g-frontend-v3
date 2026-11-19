@@ -18,7 +18,7 @@ describe('toolGroups — the studio menus come from the catalog', () => {
     expect(groups.map((g) => [g.id, g.tools])).toEqual([
       ['agent-g', ['chat']],
       ['video', ['video', 'vfx', 'montage']],
-      ['image-photo', ['image', 'interior', 'model3d']],
+      ['image-photo', ['image', 'interior']],
       ['avatar', ['avatar']],
       ['music', ['music']],
     ]);
@@ -31,7 +31,7 @@ describe('toolGroups — the studio menus come from the catalog', () => {
   });
 
   it('finds the group of a tool', () => {
-    expect(groupOfTool('model3d')?.id).toBe('image-photo');
+    expect(groupOfTool('interior')?.id).toBe('image-photo');
     expect(groupOfTool('chat')?.id).toBe('agent-g');
   });
 
@@ -47,7 +47,7 @@ describe('toolGroups — the studio menus come from the catalog', () => {
   });
 
   it('keeps withdrawn tools out of every group and group lookup', () => {
-    for (const tool of ['swap', 'motion', 'photoshoot', 'photo', 'dubbing', 'presentation', 'remix'] as const) {
+    for (const tool of ['swap', 'motion', 'photoshoot', 'photo', 'dubbing', 'presentation', 'remix', 'model3d'] as const) {
       expect(groups.flatMap((g) => g.tools)).not.toContain(tool);
       expect(groupOfTool(tool)).toBeUndefined();
     }

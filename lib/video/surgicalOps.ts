@@ -612,7 +612,13 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
       parts.push(`${vchain}[v${i}]`);
     }
     if (hasAudio[e.src]) {
-      const af = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
+      // A/V SYNC (GG 2026-11-05): `aresample=async=1:first_pts=0` BEFORE the trim lays the source's sound on its own
+      // timestamps, from 0: an audio track that starts after the picture (an AAC priming delay, an edit list, a phone
+      // recording) is padded with silence up to where it really starts, and a gap inside it is filled, so the trim cuts
+      // sound and picture at the SAME source second. Without it a window from 0 took the sound from its first sample and
+      // played it early by the delay (measured on ffmpeg-static 7.0.2: a beep on the flash frame at 1.00 s of a source whose track starts 0.3 s in came out at
+      // 0.72 s; with it, at 1.00 s — lib/agent/media/assembly.ffmpeg.test.ts). Then the uniform 44.1 kHz.
+      const af = ['aresample=async=1:first_pts=0', `atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
       if (sped) af.push(...atempoChainV(f));
       if (e.muted) af.push('volume=0');
       // Video Core v1.0 §4 — the segment's sound lasts EXACTLY its picture (`durOut`): a source whose audio track ends
@@ -673,6 +679,8 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   // the `overlay=...:shortest=1` above is what stops the graph; drop it and the encode never ends.
   // (Same hazard, same rule, as lib/pipeline/compositing/musicVideoGraphics.ts, which bounds it with `-t`.)
   overlayPaths.forEach((p) => args.push('-loop', '1', '-i', p));
+  // NOT `-shortest`: both streams are already conformed to the same length above, and `-shortest` cut the master's last
+  // frame (measured: 260 frames for 261 planned, which the frame-exact QC refuses — lib/agent/media/assembly.ffmpeg.test).
   args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...videoTail(opts.maxrateKbps));
 
   try {

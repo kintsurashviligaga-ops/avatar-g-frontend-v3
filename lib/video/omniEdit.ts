@@ -90,7 +90,7 @@ export function omniEditOpFromWords(text: string): OmniEditOp {
  * the input tokens stay those the price book's omniEdit row was set for. An extend's result (`::ox8`) is longer than any
  * price on that row assumed, so it is not continued again.
  */
-const OMNI_SOURCE_TAIL = /::o(?:(4|6|8|10)|e(4|6|8|10))(?=~|$)/;
+const OMNI_SOURCE_TAIL = /::o(?:(4|6|8|10)|e(4|6|8|10))(?:m2)?(?=~|$)/;
 
 /** The length of the clip a job id names, or null when it is not one Omni can continue (pure; the server verifies the id). */
 export function omniSourceOfJob(jobId: string): { seconds: OmniEditSeconds } | null {

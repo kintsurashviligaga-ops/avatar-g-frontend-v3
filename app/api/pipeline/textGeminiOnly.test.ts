@@ -33,7 +33,6 @@ jest.mock('../../../lib/gemini/client', () => ({ generateWithGemini: jest.fn() }
 jest.mock('../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jest.fn() }));
 jest.mock('../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
-jest.mock('../../../lib/ai/lipsync', () => ({ lipsyncCreate: jest.fn(), lipsyncFetch: jest.fn() }));
 jest.mock('../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
 import { NextRequest } from 'next/server';

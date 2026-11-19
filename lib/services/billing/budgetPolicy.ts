@@ -233,16 +233,16 @@ export const ECONOMY_MODELS: Readonly<Record<ServiceType, string>> = {
 } as const;
 
 export const PREMIUM_MODELS: Readonly<Record<ServiceType, string>> = {
-  chat: 'gemini-3.6-flash',
+  chat: 'gemini-3.8-flash',
   image: 'imagen-4',
   video: 'veo-3.1',
   music: 'lyria-3',
-  avatar: 'gemini-3.6-flash',
-  remix: 'gemini-3.6-flash',
+  avatar: 'gemini-3.8-flash',
+  remix: 'gemini-3.8-flash',
   montage: 'ffmpeg-local',
   dubbing: 'eleven-multilingual-v2',
   model3d: 'meshy-standard',
-  presentation: 'gemini-3.6-flash',
+  presentation: 'gemini-3.8-flash',
 } as const;
 
 /** Remaining monthly budget, USD → the model tier to use. <$50 left → economy; otherwise premium. */
