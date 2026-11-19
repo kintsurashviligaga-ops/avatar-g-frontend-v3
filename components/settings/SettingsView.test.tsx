@@ -13,12 +13,17 @@ import { SettingsView } from './SettingsView';
 jest.mock('next/navigation', () => ({ useRouter: () => ({ replace: jest.fn(), push: jest.fn() }), usePathname: () => '/ka/settings' }));
 jest.mock('../../lib/theme/ThemeContext', () => ({ useTheme: () => ({ theme: 'dark', toggleTheme: jest.fn() }) }));
 jest.mock('./ConnectionsSection', () => ({ ConnectionsSection: () => <div data-testid="connections" /> }));
+let mockUser: { email?: string | null; phone?: string | null; user_metadata?: Record<string, unknown> } | null = null;
+const mockGetUser = jest.fn(async () => ({ data: { user: mockUser } }));
+jest.mock('../../lib/supabase/browser', () => ({ createBrowserClient: () => ({ auth: { getUser: mockGetUser } }) }));
 
 type Reply = { status: number; body: unknown };
 let replies: Record<string, Reply>;
 let fetchMock: jest.Mock;
 
 beforeEach(() => {
+  mockUser = null;
+  mockGetUser.mockClear();
   replies = {
     '/api/credits/balance': { status: 401, body: { error: 'Unauthorized' } },
     '/api/credits/history': { status: 401, body: {} },
@@ -37,7 +42,7 @@ test('a guest gets one sign-in card and nothing that can only fail', async () =>
   window.addEventListener('myavatar:auth-required', onAuth);
   render(<SettingsView locale="ka" />);
   expect(await screen.findByTestId('settings-signin')).toHaveTextContent('ბალანსის, ისტორიისა და მოწვევების სანახავად შედი ანგარიშზე.');
-  expect(screen.getByText('შესული არ ხართ')).toBeInTheDocument();
+  expect(screen.getByText('შესული არ ხარ')).toBeInTheDocument();
   expect(screen.queryByText('ანგარიშის წაშლა')).not.toBeInTheDocument();
   expect(screen.queryByText('მონაცემები ვერ მოვიდა.')).not.toBeInTheDocument();
   expect(screen.queryByText('ჯერ არ არის ტრანზაქცია.')).not.toBeInTheDocument();
@@ -47,6 +52,7 @@ test('a guest gets one sign-in card and nothing that can only fail', async () =>
   const asked = fetchMock.mock.calls.map((c) => String(c[0]));
   expect(asked.some((u) => u.startsWith('/api/referral'))).toBe(false);
   expect(asked.some((u) => u.startsWith('/api/credits/history'))).toBe(false);
+  expect(mockGetUser).not.toHaveBeenCalled(); // a guest's identity is never looked up
   fireEvent.click(screen.getByRole('button', { name: 'შესვლა' }));
   expect(onAuth).toHaveBeenCalledTimes(1);
   window.removeEventListener('myavatar:auth-required', onAuth);
@@ -54,10 +60,14 @@ test('a guest gets one sign-in card and nothing that can only fail', async () =>
 
 test('a member keeps balance, history, invites and Delete account, in the page language', async () => {
   replies['/api/credits/balance'] = { status: 200, body: { balance: 80, monthlyAllowance: 100, resetAt: null } };
+  mockUser = { email: 'gg@example.ge', user_metadata: { full_name: 'GG' } };
   replies['/api/credits/history'] = { status: 200, body: { items: [{ action: 'video', creditsDelta: -25, createdAt: '2026-10-09T10:00:00Z' }] } };
   render(<SettingsView locale="en" />);
   expect(await screen.findByText('80 / 100 credits')).toBeInTheDocument();
   expect(screen.getByText('Signed in')).toBeInTheDocument();
+  // Phase 7.8: the profile says WHO is signed in.
+  expect(await screen.findByTestId('settings-email')).toHaveTextContent('gg@example.ge');
+  expect(screen.getByTestId('settings-name')).toHaveTextContent('GG');
   expect(await screen.findByText(/Video/)).toBeInTheDocument();
   expect(await screen.findByText('Invite a friend')).toBeInTheDocument();
   expect(await screen.findByText('Code: GG50')).toBeInTheDocument();
