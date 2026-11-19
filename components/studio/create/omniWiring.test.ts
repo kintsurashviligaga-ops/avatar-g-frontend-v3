@@ -109,7 +109,7 @@ describe('the phone: settings open on demand and the composer remains available 
   });
 
   test('the composer textarea steps aside only while Image or Music settings are open', () => {
-    expect(src).toContain("`${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
+    expect(src).toContain("`${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[44px] min-w-0 flex-1 resize-none");
     expect(src).toMatch(/const composerTextHidden = \(imageCreate \|\| mode === 'music'\)\s*&& \(isDesktop \? panelOpen : optionsOpen\);/);
   });
 

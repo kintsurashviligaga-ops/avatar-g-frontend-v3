@@ -343,8 +343,10 @@ export async function say(page: Page, text: string): Promise<void> {
   await box.press('Control+Enter');
 }
 
-/** The paperclip → the OS file chooser → these synthetic files, then every chip Ready (real sign → PUT → verify). */
+/** „+“ → its attach row → the OS file chooser → these synthetic files, then every chip Ready (real sign → PUT → verify). */
 export async function attach(page: Page, isMobile: boolean, files: string[], expectReady = true): Promise<void> {
+  const plus = page.getByTestId('plus');
+  if (isMobile) await plus.tap(); else await plus.click();
   const chooser = page.waitForEvent('filechooser');
   const clip = page.getByTestId('composer-attach');
   if (isMobile) await clip.tap(); else await clip.click();

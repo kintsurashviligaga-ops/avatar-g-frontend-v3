@@ -273,14 +273,14 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
-    test('the paperclip beside „+“ attaches, „+“ opens the tools — Chat, then Video, image, music and avatar one tap away', async ({ page }) => {
+    test('„+“ attaches (its first row) and opens the tools — Chat, then Video, image, music and avatar one tap away', async ({ page }) => {
       await openDashboard(page);
-      // Video takes files: the paperclip sits right after „+“ and says what it is.
-      await expect(page.getByTestId('composer-attach')).toHaveAccessibleName('ფაილის მიმაგრება');
+      // One icon (GG 2026-11-06): no paperclip beside „+“; Video takes files, so the sheet's first row attaches.
+      await expect(page.locator('[data-tour="composer"]').getByTestId('composer-attach')).toHaveCount(0);
       await page.getByTestId('plus').click();
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
-      await expect(sheet.getByTestId('attach')).toHaveCount(0);
+      await expect(sheet.getByTestId('composer-attach')).toHaveAccessibleName('ფაილის მიმაგრება');
       // The unified composer (GG 2026-10-25): the catalog's usable services in three groups — the chat, then the five
       // makers in GG's order, then everything else; GG's hidden tools stay out.
       const group = (id: string) => sheet.getByTestId(`service-group-${id}`).getByRole('button');
@@ -289,7 +289,8 @@ for (const vp of VIEWPORTS) {
       const create = await group('create').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
       expect(create).toEqual(['service-video', 'service-image', 'service-music', 'service-avatar', 'service-interior']);
       await expect(sheet.getByTestId('service-video')).toHaveAttribute('aria-pressed', 'true');
-      await expect(group('extra').first()).toContainText('პროდუქტის რეკლამა');
+      // The product ad was removed (#235): VFX leads the extra group.
+      await expect(group('extra').first()).toContainText('VFX');
       for (const hidden of ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']) {
         await expect(sheet.getByTestId(`service-${hidden}`)).toHaveCount(0);
       }
@@ -444,8 +445,9 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
       const chip = (await page.getByTestId('active-service-switch').boundingBox())!;
-      expect(chip.y).toBeGreaterThanOrEqual(pill.y - 1); // the service chip is IN the composer
-      expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
+      // GG 2026-11-06: the service chip sits in the row right ABOVE the one-row pill (not in it, not under it).
+      expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + 1);
+      expect(pill.y - (chip.y + chip.height)).toBeLessThanOrEqual(16);
       await page.getByTestId('composer-input').fill('A quiet harbour at dawn');
       const send = page.getByTestId('run-button');
       const settings = await openSettings(page);
