@@ -38,6 +38,10 @@ describe('helpers', () => {
   it('builds the Vertex Live URL per region', () => {
     expect(vertexLiveUrl('us-central1')).toBe('wss://us-central1-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent');
     expect(vertexLiveUrl('global')).toBe('wss://aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent');
+    // Vertex multi-regions (gemini-3.8-live is listed in `us` and `eu`, 2026-11-12): aiplatform.<mr>.rep.googleapis.com.
+    expect(vertexLiveUrl('eu')).toBe('wss://aiplatform.eu.rep.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent');
+    expect(vertexLiveUrl('us')).toBe('wss://aiplatform.us.rep.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent');
+    expect(vertexLiveUrl('europe-west4')).toBe('wss://europe-west4-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent');
   });
   it('reads a bare model id from any form', () => {
     expect(bareModelId('models/gemini-3.8-live')).toBe('gemini-3.8-live');
