@@ -15,7 +15,7 @@
  */
 import { base64ToBytes, isInitSegment } from '@/lib/voice/fmp4';
 import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL } from '@/lib/voice/liveAvatar';
-import type { LiveServerEvent } from '@/lib/voice/geminiLive';
+import type { LiveServerEvent } from '@/lib/voice/liveServerMessage';
 import type { Presenter, Voice } from './catalog';
 import { liveScriptTurn, liveSystemInstruction, type LivePromptInput } from './prompts';
 
