@@ -228,6 +228,8 @@ test('Cloud TTS, Russian: from the recorded voices list the adapter picks the vo
 });
 
 test('Gemini TTS: the recorded 500 INTERNAL makes read-aloud try once more, then answer 502 tts_failed (INTERNAL), never another provider', async () => {
+  // Recorded on 2026-11-06 from gemini-2.5-flash-preview-tts, the default then; replayed on that model (the rollback).
+  process.env.GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
   const recorded = fixture('gemini-tts', 'response');
   expect(recorded).toEqual({ status: 500, body: { error: { code: 500, message: 'Internal error encountered.', status: 'INTERNAL' } } });
   answers.push(answer(recorded), answer(recorded));

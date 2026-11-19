@@ -7,7 +7,7 @@
  * dbSpend.ts (the shared $20 ledger), reached only through getSandboxRunner (index.ts), and only with SANDBOX_ENABLED=1.
  * What is fixed here is the policy, so the choice of host cannot loosen it:
  *
- *   language  python or node, nothing else; the code is at most 64 KB.
+ *   language  python, node or shell (bash), nothing else; the code is at most 64 KB.
  *   limits    at most 2 vCPU, 2 GB memory, 300 s wall clock, 1 MB of stdout/stderr, 10 output files of 50 MB each.
  *             A job may ask for less, never for more.
  *   network   DENIED. A job may name hosts it needs; each must be on SANDBOX_EGRESS_ALLOWLIST, which is empty, so
@@ -20,7 +20,9 @@
  * money, so it would be a confirmed action the user presses, never a tool the model calls.
  */
 
-export type SandboxLanguage = 'python' | 'node';
+/** shell: a bash script, in the same isolated host as python (same limits, no network, no keys). */
+export type SandboxLanguage = 'python' | 'node' | 'shell';
+export const SANDBOX_LANGUAGES: readonly SandboxLanguage[] = ['python', 'node', 'shell'];
 
 export interface SandboxLimits {
   cpus: number;
@@ -66,7 +68,7 @@ export type SandboxCheck = { ok: true; plan: SandboxPlan } | { ok: false; error:
 
 /** Turn a requested job into the plan a runner must enforce, or refuse it. Pure. */
 export function checkSandboxJob(job: SandboxJob, allow: readonly string[] = SANDBOX_EGRESS_ALLOWLIST): SandboxCheck {
-  if (job.language !== 'python' && job.language !== 'node') return { ok: false, error: 'language: python or node only' };
+  if (!SANDBOX_LANGUAGES.includes(job.language as SandboxLanguage)) return { ok: false, error: 'language: python, node or shell only' };
   if (typeof job.code !== 'string' || !job.code.trim()) return { ok: false, error: 'code: empty' };
   if (Buffer.byteLength(job.code, 'utf8') > SANDBOX_MAX_CODE_BYTES) return { ok: false, error: `code: over ${SANDBOX_MAX_CODE_BYTES} bytes` };
 
@@ -92,16 +94,33 @@ export function checkSandboxJob(job: SandboxJob, allow: readonly string[] = SAND
 
   return {
     ok: true,
-    plan: { language: job.language, code: job.code, files: files as string[], limits, egress: (egress as string[]).map((h) => h.toLowerCase()), env: {} },
+    plan: { language: job.language as SandboxLanguage, code: job.code, files: files as string[], limits, egress: (egress as string[]).map((h) => h.toLowerCase()), env: {} },
   };
 }
 
+/**
+ * A workspace run's files (lib/agent/workspace): `inputs` are written into the sandbox before the program starts; every
+ * file the program writes is read back afterwards, at most `maxFiles` of at most `maxFileBytes` each, and only names
+ * `accept` takes (a workspace path). The caller saves them; a runner never touches the user's storage itself.
+ */
+export interface SandboxIO {
+  inputs: Array<{ path: string; bytes: Buffer }>;
+  maxFiles: number;
+  maxFileBytes: number;
+  accept(path: string): boolean;
+}
+
 export type SandboxResult =
-  | { ok: true; exitCode: number; stdout: string; stderr: string; outputs: string[]; wallMs: number }
+  | {
+    ok: true; exitCode: number; stdout: string; stderr: string; outputs: string[]; wallMs: number;
+    /** A workspace run only: the files the program wrote, and the ones left behind with why. */
+    collected?: Array<{ path: string; bytes: Buffer }>;
+    skipped?: string[];
+  }
   | { ok: false; error: 'sandbox_disabled' | 'refused' | 'timeout' | 'cancelled' | 'runner_failed'; message: string };
 
 export interface SandboxRunner {
-  run(plan: SandboxPlan, signal: AbortSignal): Promise<SandboxResult>;
+  run(plan: SandboxPlan, signal: AbortSignal, io?: SandboxIO): Promise<SandboxResult>;
 }
 
 /** The only runner until an isolated host is approved: it refuses, and says why. */

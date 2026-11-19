@@ -1,0 +1,243 @@
+{
+  "version": "2026-11-12",
+  "rules": {
+    "ciBlockDays": 21,
+    "urgentDays": 7,
+    "warnDays": 45,
+    "note": "Google: retirement dates may move later, never earlier; short-term models get at least 45 days notice. No published date = UNKNOWN (probe it), never 'safe'.",
+    "servedNote": "'served' is a human note. The CI guard reads the defaults in lib/ai/google/models.ts, lib/veo/capabilities.ts and lib/image/lifecycle.ts, plus entries marked servedOutsideModelsTs (ids in server-only files, e.g. lib/video/omniClip.ts)."
+  },
+  "sources": {
+    "P1": {
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+      "fetchedAt": "2026-11-12",
+      "pageUpdated": "2026-11-11"
+    },
+    "P4": {
+      "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+      "fetchedAt": "2026-11-12"
+    },
+    "OBS": {
+      "url": "docs/v5.1-phase1/13-google-lifecycle-2026-11-12.md",
+      "fetchedAt": "2026-11-12",
+      "note": "not on an official table; retirement unknown"
+    }
+  },
+  "models": [
+    {
+      "id": "gemini-3.8-flash",
+      "stage": "GA",
+      "releaseDate": "2026-09-02",
+      "retirementDate": "2027-09-02",
+      "source": "P1",
+      "served": [
+        "chat standard #1",
+        "REST flash tier",
+        "Agent G"
+      ]
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "stage": "GA",
+      "releaseDate": "2026-08-13",
+      "retirementDate": "2027-01-28",
+      "replacement": "gemini-3.8-flash",
+      "source": "P1",
+      "served": [
+        "chat standard step-down after #289",
+        "STT allowlist"
+      ]
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "stage": "GA",
+      "releaseDate": "2026-07-21",
+      "retirementDate": "2026-11-19",
+      "replacement": "gemini-3.8-flash",
+      "source": "P1",
+      "served": [],
+      "note": "removed from every default by #289 (M-0b)"
+    },
+    {
+      "id": "gemini-3.5-flash",
+      "stage": "GA",
+      "releaseDate": "2026-05-19",
+      "retirementDate": "2027-05-19",
+      "source": "P1",
+      "served": [
+        "chat standard step-down",
+        "mic Gemini fallback"
+      ]
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "stage": "GA",
+      "releaseDate": "2026-07-21",
+      "retirementDate": "2027-07-21",
+      "source": "P1",
+      "served": [
+        "chat lite"
+      ]
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "stage": "GA",
+      "releaseDate": "2026-05-07",
+      "retirementDate": "2027-05-07",
+      "source": "P1",
+      "served": [
+        "chat lite"
+      ]
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "stage": "PREVIEW",
+      "source": "OBS",
+      "served": [
+        "chat pro",
+        "REST pro tier"
+      ]
+    },
+    {
+      "id": "gemini-3.1-flash-image",
+      "stage": "GA",
+      "releaseDate": "2026-05-28",
+      "retirementDate": "2027-05-28",
+      "source": "P1",
+      "served": [
+        "Photo",
+        "film frames"
+      ]
+    },
+    {
+      "id": "gemini-3.8-live",
+      "stage": "GA",
+      "releaseDate": "2026-09-24",
+      "retirementDate": "2027-09-25",
+      "source": "P1",
+      "served": [
+        "Live voice + talking avatar (after #292)"
+      ]
+    },
+    {
+      "id": "gemini-live-2.5-flash-native-audio",
+      "aliases": [
+        "gemini-2.5-flash-native-audio-latest"
+      ],
+      "stage": "GA",
+      "releaseDate": "2025-12-12",
+      "retirementDate": "2026-12-13",
+      "replacement": "gemini-3.8-live",
+      "source": "P1",
+      "served": [
+        "Live default until #292 (M-2)"
+      ]
+    },
+    {
+      "id": "gemini-3.8-flash-tts",
+      "stage": "GA",
+      "source": "OBS",
+      "served": [
+        "read-aloud default (after #288)"
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-preview-tts",
+      "stage": "PREVIEW",
+      "retirementDate": "2026-11-17",
+      "replacement": "gemini-3.8-flash-tts",
+      "source": "P4",
+      "served": [
+        "read-aloud default until #288 (M-0a)"
+      ],
+      "note": "Developer API shutdown date; applied to our Vertex use conservatively"
+    },
+    {
+      "id": "chirp_3",
+      "stage": "GA",
+      "source": "OBS",
+      "served": [
+        "mic STT for everyone"
+      ]
+    },
+    {
+      "id": "gemini-omni-1.1-flash-preview",
+      "stage": "PREVIEW",
+      "source": "OBS",
+      "replacement": "gemini-omni-1.2-flash",
+      "served": [
+        "Video with a Georgian line"
+      ],
+      "note": "M-3 (#295) moves new clips to 1.2; 1.1 stays served for continuing clips it made and as the VERTEX_OMNI_MODEL rollback",
+      "servedOutsideModelsTs": true
+    },
+    {
+      "id": "gemini-omni-1.2-flash",
+      "stage": "GA",
+      "releaseDate": "2026-11-05",
+      "retirementDate": "2027-11-05",
+      "source": "P1",
+      "served": [
+        "Video with a Georgian line (from M-3, PR #295)"
+      ],
+      "note": "Guarded before #295 merges, so the guard is green whichever of #293 / #295 lands first",
+      "servedOutsideModelsTs": true
+    },
+    {
+      "id": "veo-3.1-generate-001",
+      "stage": "GA",
+      "releaseDate": "2025-11-17",
+      "retirementDate": "2027-05-04",
+      "replacement": "gemini-omni-1.2-flash",
+      "source": "P1",
+      "served": [
+        "Video"
+      ]
+    },
+    {
+      "id": "veo-3.1-fast-generate-001",
+      "stage": "GA",
+      "releaseDate": "2025-11-17",
+      "retirementDate": "2027-05-04",
+      "replacement": "gemini-omni-1.2-flash",
+      "source": "P1",
+      "served": [
+        "Video"
+      ]
+    },
+    {
+      "id": "veo-3.1-lite-generate-001",
+      "stage": "PREVIEW",
+      "source": "OBS",
+      "served": [
+        "Video lite tier"
+      ]
+    },
+    {
+      "id": "gemini-4-argon",
+      "stage": "GA",
+      "releaseDate": "2026-10-13",
+      "retirementDate": "2027-10-13",
+      "source": "P1",
+      "served": [],
+      "note": "D-06: not used until versioned pricing"
+    },
+    {
+      "id": "gemini-4-carbon",
+      "stage": "GA",
+      "releaseDate": "2026-11-10",
+      "retirementDate": null,
+      "source": "P1",
+      "served": [],
+      "note": "D-06: not used until versioned pricing"
+    },
+    {
+      "id": "gemini-nano-banana-2.1",
+      "stage": "GA",
+      "releaseDate": "2026-10-06",
+      "retirementDate": null,
+      "source": "P1",
+      "served": []
+    }
+  ]
+}

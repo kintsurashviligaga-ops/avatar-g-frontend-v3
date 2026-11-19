@@ -41,6 +41,7 @@ import { MAX_FILES } from '@/lib/agent/media/montageAsk';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
 import { memoryContextOf } from '@/lib/memory/context';
+import { browserEnabled } from '@/lib/agent/browser';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
   let audioQuote: Parameters<NonNullable<AgentContext['onAudioQuote']>>[0] | undefined;
   let editQuote: Parameters<NonNullable<AgentContext['onEditQuote']>>[0] | undefined;
   let codeQuote: Parameters<NonNullable<AgentContext['onCodeQuote']>>[0] | undefined;
+  let browserQuote: Parameters<NonNullable<AgentContext['onBrowserQuote']>>[0] | undefined;
   // Google Drive (Phase 4): only where CONNECTORS_DRIVE opens it and it is configured; closed, the agent never hears of it.
   const driveDeps = driveOpenTo(user) ? await liveDriveDeps(user) : null;
   const ctx: AgentContext = {
@@ -113,6 +115,8 @@ export async function POST(req: NextRequest) {
     onAudioQuote: (q) => { audioQuote = q; },
     // The code tool only where AGENT_G_SANDBOX is open to this user: closed, the agent never hears of it.
     ...(agentSandboxOpenTo(user) ? { sandbox: true, onCodeQuote: (q: NonNullable<typeof codeQuote>) => { codeQuote = q; } } : {}),
+    // The browser tool: the same gate, and only where the Chromium sandbox is switched on (lib/agent/browser).
+    ...(agentSandboxOpenTo(user) && browserEnabled() ? { browser: true, onBrowserQuote: (q: NonNullable<typeof browserQuote>) => { browserQuote = q; } } : {}),
     ...(files?.length ? {
       files,
       onMediaQuote: (q: NonNullable<typeof mediaQuote>) => { mediaQuote = q; },
@@ -132,6 +136,6 @@ export async function POST(req: NextRequest) {
   // The last plan of each kind the agent made, signed, for the confirm card: nothing has run and nothing is charged yet.
   return NextResponse.json({
     ...result, ...(mediaQuote ? { mediaQuote } : {}), ...(audioQuote ? { audioQuote } : {}), ...(editQuote ? { editQuote } : {}),
-    ...(codeQuote ? { codeQuote } : {}),
+    ...(codeQuote ? { codeQuote } : {}), ...(browserQuote ? { browserQuote } : {}),
   }, { status });
 }

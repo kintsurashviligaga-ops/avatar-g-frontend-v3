@@ -38,5 +38,7 @@ export default defineConfig({
     url: `http://localhost:${playwrightDevPort}`,
     reuseExistingServer: forceFreshWebServer ? false : !process.env.CI,
     timeout: 120_000, // give `next dev` a generous cold-boot window before the first navigation
+    // CI points Supabase at a fake host for these suites: keep the middleware failing open (see middleware.ts).
+    env: { SUPABASE_UNAVAILABLE_PAGE: 'off' },
   },
 });

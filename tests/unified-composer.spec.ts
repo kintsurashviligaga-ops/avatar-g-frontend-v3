@@ -49,7 +49,7 @@ const MIC = { ka: 'ხმის ჩაწერა', en: 'Record voice', ru: 'З
 const MENU = { ka: 'მენიუ', en: 'Menu', ru: 'Меню' } as const;
 const LANG_ITEM = { ka: 'ქარ', en: 'ENG', ru: 'РУС' } as const;
 /** GG's hidden tools (lib/catalog/nav): never in the picker. */
-const HIDDEN = ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation'];
+const HIDDEN = ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation', 'model3d'];
 const POSTER = readFileSync(join(__dirname, '..', 'public', 'templates', 'image', 'poster.jpg'));
 /** A 4 s 160×120 clip (tests/fixtures/clip.webm): long enough to edit (3 s) and to extend. */
 const CLIP4 = readFileSync(join(__dirname, 'fixtures', 'clip.webm'));
@@ -845,7 +845,8 @@ for (const vp of VIEWPORTS) {
     test('the empty chat\'s line about the chosen service stays inside the screen, for every service', async ({ page }) => {
       // Interior's line ran 20 px past a 390 px screen's left edge once it showed the greeting (the greeting's column had no width).
       await openStudio(page, { tool: null });
-      for (const id of ['video', 'image', 'music', 'avatar', 'interior', 'vfx', 'model3d']) {
+      // 3D is not in the loop: it is off and out of the picker (GG 2026-11-13, its only engine is refused).
+      for (const id of ['video', 'image', 'music', 'avatar', 'interior', 'vfx']) {
         await pickService(page, id, 'en');
         const hint = page.getByTestId('tool-hint');
         await expect(hint).toBeVisible();

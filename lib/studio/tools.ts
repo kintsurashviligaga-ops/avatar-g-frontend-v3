@@ -32,8 +32,10 @@ export type ToolLang = 'ka' | 'en' | 'ru';
 export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'interior', 'music', 'avatar'];
 // ⚠️ `product` IS REMOVED (GG 2026-10-27: „პროდუქტის რეკლამა საერთოდ ამოვიღოთ სერვისებიდან"): a ToolId with its TOOL_META
 // line, but not in ALL_TOOLS, so nothing opens it; /api/video/remix refuses `productad` before any charge.
-/** Tools that live one level down: the VFX video variant, the montage editor and 3D. */
-export const MORE_TOOLS: readonly ToolId[] = ['vfx', 'montage', 'model3d'];
+// ⚠️ `model3d` IS OFF (GG 2026-11-13: keep 3D off): its only engine, Replicate TRELLIS, is refused in production
+// (503 google_only). A ToolId with its TOOL_META line, but not in ALL_TOOLS, so nothing opens it.
+/** Tools that live one level down: the VFX video variant and the montage editor. */
+export const MORE_TOOLS: readonly ToolId[] = ['vfx', 'montage'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {

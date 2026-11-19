@@ -18,7 +18,11 @@ jest.mock('../../../../lib/studio/runtime', () => ({ getStudioRuntime: jest.fn()
 jest.mock('../../../../lib/avatar/voicedClip', () => ({ deliverVoicedAvatar: jest.fn() }));
 jest.mock('../../../../lib/video/voicedClip', () => ({ deliverVoicedClip: jest.fn() }));
 jest.mock('../../../../lib/video/omniClip', () => ({
-  pollOmniClip: jest.fn(), OMNI_USD_PER_SEC: { '720p': 0.10136, '1080p': 0.15204 }, OMNI_INPUT_VIDEO_USD_PER_SEC: 0.008739,
+  pollOmniClip: jest.fn(), OMNI_INPUT_VIDEO_USD_PER_SEC: 0.008739,
+  omniModelOfJob: (v: boolean) => (v ? 'gemini-omni-1.2-flash' : 'gemini-omni-1.1-flash-preview'),
+  // 1.1 Flash $17.50 / 1M, 1.2 Flash $12.00 / 1M (5,792 · 8,688 tok/s)
+  omniUsdPerSec: (res: '720p' | '1080p', model: string) =>
+    model === 'gemini-omni-1.2-flash' ? { '720p': 0.069504, '1080p': 0.104256 }[res] : { '720p': 0.10136, '1080p': 0.15204 }[res],
 }));
 
 import { NextRequest } from 'next/server';

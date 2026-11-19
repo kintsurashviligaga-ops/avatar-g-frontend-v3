@@ -21,7 +21,7 @@ export const maxDuration = 300;
  * STORYBOARD rate limit (30/min), not EXPENSIVE (5/min): this is the same shape as the storyboard route —
  * one outline plus a per-item image fan-out — and at 5/min a 12-slide deck would 429 itself mid-build.
  *
- * BILLING (final P0/P1 repair run): OFF until the owner approves the price (`OWNER_APPROVED_PRICING=presentation:15`);
+ * BILLING (final P0/P1 repair run): OFF until the owner approves the price (`OWNER_APPROVED_PRICING=presentation:54`, the price-book number);
  * a POST without a token is a signed QUOTE (nothing charged); `{ quoteToken, confirm: true }` builds at most once per
  * quote, reserving before any provider call and refunding once on failure (lib/orchestrator/confirmedJob).
  */
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const outcome = await guardedCall(
       // NOTE: the outline call books its own spend inside llmText. This guard covers the Imagen fan-out
       // and the deck as a billable unit — it deliberately does not wrap the outline a second time.
-      { service: 'presentation', model: 'gemini-imagen', units: deckUnits() },
+      { service: 'presentation', model: 'gemini-3.1-flash-image', units: deckUnits() },
       () => runDeckBuild(request, { jobId }),
     );
 

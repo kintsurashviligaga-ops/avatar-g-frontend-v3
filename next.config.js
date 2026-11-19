@@ -206,6 +206,15 @@ const nextConfig = {
     // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases
     ignoreDuringBuilds: true,
   },
+  // BUILD MEMORY (fourth SIGKILL, 2026-11-12): every Vercel build since 09:37Z was killed in "Checking validity of
+  // types", including a docs-only branch with main's exact code (main itself had built at 09:02Z). The whole-program
+  // type check is the largest single memory step left (a local `tsc --noEmit` needs ~8 GB heap) and it runs on top of
+  // webpack's memory in the 8 GB Standard builder. Vercel sets VERCEL=1, so ONLY Vercel skips it. The type gate is not
+  // lost: CI `verify` runs `npm run typecheck` (tsc --noEmit) AND a full `next build` with this check on every PR and
+  // push to main (.github/workflows/ci.yml). Undo: delete this block.
+  typescript: {
+    ignoreBuildErrors: process.env.VERCEL === '1',
+  },
   // Strip console.* in production except error/warn — keeps Sentry-routed
   // reportError() noise out of the browser dev console while preserving
   // genuine failure logs that operators still want visible.

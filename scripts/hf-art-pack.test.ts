@@ -5,7 +5,7 @@ import {
   type ArtClient, type Attempt, type Manifest, type Shot,
   throttleWaitMs,
 } from './hf-art-pack';
-import { createImagenArtClient, createReplicateArtClient, IMAGEN_MODEL, REPLICATE_MODEL } from './art-providers';
+import { createReplicateArtClient, REPLICATE_MODEL } from './art-providers';
 import { TEMPLATES_BY_TOOL } from '@/lib/studio/templates';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -269,10 +269,10 @@ const REPLICATE_POST = 'https://api.replicate.com/v1/models/black-forest-labs/fl
 const TOKEN = 'r8_TestTokenThatMustNeverBePrinted';
 
 describe('--provider', () => {
-  test('hf by default; replicate or imagen on request; nothing else', () => {
+  test('hf by default; replicate on request; nothing else (imagen is retired)', () => {
     expect(providerFromArgv(['--dry'])).toBe('hf');
     expect(providerFromArgv(['--provider', 'replicate', '--dry'])).toBe('replicate');
-    expect(providerFromArgv(['--provider', 'imagen'])).toBe('imagen');
+    expect(() => providerFromArgv(['--provider', 'imagen'])).toThrow(/unknown --provider/);
     expect(() => providerFromArgv(['--provider', 'openai'])).toThrow(/unknown --provider/);
     expect(() => providerFromArgv(['--provider'])).toThrow(/unknown --provider/);
   });
@@ -283,9 +283,7 @@ describe('--provider', () => {
     const noHf = () => { throw new Error('the Higgsfield client must not load'); };
     try {
       expect(() => artClientFor('replicate', { dry: false }, noHf)).toThrow(/REPLICATE_API_TOKEN is not configured/);
-      expect(() => artClientFor('imagen', { dry: false }, noHf)).toThrow(/no Gemini API key/);
       expect(artClientFor('replicate', { dry: true }, noHf).provider).toBe('replicate');
-      expect(artClientFor('imagen', { dry: true }, noHf).provider).toBe('imagen');
     } finally {
       for (const [k, v] of saved) if (v !== undefined) process.env[k] = v;
     }
@@ -450,91 +448,10 @@ describe('a run on another provider — every byte that would leave the machine 
   });
 });
 
-describe('Imagen · the key in a header, the images straight to disk', () => {
-  const KEY = 'AQ.TestGeminiKeyThatMustNeverBePrinted';
-  const PREDICT = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict';
+describe('inline takes', () => {
   let work: string;
-  beforeEach(() => { work = mkdtempSync(join(tmpdir(), 'art-imagen-')); });
-  afterEach(() => { rmSync(work, { recursive: true, force: true }); jest.restoreAllMocks(); });
-
-  test('a Soul shot becomes an Imagen :predict body (no seed, no Soul field), quoted at $0.04 an image, offline', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
-    const c = createImagenArtClient({ apiKey: KEY, fetchImpl: async () => { throw new Error('no network'); } });
-    const noir = byId('video/noir');
-    const req = c.prepare!(noir.endpoint, noir.input);
-    expect(req).toEqual({
-      endpoint: IMAGEN_MODEL,
-      input: { instances: [{ prompt: noir.input.prompt }], parameters: { sampleCount: 4, aspectRatio: '3:4', personGeneration: 'allow_all' } },
-    });
-    expect((await c.estimate(req.endpoint, req.input)).usd).toBe(0.16);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('--provider imagen --dry: 20 quotes, $3.20 — under the $4.50 line — and no network', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
-    const lines: string[] = [];
-    const r = await runQueue(templateShots, fresh(), { dry: true, stopUsd: PACKS.templates.stop },
-      { client: artClientFor('imagen', { dry: true }), work, save: jest.fn(), log: (l) => lines.push(l) });
-    expect(lines.filter((l) => /: quote \$0\.1600 · projected \$/.test(l))).toHaveLength(20);
-    expect(r).toEqual({ projectedUsd: 3.2, stopped: false });
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('a spend run: ONE POST, x-goog-api-key and never ?key=, the base64 written straight to disk — nothing fetched', async () => {
-    const a = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 9, 9]);
-    const b = Buffer.from([0x89, 0x50, 0x4e, 0x47, 7, 7]);
-    const net = network(() => json(200, { predictions: [
-      { bytesBase64Encoded: a.toString('base64'), mimeType: 'image/png' },
-      { raiFilteredReason: 'filtered' },
-      { bytesBase64Encoded: b.toString('base64'), mimeType: 'image/png' },
-    ] }));
-    const c = createImagenArtClient({ apiKey: KEY, fetchImpl: net.fetchImpl });
-    const m = fresh();
-    await runQueue([byId('image/oil-painting')], m, { dry: false, stopUsd: 4.5 }, { client: c, work, save: jest.fn(), log: () => {}, fetchImpl: net.fetchImpl });
-
-    expect(said(net.calls)).toEqual([`POST ${PREDICT}`]);
-    expect(net.calls[0]!.url).not.toMatch(/[?&]key=/);
-    expect((net.calls[0]!.init!.headers as Record<string, string>)['x-goog-api-key']).toBe(KEY);
-    expect(net.calls[0]!.init!.redirect).toBe('manual');
-    const at = m.attempts[0]!;
-    expect(at).toMatchObject({ provider: 'imagen', endpoint: IMAGEN_MODEL, status: 'completed', usd: 0.16 });
-    expect(at.requestId).toMatch(/^imagen-/);
-    expect(at.outputs).toEqual([
-      { url: 'inline:image/png', file: 'raw/image/oil-painting-1-0.png' },
-      { url: 'inline:image/png', file: 'raw/image/oil-painting-1-1.png' },
-    ]);
-    expect(readFileSync(join(work, 'raw/image/oil-painting-1-0.png'))).toEqual(a);
-    expect(readFileSync(join(work, 'raw/image/oil-painting-1-1.png'))).toEqual(b);
-    const logged = JSON.stringify(m);
-    expect(logged).not.toContain(KEY);
-    expect(logged).not.toContain(a.toString('base64')); // the manifest records the file, never the bytes
-  });
-
-  test('every sample filtered: a dead end that was still paid for; a timeout: ambiguous and counted', async () => {
-    const m = fresh();
-    const filtered = network(() => json(200, { predictions: [{ raiFilteredReason: 'filtered' }] }));
-    await runQueue([byId('image/anime')], m, { dry: false, stopUsd: 4.5 },
-      { client: createImagenArtClient({ apiKey: KEY, fetchImpl: filtered.fetchImpl }), work, save: jest.fn(), log: () => {} });
-    expect(m.attempts[0]).toMatchObject({ status: 'nsfw', outputs: [] });
-
-    const slow = network(() => Promise.reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })));
-    await runQueue([byId('image/social')], m, { dry: false, stopUsd: 4.5 },
-      { client: createImagenArtClient({ apiKey: KEY, fetchImpl: slow.fetchImpl }), work, save: jest.fn(), log: () => {} });
-    expect(m.attempts[1]).toMatchObject({ status: 'submit_unknown', requestId: 'unknown' });
-    expect(spent(m)).toBe(0.32);
-  });
-
-  test('a refusal that quotes the key is printed scrubbed, and costs nothing', async () => {
-    const net = network(() => json(400, { error: { status: 'INVALID_ARGUMENT', message: `API key ${KEY} not valid` } }));
-    const lines: string[] = [];
-    const m = fresh();
-    await runQueue([byId('image/concept')], m, { dry: false, stopUsd: 4.5 },
-      { client: createImagenArtClient({ apiKey: KEY, fetchImpl: net.fetchImpl }), work, save: jest.fn(), log: (l) => lines.push(l) });
-    expect(m.attempts[0]).toMatchObject({ status: 'refused' });
-    expect(spent(m)).toBe(0);
-    expect(lines.join('\n')).toContain('[redacted]');
-    expect(lines.join('\n')).not.toContain(KEY);
-  });
+  beforeEach(() => { work = mkdtempSync(join(tmpdir(), 'art-inline-')); });
+  afterEach(() => { rmSync(work, { recursive: true, force: true }); });
 
   test('an inline take is saved under raw/, and can never be handed to another shot as a URL', () => {
     expect(saveInline([{ bytes: png, mimeType: 'image/jpeg' }], 'video/teaser', 2, work, () => {}, 1))

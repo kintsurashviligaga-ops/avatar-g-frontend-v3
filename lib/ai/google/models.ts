@@ -73,7 +73,9 @@ export type ChatModelClass = 'flash' | 'pro' | 'lite';
  * is no longer available to new users" (3.1 / 3.5 Flash-Lite, 2.5 Flash and 2.5 Pro all answered 200 the same day).
  */
 export const DEFAULT_CHAT_MODELS: Readonly<Record<'standard' | 'pro' | 'lite', readonly string[]>> = {
-  standard: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'],
+  // gemini-3.6-flash left this chain on 2026-11-12: Vertex retires it on 2026-11-19 (Agent Platform model-versions page,
+  // updated 2026-11-11). 3.7 Flash takes its place (retires 2027-01-28); 3.5 Flash stays to 2027-05-19 or later.
+  standard: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'],
   pro: ['gemini-3.1-pro-preview'],
   lite: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'],
 };
@@ -96,13 +98,23 @@ export const LIVE_MODELS: readonly string[] = [
   'gemini-2.5-flash-native-audio-preview-12-2025',
 ];
 
-/** The TTS default (verified Georgian; /api/tts/gemini's "Read aloud verbatim:" directive is tuned on it). */
-export const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+/**
+ * The TTS default: Gemini 3.8 Flash TTS, GA on Vertex AI since 2026-10-26 (global / us / eu).
+ *
+ * Until 2026-11-12 the default was `gemini-2.5-flash-preview-tts`. It answered HTTP 500 twice in the paid Vertex
+ * certification (#269, 2026-11-06), it is not on the Vertex endpoint table, and its Developer-API id shuts down on
+ * 2026-11-17 (v5.1 audit B-01, owner decision D-02). It stays on the allowlist only so GEMINI_TTS_MODEL can roll
+ * back to it. 3.8 reads its text strictly as a transcript (ttsReadsVerbatim), so no directive is sent to it.
+ */
+export const DEFAULT_TTS_MODEL = 'gemini-3.8-flash-tts';
+
+/** The model that was the default before 2026-11-12 (rollback: GEMINI_TTS_MODEL=gemini-2.5-flash-preview-tts). */
+export const LEGACY_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 
 export const TTS_MODELS: readonly string[] = [
   DEFAULT_TTS_MODEL,
-  'gemini-3.8-flash-tts',
   'gemini-3.8-flash-lite-tts',
+  LEGACY_TTS_MODEL,
   'gemini-3.1-flash-tts-preview',
 ];
 
@@ -126,7 +138,10 @@ export function ttsReadsVerbatim(model: string): boolean {
  * as good in Georgian, is UNVERIFIED until the owner dictates on Production (`?micstats=1` shows the timings, and
  * `?stt=<model>` lets the owner try another model from STT_MODELS — lib/voice/sttTrial).
  */
-export const DEFAULT_STT_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_STT_MODEL = 'gemini-3.5-flash';
+// ⚠️ Was gemini-3.6-flash until 2026-11-12; Vertex retires 3.6 Flash on 2026-11-19 (model-versions page, updated
+// 2026-11-11). 3.5 Flash also takes thinking 'minimal' (geminiStt thinkingFor). The mic's primary engine is Chirp 3
+// (STT_ENGINE); this model is its Gemini fallback. Its Georgian speed on the mic is UNVERIFIED.
 
 /**
  * Google's dedicated speech-to-text model (public preview since 2026-08-26), for recorded audio on generateContent:
@@ -153,7 +168,6 @@ export const STT_MODELS: readonly string[] = [
   DEFAULT_STT_MODEL,
   'gemini-3.8-flash',
   'gemini-3.7-flash',
-  'gemini-3.5-flash',
   // The chat's Lite models (DEFAULT_CHAT_MODELS.lite): the fastest Gemini models this project serves, for the owner's
   // `?stt=` trial and a GEMINI_STT_MODEL override. Their Georgian is UNVERIFIED.
   'gemini-3.1-flash-lite',

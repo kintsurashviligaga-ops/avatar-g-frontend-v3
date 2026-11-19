@@ -26,12 +26,7 @@
       "nanobananaapi"
     ],
     "app/api/app/health/route.ts": [
-      "anthropic",
-      "heygen",
-      "ltx",
-      "openai",
-      "udio",
-      "worldlabs"
+      "openai"
     ],
     "app/api/app/worker/tick/route.ts": [
       "openai"
@@ -41,19 +36,11 @@
       "nanobananaapi"
     ],
     "app/api/chat/orchestrate/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway",
       "udio"
     ],
     "app/api/chat/stream/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway",
       "udio"
@@ -65,7 +52,6 @@
       "gemini_developer_api"
     ],
     "app/api/cron/drain-renders/route.ts": [
-      "heygen",
       "replicate"
     ],
     "app/api/cron/research-sweep/route.ts": [
@@ -82,26 +68,14 @@
       "higgsfield"
     ],
     "app/api/film/scene/redo/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
     "app/api/film/scene/redo/stitch/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
     "app/api/film/sweep/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway",
       "udio"
@@ -123,12 +97,6 @@
     ],
     "app/api/genjutsu/status/route.ts": [
       "higgsfield"
-    ],
-    "app/api/heygen/avatar/route.ts": [
-      "heygen"
-    ],
-    "app/api/heygen/presenter/route.ts": [
-      "heygen"
     ],
     "app/api/image/assets/[id]/route.ts": [
       "nanobananaapi"
@@ -160,14 +128,7 @@
     "app/api/image/operations/validate/route.ts": [
       "nanobananaapi"
     ],
-    "app/api/motion-control/status/route.ts": [
-      "replicate"
-    ],
     "app/api/pipeline/remix/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
@@ -199,22 +160,10 @@
       "replicate"
     ],
     "app/api/video/assemble/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
-    "app/api/video/lipsync/route.ts": [
-      "heygen",
-      "replicate"
-    ],
     "app/api/video/remix/route.ts": [
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
       "replicate",
       "runway"
     ],
@@ -223,9 +172,6 @@
     ],
     "app/api/voice/live/route.ts": [
       "gemini_developer_api"
-    ],
-    "app/api/voice/train/route.ts": [
-      "replicate"
     ],
     "app/api/webhooks/higgsfield/route.ts": [
       "higgsfield"

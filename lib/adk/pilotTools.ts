@@ -200,7 +200,7 @@ export type PilotProposal =
 /** Labels a capability carries that mean nobody can use it today. */
 const UNUSABLE = new Set(['MISSING', 'DISABLED', 'DEPRECATED', 'BLOCKED_OWNER']);
 /** Capabilities a service proposal may never name: the run tools (kind "run") and code execution. */
-const NOT_A_SERVICE_PLAN = new Set<CapabilityId>(['agent.montage', 'agent.audio-extract', 'media.edit', 'agent.code-run']);
+const NOT_A_SERVICE_PLAN = new Set<CapabilityId>(['agent.montage', 'agent.audio-extract', 'media.edit', 'agent.code-run', 'agent.browser']);
 
 /**
  * Withdrawn or hidden catalog services do not exist for the pilot (v3.1: do not reopen withdrawn services). Whether a

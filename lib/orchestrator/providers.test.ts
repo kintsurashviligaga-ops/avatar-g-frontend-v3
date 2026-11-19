@@ -28,7 +28,7 @@ describe('provider env-map', () => {
   });
 
   test('blank/whitespace keys do not activate', () => {
-    expect(isProviderActive('heygen', { HEYGEN_API_KEY: '   ' })).toBe(false);
+    expect(isProviderActive('replicate', { REPLICATE_API_TOKEN: '   ' })).toBe(false);
   });
 
   test('providerKey returns the first present value', () => {
@@ -40,6 +40,6 @@ describe('provider env-map', () => {
     const snap = providerSnapshot({ ELEVENLABS_API_KEY: 'x' });
     expect(snap.elevenlabs).toBe(true);
     expect(snap.luma).toBe(false);
-    expect(Object.keys(snap).length).toBeGreaterThanOrEqual(13);
+    expect(Object.keys(snap).length).toBeGreaterThanOrEqual(12);
   });
 });

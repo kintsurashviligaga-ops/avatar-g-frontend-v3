@@ -191,7 +191,7 @@ describe('parseModelList', () => {
 });
 
 describe('chatModelChain', () => {
-  const FAST = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+  const FAST = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
   const PRO = ['gemini-3.1-pro-preview'];
   const LITE = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'];
 
@@ -261,14 +261,14 @@ describe('chatModelChain', () => {
     process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-3.1-pro-preview, gemini-3.8-flash, gemini-3.1-flash-lite, gemini-2.5-pro';
     expect(chatModelChain('pro')).toEqual(['gemini-3.1-pro-preview', 'gemini-2.5-pro']);
     // …nor a Lite or a Pro id into the Flash chain, nor a Flash id into Lite.
-    process.env.GEMINI_CHAT_MODELS = 'gemini-2.5-flash-lite, gemini-3.1-pro-preview, gemini-3.6-flash';
-    expect(chatModelChain('fast')).toEqual(['gemini-3.6-flash']);
+    process.env.GEMINI_CHAT_MODELS = 'gemini-2.5-flash-lite, gemini-3.1-pro-preview, gemini-3.5-flash';
+    expect(chatModelChain('fast')).toEqual(['gemini-3.5-flash']);
     process.env.GEMINI_CHAT_LITE_MODELS = 'gemini-3.8-flash, gemini-3.1-flash-lite';
     expect(chatModelChain('lite')).toEqual(['gemini-3.1-flash-lite']);
   });
 
   it('an override made only of another class falls back to the defaults (never an empty or wrong-class chain)', () => {
-    process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-3.8-flash, gemini-3.6-flash';
+    process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-3.8-flash, gemini-3.5-flash';
     expect(chatModelChain('pro')).toEqual(PRO);
   });
 
@@ -297,8 +297,8 @@ describe('chatModelChain', () => {
   });
 
   it('ignores malformed ids in an override', () => {
-    process.env.GEMINI_CHAT_MODELS = '../x, gemini 3, gemini-3.6-flash, a/b, gemini-3.5-flash?key=1';
-    expect(chatModelChain('standard')).toEqual(['gemini-3.6-flash']);
+    process.env.GEMINI_CHAT_MODELS = '../x, gemini 3, gemini-3.5-flash, a/b, gemini-3.5-flash-lite?key=1';
+    expect(chatModelChain('standard')).toEqual(['gemini-3.5-flash']);
   });
 
   it.each(['', '   ', ',,', ' ; \n '])('an empty override %p falls back to the defaults', (v) => {
@@ -325,8 +325,8 @@ describe('chatModelChain', () => {
 describe('chatModelClass', () => {
   it.each([
     ['gemini-3.8-flash', 'flash'],
-    ['gemini-3.6-flash', 'flash'],
     ['gemini-3.5-flash', 'flash'],
+    ['gemini-3.6-flash', 'flash'],
     ['gemini-2.5-flash', 'flash'],
     ['gemini-flash-latest', 'flash'],
     ['gemini-3.1-pro-preview', 'pro'],
@@ -420,7 +420,14 @@ describe('ttsReadsVerbatim', () => {
 });
 
 describe('ttsModel', () => {
-  it('defaults to the Georgian-verified flash-preview TTS model', () => {
+  it('defaults to Gemini 3.8 Flash TTS (GA on Vertex; the 2.5 preview failed and is being shut down)', () => {
+    expect(ttsModel()).toBe('gemini-3.8-flash-tts');
+    expect(DEFAULT_TTS_MODEL).toBe('gemini-3.8-flash-tts');
+  });
+
+  it('keeps the 2.5 preview on the allowlist only as a rollback', () => {
+    expect(TTS_MODELS).toContain('gemini-2.5-flash-preview-tts');
+    process.env.GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
     expect(ttsModel()).toBe('gemini-2.5-flash-preview-tts');
   });
 
@@ -444,8 +451,8 @@ describe('ttsModel', () => {
 });
 
 describe('sttModel', () => {
-  it('defaults to gemini-3.6-flash (3.8 Flash timed out on the owner\'s dictation, 2026-10-25)', () => {
-    expect(sttModel()).toBe('gemini-3.6-flash');
+  it('defaults to gemini-3.5-flash (3.8 Flash timed out on the owner\'s dictation, 2026-10-25)', () => {
+    expect(sttModel()).toBe('gemini-3.5-flash');
   });
 
   it('allowlists the chat\'s Lite models and 3.8 Flash for an override or the owner\'s trial', () => {
@@ -475,16 +482,16 @@ describe('sttModel', () => {
   });
 
   it('falls back to the legacy VOICE_V2V_GEMINI_MODEL when GEMINI_STT_MODEL is unset or rejected', () => {
-    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash';
-    expect(sttModel()).toBe('gemini-3.5-flash');
+    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    expect(sttModel()).toBe('gemini-3.5-flash-lite');
     process.env.GEMINI_STT_MODEL = 'not/valid';
-    expect(sttModel()).toBe('gemini-3.5-flash');
+    expect(sttModel()).toBe('gemini-3.5-flash-lite');
     process.env.GEMINI_STT_MODEL = 'gemini-pro-latest';
-    expect(sttModel()).toBe('gemini-3.5-flash');
+    expect(sttModel()).toBe('gemini-3.5-flash-lite');
   });
 
   it('GEMINI_STT_MODEL wins over the legacy name', () => {
-    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash';
+    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash-lite';
     process.env.GEMINI_STT_MODEL = 'gemini-3.8-flash';
     expect(sttModel()).toBe('gemini-3.8-flash');
   });

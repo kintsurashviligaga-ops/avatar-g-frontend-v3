@@ -1,7 +1,7 @@
 /**
  * lib/orchestrator/unpolledSettle.ts — settle PAID async jobs that nobody polled to the end.
  *
- * ⚠️ THE GAP THIS CLOSES. Avatar (lip-sync, presenter), Motion Control and 3D all RESERVE credits at submit and then
+ * ⚠️ THE GAP THIS CLOSES. 3D (and, until v5.1 M-14 removed them, lip-sync, the presenter and Motion Control) RESERVES credits at submit and then
  * leave the job to the BROWSER: the refund on a provider failure, and the delivery on a success, happen only inside
  * the poll route the client keeps calling. Close the tab (or lose signal on a phone) mid-render and nothing ever
  * polls again: a failed render keeps the user's credits forever, and a successful one is never re-hosted or filed in
@@ -19,14 +19,15 @@
  * Pure: every effect is injected, so the decisions are unit-tested without a database, a provider or a clock.
  */
 
-export type SettleKind = 'lipsync' | 'presenter' | 'model3d' | 'motion';
+/** Lip-sync, the HeyGen presenter and Motion Control were removed (v5.1 M-14, GG 2026-11-12): only 3D is left. A
+ *  stray row of a removed kind reads as malformed (null) and is never acted on. */
+export type SettleKind = 'model3d';
 
 /** What a paid async job files at submit, under `params._settle`. */
 export interface SettleRecord {
   v: 1;
   kind: SettleKind;
-  /** The provider job to poll (lipsync/presenter: the lipsyncFetch id, model3d: the Replicate prediction, motion:
-   *  the Kling prediction). */
+  /** The provider job to poll (model3d: the Replicate prediction). */
   job: string;
   /** The deduct_credits ref the reservation was taken under. */
   ref: string;
@@ -34,7 +35,7 @@ export interface SettleRecord {
   credits: number;
 }
 
-const KINDS: ReadonlySet<string> = new Set<SettleKind>(['lipsync', 'presenter', 'model3d', 'motion']);
+const KINDS: ReadonlySet<string> = new Set<SettleKind>(['model3d']);
 
 /** `{ _settle: … }` for a job row's params — merge it into whatever the route already stores. */
 export function settleParams(rec: Omit<SettleRecord, 'v'>): { _settle: SettleRecord } {
