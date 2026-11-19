@@ -43,7 +43,7 @@ export const ka = {
   // AVATAR BUILDER
   // ============================================
   'avatar.title': 'ავატარის შექმნა',
-  'avatar.description': 'თქვენი პсобствენი ციფრული ავატარი',
+  'avatar.description': 'თქვენი საკუთარი ციფრული ავატარი',
   'avatar.select_style': 'სტილის არჩევა',
   'avatar.customize': 'კასტომიზირება',
   'avatar.preview': 'ფსკ ახასიათება',
