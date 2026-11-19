@@ -22,6 +22,7 @@ import {
 } from '@/lib/contracts/geminiTransport';
 import { getVertexAccessToken, vertexAiConfig, vertexAiConfigProblems } from '@/lib/veo/vertexAuth';
 import { normalizeModelId } from './models';
+import { takesSafetyLabel, withSafetyLabel } from './safetyIdentifier';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -143,7 +144,9 @@ function vertexTransport(): GoogleRestTransport {
     const extra = init.headers
       ? Object.fromEntries([...new Headers(init.headers).entries()].filter(([name]) => !own.has(name)))
       : {};
-    return fetch(url, { ...init, headers: { ...extra, ...headers }, redirect: 'manual' });
+    // Phase 8.9: labels.safety_identifier (hashed account id) when SAFETY_IDENTIFIER=1; off → body untouched.
+    const body = takesSafetyLabel(method) ? withSafetyLabel(init.body) : init.body;
+    return fetch(url, { ...init, body: body as BodyInit | null | undefined, headers: { ...extra, ...headers }, redirect: 'manual' });
   };
   return {
     kind: 'vertex',
