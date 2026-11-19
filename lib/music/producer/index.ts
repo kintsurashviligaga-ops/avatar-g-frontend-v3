@@ -9,3 +9,7 @@ export * from './peaks';
 export * from './price';
 export * from './intent';
 export * from './labels';
+export * from './book';
+export * from './request';
+export * from './library';
+export * from './errors';
