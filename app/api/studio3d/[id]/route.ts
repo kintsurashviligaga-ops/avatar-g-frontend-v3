@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { studio3dContext } from '@/lib/studio3d/server/routeAuth';
 import { actOnJob, pollJob, type JobView, type ServiceError } from '@/lib/studio3d/server/service';
 import { studio3dDeps } from '@/lib/studio3d/server/deps';
@@ -17,7 +18,7 @@ const reply = (r: JobView | ServiceError) =>
   r.ok ? NextResponse.json(r, { headers: { 'cache-control': 'no-store' } }) : NextResponse.json({ error: r.code, ...(r.message ? { message: r.message } : {}) }, { status: r.status });
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await studio3dContext(req);
+  const ctx = await studio3dContext((await authedClientFromRequest(req)).user);
   if (!ctx.ok) return ctx.response;
   const limited = await checkRateLimit(req, RATE_LIMITS.TASKS);
   if (limited) return limited;
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await studio3dContext(req);
+  const ctx = await studio3dContext((await authedClientFromRequest(req)).user);
   if (!ctx.ok) return ctx.response;
   const limited = await checkRateLimit(req, RATE_LIMITS.WRITE);
   if (limited) return limited;
