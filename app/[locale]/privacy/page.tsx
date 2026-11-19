@@ -257,7 +257,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
         <Section title={t.data.title}>
           <p className="mb-4">{t.data.body}</p>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
+          {/* Focusable so a keyboard can scroll the table sideways on a phone (WCAG 2.1.1). */}
+          <div tabIndex={0} role="region" aria-label={t.data.title} className="overflow-x-auto rounded-xl border border-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
             <table className="w-full text-sm">
               <thead className="bg-white/[0.04] text-white/70">
                 <tr>
@@ -281,7 +282,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
         <Section title={t.share.title}>
           <p className="mb-4">{t.share.body}</p>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
+          <div tabIndex={0} role="region" aria-label={t.share.title} className="overflow-x-auto rounded-xl border border-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
             <table className="w-full text-sm">
               <thead className="bg-white/[0.04] text-white/70">
                 <tr>
