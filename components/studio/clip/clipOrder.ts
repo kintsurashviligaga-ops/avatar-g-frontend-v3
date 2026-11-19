@@ -24,6 +24,7 @@ import {
   type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech,
 } from '@/lib/video/directClip';
 import { CLIP_AVOID_MAX, clipAdvancedBody, normalizeClipAvoid, normalizeClipSeed } from '@/lib/video/clipAdvanced';
+import { clipLastFrameFits } from '@/lib/video/clipLastFrame';
 
 type Lang = 'ka' | 'en' | 'ru';
 const lang = (locale: string): Lang => (locale === 'en' || locale === 'ru' ? locale : 'ka');
@@ -46,6 +47,8 @@ export interface ClipOrder {
   avoid?: string;
   /** Veo's seed, to repeat a take (lib/video/clipAdvanced, flag off). */
   seed?: number | null;
+  /** Two photos as Veo's first and last frame instead of references (lib/video/clipLastFrame, flag off). */
+  lastFrame?: boolean;
 }
 
 /** Where the card is: asking, sending, the clip being made, or cancelled. A delivered or failed clip replaces the card. */
@@ -73,6 +76,8 @@ export function clipOrder(input: {
   /** The Advanced fold's two fields; neither changes the price. Kept only when set. */
   avoid?: string;
   seed?: number | null;
+  /** First → last frame: kept only with exactly two photos on a Veo clip. */
+  lastFrame?: boolean;
 }): ClipAskState {
   const photos = input.photos.filter(Boolean).slice(0, DIRECT_CLIP_MAX_PHOTOS);
   const seconds = directClipSeconds(input.seconds, photos.length);
@@ -86,6 +91,7 @@ export function clipOrder(input: {
     prompt: input.prompt, photos, seconds, aspect: input.aspect, tier, resolution, speech, phase: 'ask',
     credits: directClipCredits({ seconds, tier, photos: photos.length, resolution, speech }),
     ...clipAdvancedOf(input),
+    ...(input.lastFrame && clipLastFrameFits(photos.length) && directClipEngine(seconds, speech) === 'veo' ? { lastFrame: true } : {}),
   };
 }
 
@@ -99,7 +105,7 @@ function clipAdvancedOf(input: { avoid?: string; seed?: number | null }): Pick<C
 /** One pick on the card, or on the composer's chips while the card waits for Create (the tier only from those). */
 export type ClipChange =
   | { seconds: DirectClipSeconds } | { aspect: DirectClipAspect } | { resolution: DirectClipResolution } | { tier: VideoQuality }
-  | { avoid: string } | { seed: number | null };
+  | { avoid: string } | { seed: number | null } | { lastFrame: boolean };
 
 /** The clip's engine: Gemini Omni Flash at 10 s or with a Georgian line, else Veo. */
 export const clipIsOmni = (state: Pick<ClipOrder, 'seconds' | 'speech'>): boolean => directClipEngine(state.seconds, state.speech) === 'omni';
@@ -182,6 +188,7 @@ export function clipRequestBody(state: ClipAskState): Record<string, unknown> {
     resolution: state.resolution, ...(state.speech ? { speech: state.speech } : {}), expectedCredits: state.credits,
     // Veo only: an Omni clip has no negative prompt or seed, so they are not sent for one.
     ...(clipIsOmni(state) ? {} : clipAdvancedBody({ avoid: state.avoid, seed: state.seed ?? null })),
+    ...(state.lastFrame && !clipIsOmni(state) && clipLastFrameFits(state.photos.length) ? { lastFrame: true } : {}),
   };
 }
 
@@ -229,8 +236,11 @@ export function clipSpecLine(state: ClipOrder, locale: string): string {
 }
 
 /** What the photos will be, said under them. */
-export function clipPhotoNote(photos: number, locale: string): string | null {
+export function clipPhotoNote(photos: number, locale: string, lastFrame = false): string | null {
   if (photos <= 0) return null;
+  if (lastFrame && clipLastFrameFits(photos)) {
+    return tr(locale, 'პირველი ფოტოდან მეორემდე: კლიპი პირველით იწყება და მეორით მთავრდება (8 წმ).', 'From the first photo to the second: the clip starts on one and ends on the other (8 s).', 'От первого фото ко второму: клип начинается с одного и заканчивается другим (8 с).');
+  }
   if (photos === 1) return tr(locale, 'ფოტო იქნება კლიპის პირველი კადრი.', 'The photo is the clip\'s first frame.', 'Фото станет первым кадром клипа.');
   // Two or three photos are Veo's references, which render 8 s only: said here, or a greyed-out 10 s reads as broken.
   return tr(locale,

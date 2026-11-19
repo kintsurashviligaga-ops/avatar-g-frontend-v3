@@ -125,3 +125,56 @@ describe('the order and its request', () => {
     expect('seed' in changeClip(o, { seed: null })).toBe(false);
   });
 });
+
+describe('first → last frame (NEXT_PUBLIC_CLIP_LAST_FRAME; the prop is passed only while it is on)', () => {
+  const two = ['data:image/jpeg;base64,AAAA', 'data:image/jpeg;base64,BBBB'];
+  const base: ClipCreatePanelProps = {
+    locale: 'en', surface: 'panel', toolName: 'Video', onSwitchTool: jest.fn(), onClose: jest.fn(),
+    seconds: 8, onSeconds: jest.fn(), aspect: '9:16', onAspect: jest.fn(), tier: 'fast', onTier: jest.fn(),
+    resolution: '720p', onResolution: jest.fn(), photos: { images: two, onAdd: jest.fn(), onRemove: jest.fn() },
+  };
+
+  test('without the prop: two photos are Ref 1 and Ref 2, no choice', () => {
+    render(<ClipCreatePanel {...base} />);
+    expect(screen.queryByTestId('clip-panel-two-photos')).toBeNull();
+    expect(screen.getByTestId('clip-panel-photo-role-1').textContent).toBe('Ref 2');
+  });
+
+  test('with it and two photos: References / First → last; picking frames relabels the photos and the note', () => {
+    const onChange = jest.fn();
+    const { rerender } = render(<ClipCreatePanel {...base} lastFrame={{ on: false, onChange }} />);
+    fireEvent.click(screen.getByTestId('clip-panel-as-frames'));
+    expect(onChange).toHaveBeenCalledWith(true);
+    rerender(<ClipCreatePanel {...base} lastFrame={{ on: true, onChange }} />);
+    expect(screen.getByTestId('clip-panel-photo-role-0').textContent).toBe('First frame');
+    expect(screen.getByTestId('clip-panel-photo-role-1').textContent).toBe('Last frame');
+    expect(screen.getByTestId('clip-panel-photos').textContent).toContain('From the first photo to the second');
+    expect(screen.getByTestId('clip-panel-as-frames').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('not with one or three photos, and not for an Omni clip (Georgian line)', () => {
+    const { rerender } = render(<ClipCreatePanel {...base} photos={{ images: two.slice(0, 1) }} lastFrame={{ on: true, onChange: jest.fn() }} />);
+    expect(screen.queryByTestId('clip-panel-two-photos')).toBeNull();
+    rerender(<ClipCreatePanel {...base} speech="ka" lastFrame={{ on: true, onChange: jest.fn() }} />);
+    expect(screen.queryByTestId('clip-panel-two-photos')).toBeNull();
+    expect(screen.getByTestId('clip-panel-photo-role-1').textContent).toBe('Ref 2');
+  });
+});
+
+describe('the order and the request body carry lastFrame only where it fits', () => {
+  const two = ['data:image/jpeg;base64,AAAA', 'data:image/jpeg;base64,BBBB'];
+  test('two photos on Veo: kept and sent; a change keeps it; same price as references', () => {
+    const o = clipOrder({ prompt: 'a fox', photos: two, seconds: 8, aspect: '9:16', tier: 'fast', lastFrame: true });
+    expect(o.lastFrame).toBe(true);
+    expect(clipRequestBody(o).lastFrame).toBe(true);
+    expect(o.credits).toBe(clipOrder({ prompt: 'a fox', photos: two, seconds: 8, aspect: '9:16', tier: 'fast' }).credits);
+    expect(changeClip(o, { aspect: '16:9' }).lastFrame).toBe(true);
+    expect(changeClip(o, { lastFrame: false }).lastFrame).toBeUndefined();
+  });
+  test('one photo, or no lastFrame: not in the order, not in the body', () => {
+    const one = clipOrder({ prompt: 'a fox', photos: two.slice(0, 1), seconds: 8, aspect: '9:16', tier: 'fast', lastFrame: true });
+    expect(one.lastFrame).toBeUndefined();
+    expect('lastFrame' in clipRequestBody(one)).toBe(false);
+    expect('lastFrame' in clipRequestBody(clipOrder({ prompt: 'a fox', photos: two, seconds: 8, aspect: '9:16', tier: 'fast' }))).toBe(false);
+  });
+});
