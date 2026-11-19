@@ -7,9 +7,9 @@
  *   „the user's words, exactly as typed"
  *   [▶ the video]
  *   [Edit]  Extend            (+4  +6  [+8]  +10 when extending)
- *   720p ✦48   1080p ✦68
+ *   720p ✦35   1080p ✦48
  *   Edit · 5 s · 720p · Gemini Omni Flash
- *   [Create ✦ 48]  [Cancel]
+ *   [Create ✦ 35]  [Cancel]
  *
  * The price is ON Create and moves with every chip (components/studio/clip/editOrder → lib/video/omniEdit, the route's own
  * functions). The frame is the video's own; the sound follows the words, as for the clip.

@@ -26,25 +26,25 @@ test('shows the words as typed, the video, the spec line and the price on Create
   expect(video.getAttribute('poster')).toBe(VIDEO.poster);
   expect(screen.getByTestId('edit-spec').textContent).toBe('Edit · 5 s · 720p · Gemini Omni Flash');
   const create = screen.getByTestId('edit-confirm');
-  expect(create.getAttribute('data-price')).toBe('48');
+  expect(create.getAttribute('data-price')).toBe('35');
   expect(create.getAttribute('data-live-guard')).toBe('spend');
-  expect(create.textContent).toContain('✦ 48');
+  expect(create.textContent).toContain('✦ 35');
   expect(screen.getByTestId('edit-op-edit').getAttribute('aria-pressed')).toBe('true');
   // An edit keeps the video's own length: no length chips.
   expect(screen.queryByTestId('edit-len-8')).toBeNull();
-  expect(screen.getByTestId('edit-res-720p').textContent).toContain('✦ 48');
-  expect(screen.getByTestId('edit-res-1080p').textContent).toContain('✦ 68');
+  expect(screen.getByTestId('edit-res-720p').textContent).toContain('✦ 35');
+  expect(screen.getByTestId('edit-res-1080p').textContent).toContain('✦ 48');
 });
 
 test('Extend shows +4 · 6 · 8 · 10 s, and every chip hands back the order priced again', () => {
   const { onChange } = mount(ask({ op: 'extend' }));
   expect(screen.getByTestId('edit-len-8').getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(screen.getByTestId('edit-len-10'));
-  expect(onChange.mock.calls[0][0]).toMatchObject({ seconds: 10, credits: 74, phase: 'ask' });
+  expect(onChange.mock.calls[0][0]).toMatchObject({ seconds: 10, credits: 53, phase: 'ask' });
   fireEvent.click(screen.getByTestId('edit-res-1080p'));
-  expect(onChange.mock.calls[1][0]).toMatchObject({ resolution: '1080p', credits: 88 });
+  expect(onChange.mock.calls[1][0]).toMatchObject({ resolution: '1080p', credits: 62 });
   fireEvent.click(screen.getByTestId('edit-op-edit'));
-  expect(onChange.mock.calls[2][0]).toMatchObject({ op: 'edit', credits: 48 });
+  expect(onChange.mock.calls[2][0]).toMatchObject({ op: 'edit', credits: 35 });
 });
 
 test('an op the video cannot take is disabled: a 2 s video can be extended, not edited', () => {

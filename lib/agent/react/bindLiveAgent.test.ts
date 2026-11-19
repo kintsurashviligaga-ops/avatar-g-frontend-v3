@@ -261,11 +261,11 @@ test('Google-only (default): the brain is llmText with googleOnly, and the syste
 });
 
 describe('each step fits the run deadline, and a miss steps down once (GG\'s Live task, 2026-10-25)', () => {
-  test('the step-down is the next Flash model of the chat chain: 3.6 Flash after 3.8 Flash', () => {
+  test('the step-down is the next Flash model of the chat chain: 3.7 Flash after 3.8 Flash', () => {
     delete process.env.GEMINI_MODEL_FLASH;
     delete process.env.GEMINI_CHAT_MODELS;
-    expect(stepDownModel()).toBe('gemini-3.6-flash');
-    process.env.GEMINI_MODEL_FLASH = 'gemini-3.6-flash';
+    expect(stepDownModel()).toBe('gemini-3.7-flash');
+    process.env.GEMINI_MODEL_FLASH = 'gemini-3.5-flash';
     expect(stepDownModel()).toBe('gemini-3.8-flash');
   });
 
@@ -285,7 +285,7 @@ describe('each step fits the run deadline, and a miss steps down once (GG\'s Liv
     const r = await runLiveAgent('hello', CTX, { deadlineMs: Date.now() + 100_000 });
     expect(r).toMatchObject({ answer: 'done on 3.6', stopReason: 'final' });
     expect(mockLlm).toHaveBeenCalledTimes(2);
-    expect(mockLlm.mock.calls[1][0]).toMatchObject({ geminiModel: 'gemini-3.6-flash', googleOnly: true, json: true });
+    expect(mockLlm.mock.calls[1][0]).toMatchObject({ geminiModel: 'gemini-3.7-flash', googleOnly: true, json: true });
   });
 
   test('a Live run (45 s) answers from the quick models: 3.6 Flash for at most 20 s, then Flash-Lite on a miss', async () => {
@@ -295,7 +295,7 @@ describe('each step fits the run deadline, and a miss steps down once (GG\'s Liv
     expect(mockLlm.mock.calls[0][0]).toMatchObject({ geminiModel: QUICK_STEP_MODELS[0], timeoutMs: QUICK_STEP_TIMEOUT_MS, json: true });
     expect(mockLlm.mock.calls[1][0]).toMatchObject({ geminiModel: QUICK_STEP_MODELS[1], json: true });
     expect(mockLlm.mock.calls[1][0].timeoutMs).toBeLessThanOrEqual(QUICK_STEP_TIMEOUT_MS);
-    expect(QUICK_STEP_MODELS).toEqual(['gemini-3.6-flash', 'gemini-3.1-flash-lite']);
+    expect(QUICK_STEP_MODELS).toEqual(['gemini-3.5-flash', 'gemini-3.1-flash-lite']);
   });
 
   test('late in the run: the attempt gets only what is left, and with no time for a step-down the miss ends the run', async () => {

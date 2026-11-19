@@ -111,10 +111,10 @@ describe('geminiSttModelChain', () => {
   const ENV = { ...process.env };
   afterEach(() => { process.env = { ...ENV }; });
 
-  it('defaults to gemini-3.6-flash, then 3.5 and 3.8 Flash (fastest first); never a retired 2.0 model or a 2.5 one', () => {
+  it('defaults to gemini-3.5-flash, then 3.5 and 3.8 Flash (fastest first); never a retired 2.0 model or a 2.5 one', () => {
     delete process.env.GEMINI_STT_MODEL;
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']);
     expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.'))).toBe(false);
     // The transcribe model is the owner's trial only, never a step-down.
     expect(geminiSttModelChain()).not.toContain(TRANSCRIBE_MODEL);
@@ -122,16 +122,16 @@ describe('geminiSttModelChain', () => {
 
   it('an allowlisted override leads and the default stays behind it; a retired / unknown one is ignored', () => {
     process.env.GEMINI_STT_MODEL = 'gemini-3.8-flash';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.7-flash']);
     process.env.GEMINI_STT_MODEL = 'gemini-3.1-flash-lite';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.1-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']);
     process.env.GEMINI_STT_MODEL = 'gemini-2.0-flash-lite';
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']);
     expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.0'))).toBe(false);
     // The legacy 2.5 default is no longer allowlisted, so an old env value cannot put a 404 first.
     process.env.GEMINI_STT_MODEL = 'gemini-2.5-flash';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']);
   });
 
   it("steps down through the chat's Flash models, so the mic is served wherever the chat is (GG, 2026-10-24)", () => {
@@ -152,9 +152,9 @@ describe('geminiSttModelChain', () => {
       if (transport) process.env.GEMINI_TRANSPORT = transport;
       else delete process.env.GEMINI_TRANSPORT;
       delete process.env.GEMINI_STT_MODEL;
-      expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
+      expect(geminiSttModelChain()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']);
       process.env.GEMINI_STT_MODEL = 'gemini-pro-latest';
-      expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
+      expect(geminiSttModelChain()).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']);
     }
   });
 });
@@ -269,10 +269,10 @@ describe('transcribeWithGeminiDetailed', () => {
 
   it('goes to Vertex AI with a bearer token and no key; audio goes inline with the given MIME', async () => {
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
-    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.6-flash' });
+    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.5-flash' });
     const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
     expect(url).toBe(
-      'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.6-flash:generateContent',
+      'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.5-flash:generateContent',
     );
     expect(url).not.toMatch(/key=/);
     const headers = init.headers as Record<string, string>;
@@ -283,14 +283,13 @@ describe('transcribeWithGeminiDetailed', () => {
     expect(b.contents[0]!.parts[1]!.inlineData).toEqual({ mimeType: 'audio/wav', data: 'QUJD' });
     expect(b.contents[0]!.parts[1]!.inline_data).toBeUndefined();
     expect(b.generationConfig.temperature).toBe(0);
-    // gemini-3.6-flash takes `thinkingLevel: 'minimal'` (a transcript needs no reasoning) — never the 2.5
+    // gemini-3.5-flash takes `thinkingLevel: 'minimal'` (a transcript needs no reasoning) — never the 2.5
     // `thinkingBudget`, and never both (sending both is a 400).
     expect(b.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'minimal' });
   });
 
   it("thinks as little as each model accepts: 'minimal' up to 3.6 Flash and on Flash-Lite, 'low' on 3.7 / 3.8 Flash and Pro", async () => {
     const want: Array<[string, Record<string, unknown> | undefined]> = [
-      ['gemini-3.6-flash', { thinkingLevel: 'minimal' }],
       ['gemini-3.5-flash', { thinkingLevel: 'minimal' }],
       ['gemini-3.1-flash-lite', { thinkingLevel: 'minimal' }],
       ['gemini-3.5-flash-lite', { thinkingLevel: 'minimal' }],
@@ -311,7 +310,7 @@ describe('transcribeWithGeminiDetailed', () => {
 
   it('strips the language code and returns it; an answer without one is taken as before', async () => {
     fetchSpy.mockImplementationOnce(async () => ok('[ka] გამარჯობა'));
-    expect(await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE')).toEqual({ text: 'გამარჯობა', model: 'gemini-3.6-flash', spoken: 'ka' });
+    expect(await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE')).toEqual({ text: 'გამარჯობა', model: 'gemini-3.5-flash', spoken: 'ka' });
     fetchSpy.mockImplementationOnce(async () => ok('[ru]'));
     expect((await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'auto')).text).toBe('');
   });
@@ -323,7 +322,7 @@ describe('transcribeWithGeminiDetailed', () => {
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
     expect(r).toEqual({
       text: 'можешь сделать промпт для VEO 3',
-      model: 'gemini-3.6-flash',
+      model: 'gemini-3.5-flash',
       spoken: 'ru',
       // Both calls were billed.
       usage: { inputTokens: 110, outputTokens: 22, totalTokens: 132 },
@@ -344,7 +343,7 @@ describe('transcribeWithGeminiDetailed', () => {
     fetchSpy
       .mockImplementationOnce(async () => ok('[ru] can you make a prompt'))
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }));
-    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ru-RU', { models: ['gemini-3.6-flash'] });
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ru-RU', { models: ['gemini-3.5-flash'] });
     expect(r).toMatchObject({ text: 'can you make a prompt', spoken: 'ru' });
   });
 
@@ -365,7 +364,7 @@ describe('transcribeWithGeminiDetailed', () => {
     expect(isTranscribeModel('gemini-3.5-transcribe')).toBe(true);
     expect(isTranscribeModel('gemini-3.5-transcribe-live')).toBe(false);
     expect(isTranscribeModel('gemini-3.5-transcribe-live-preview')).toBe(false);
-    expect(isTranscribeModel('gemini-3.6-flash')).toBe(false);
+    expect(isTranscribeModel('gemini-3.5-flash')).toBe(false);
   });
 
   it('returns Google-reported usage', async () => {
@@ -388,16 +387,17 @@ describe('transcribeWithGeminiDetailed', () => {
   it('rotates on a missing model, then succeeds on the next', async () => {
     fetchSpy.mockImplementationOnce(async () => new Response('model is no longer available', { status: 404 }));
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
-    expect(r.model).toBe('gemini-3.5-flash');
+    expect(r.model).toBe('gemini-3.7-flash');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(sentBody(1).generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'minimal' });
+    // 3.7 Flash does not take 'minimal' (a 400), so the step-down thinks 'low'.
+    expect(sentBody(1).generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'low' });
   });
 
   it("rotates on a 429 (that model's bucket on Vertex AI), as the chat does, and answers from the next model", async () => {
     fetchSpy.mockImplementationOnce(async () => new Response('Resource exhausted. Please try again later.', { status: 429 }));
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
-    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.5-flash' });
-    expect([modelOf(0), modelOf(1)]).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
+    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.7-flash' });
+    expect([modelOf(0), modelOf(1)]).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash']);
   });
 
   it('when every model is gone or busy it stops with the last code, and the error names each model tried', async () => {
@@ -408,7 +408,7 @@ describe('transcribeWithGeminiDetailed', () => {
     const err = (await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US').catch((e: unknown) => e)) as GeminiSttError;
     expect(err).toBeInstanceOf(GeminiSttError);
     expect(err.code).toBe('model_missing');
-    expect(err.message.startsWith('gemini-3.6-flash 404, gemini-3.5-flash 429, gemini-3.8-flash 404: ')).toBe(true);
+    expect(err.message.startsWith('gemini-3.5-flash 404, gemini-3.7-flash 429, gemini-3.8-flash 404: ')).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(fetchSpy.mock.calls.map(([url]) => String(url)).join(' ')).not.toMatch(/latest/);
   });
@@ -417,7 +417,7 @@ describe('transcribeWithGeminiDetailed', () => {
     fetchSpy.mockImplementationOnce(async () => new Response('Permission denied', { status: 403 }));
     const err = (await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US').catch((e: unknown) => e)) as GeminiSttError;
     expect(err.code).toBe('auth');
-    expect(err.message).toBe('Gemini STT failed (403) on gemini-3.6-flash: Permission denied');
+    expect(err.message).toBe('Gemini STT failed (403) on gemini-3.5-flash: Permission denied');
   });
 
   it('does NOT rotate on quota / auth / bad request — throws a typed error after one call', async () => {
@@ -451,8 +451,8 @@ describe('transcribeWithGeminiDetailed', () => {
   it('a model that does not answer in its share of the deadline hands the rest to the next model (GG, 2026-10-25)', async () => {
     fetchSpy.mockImplementationOnce(timedOut);
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
-    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.5-flash' });
-    expect([modelOf(0), modelOf(1)]).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
+    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.7-flash' });
+    expect([modelOf(0), modelOf(1)]).toEqual(['gemini-3.5-flash', 'gemini-3.7-flash']);
   });
 
   it('when every model times out the error names each one, and the last answer is the network error', async () => {
@@ -461,7 +461,7 @@ describe('transcribeWithGeminiDetailed', () => {
     expect(err).toBeInstanceOf(GeminiSttError);
     expect(err.code).toBe('network');
     expect(err.message).toBe(
-      'gemini-3.6-flash timeout, gemini-3.5-flash timeout, gemini-3.8-flash timeout: Gemini STT network error on gemini-3.8-flash: TimeoutError',
+      'gemini-3.5-flash timeout, gemini-3.7-flash timeout, gemini-3.8-flash timeout: Gemini STT network error on gemini-3.8-flash: TimeoutError',
     );
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
@@ -482,7 +482,7 @@ describe('transcribeWithGeminiDetailed', () => {
       expect(timeoutSpy.mock.calls.map(([ms]) => ms)).toEqual([14_000, 5_000, 3_000]);
       // One model alone has nothing to keep time for: it gets the whole deadline.
       timeoutSpy.mockClear();
-      await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE', { models: ['gemini-3.6-flash'], timeoutMs: 22_000 }).catch(() => null);
+      await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE', { models: ['gemini-3.5-flash'], timeoutMs: 22_000 }).catch(() => null);
       expect(timeoutSpy.mock.calls.map(([ms]) => ms)).toEqual([22_000]);
     } finally {
       nowSpy.mockRestore();
@@ -495,7 +495,7 @@ describe('transcribeWithGeminiDetailed', () => {
       error: { code: 400, message: 'Thinking level MINIMAL is not supported for this model.', status: 'INVALID_ARGUMENT' },
     }), { status: 400 }));
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
-    expect(r.model).toBe('gemini-3.5-flash');
+    expect(r.model).toBe('gemini-3.7-flash');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 

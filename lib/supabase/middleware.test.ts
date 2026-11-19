@@ -22,6 +22,8 @@ jest.mock('next/server', () => ({
 type Cookie = { name: string; value: string; options?: unknown };
 let mockUser: { id: string } | null = null;
 let mockThrow = false;
+let mockThrowError: Error | null = null;
+let mockHang = false;
 let mockRefresh: Cookie[] | null = null;
 let capturedCookieAdapter: { getAll(): Cookie[]; setAll(c: Cookie[]): void } | null = null;
 
@@ -32,7 +34,8 @@ jest.mock('@supabase/ssr', () => ({
       auth: {
         getUser: async () => {
           if (mockRefresh) capturedCookieAdapter!.setAll(mockRefresh); // simulate a token refresh mid-call
-          if (mockThrow) throw new Error('auth server unreachable');
+          if (mockHang) return new Promise(() => {});
+          if (mockThrow) throw mockThrowError ?? new Error('auth server unreachable');
           return { data: { user: mockUser } };
         },
       },
@@ -62,6 +65,8 @@ beforeAll(() => {
 beforeEach(() => {
   mockUser = null;
   mockThrow = false;
+  mockThrowError = null;
+  mockHang = false;
   mockRefresh = null;
   capturedCookieAdapter = null;
 });
@@ -99,4 +104,32 @@ it('no-ops (no client) when Supabase env is absent', async () => {
   expect(user).toBeNull();
   expect(capturedCookieAdapter).toBeNull(); // createServerClient never constructed
   process.env.NEXT_PUBLIC_SUPABASE_URL = url;
+});
+
+describe('Auth server unreachable (2026-11-12 outage)', () => {
+  it('skips the network call and reports available when there is no session cookie', async () => {
+    mockThrow = true;
+    const { user, authUnavailable } = await updateSession(fakeRequest());
+    expect(user).toBeNull();
+    expect(authUnavailable).toBe(false);
+  });
+
+  it('flags authUnavailable on a network error instead of throwing', async () => {
+    mockThrow = true;
+    mockThrowError = Object.assign(new TypeError('fetch failed'));
+    const { user, authUnavailable } = await updateSession(fakeRequest({ 'sb-x-auth-token': 'valid' }));
+    expect(user).toBeNull();
+    expect(authUnavailable).toBe(true);
+  });
+
+  it('gives up after the timeout and flags authUnavailable', async () => {
+    jest.useFakeTimers();
+    mockHang = true;
+    const pending = updateSession(fakeRequest({ 'sb-x-auth-token': 'valid' }));
+    await jest.advanceTimersByTimeAsync(3000);
+    const { user, authUnavailable } = await pending;
+    expect(user).toBeNull();
+    expect(authUnavailable).toBe(true);
+    jest.useRealTimers();
+  });
 });

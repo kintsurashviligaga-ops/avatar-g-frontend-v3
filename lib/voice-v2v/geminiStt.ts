@@ -36,7 +36,7 @@ export function geminiSttBlocker(): string | null {
 // ─── Model chain ─────────────────────────────────────────────────────────────
 
 /**
- * Step-downs after the configured STT model: the default (3.6 Flash), 3.5 Flash, then 3.8 Flash — the chat's Flash
+ * Step-downs after the configured STT model: the default (3.5 Flash; 3.6 Flash until its 2026-11-19 retirement), 3.7 Flash, then 3.8 Flash — the chat's Flash
  * models (DEFAULT_CHAT_MODELS.standard), fastest first. Google RETIRES aliases without notice (gemini-2.0-flash went 404
  * and silently killed Georgian dictation), so a model-missing / overloaded / rate-limited / timed-out answer moves to
  * the next id. Retired ids (gemini-2.0-*, 1.5-*) and 2.5 ids never appear (a new Google project gets 404 "no longer
@@ -47,7 +47,7 @@ export function geminiSttBlocker(): string | null {
  * stopped at the first answer. ⚠️ AND 3.8 FLASH WAS TOO SLOW (2026-10-25): the owner's dictation ended in a
  * TimeoutError on it after 22 s, so it is the LAST step now, not the first (lib/ai/google/models DEFAULT_STT_MODEL).
  */
-const STT_STEP_DOWNS: readonly string[] = [DEFAULT_STT_MODEL, 'gemini-3.5-flash', 'gemini-3.8-flash'];
+const STT_STEP_DOWNS: readonly string[] = [DEFAULT_STT_MODEL, 'gemini-3.7-flash', 'gemini-3.8-flash'];
 
 /**
  * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. Every id is one Vertex AI serves:

@@ -53,7 +53,7 @@ code does, and what was proven, and by whom.
 | `imagen-3.0-*` (all Imagen 3 generation and capability endpoints) | **lifecycle-blocked** | Vertex AI release notes (24 Mar 2026) list them as discontinued; v3.1 records 30 June 2026. Any Imagen 3 id that reaches the code (request body, `GEMINI_IMAGEN_MODEL`, `GEMINI_FRAME_MODEL`) is answered `lifecycle_blocked` before any quote, reserve or call (`lib/image/lifecycle.ts`) |
 | `gemini-3.1-flash-image` | **verified (contract)** 2026-11-06, Production project, `global` | the owner's decision (2026-10-22): it replaces Imagen 3 for Photo, as the code is structured. Image Studio and the chat image path render on it through Vertex. The contract call (16:9) answered a 1376×768 PNG with a `thoughtSignature` beside it, which the adapter ignores; `__tests__/fixtures/vertex/image/` |
 | `gemini-2.5-flash-image` | unverified | Google's named Imagen 3 migration target; referenced, not the default |
-| `imagen-4.0-generate-001` | off in Production | an opt-in leg (`GEMINI_IMAGEN_ENABLED=1`), Vertex only; the flag is not in the Production environment listing |
+| `imagen-4.0-generate-001` | **removed** | retired by Google (2026-06-30); the opt-in leg (`GEMINI_IMAGEN_ENABLED`) was removed in v5.1 M-14, so the flag does nothing; the catalog keeps the id as disabled |
 
 **Decision recorded:** Imagen 3 stays blocked with an explicit refusal; Photo renders on `gemini-3.1-flash-image`;
 existing images and drafts stay readable. Re-opening Imagen (4) needs a budgeted contract call with the owner's OK.

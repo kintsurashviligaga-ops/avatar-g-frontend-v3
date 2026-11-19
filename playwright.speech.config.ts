@@ -34,6 +34,8 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'speech-local-anon',
       SUPABASE_SERVICE_ROLE_KEY: 'speech-local-service',
       NEXT_TELEMETRY_DISABLED: '1',
+      // The fake Supabase host is never reachable from the server: keep the middleware failing open (see middleware.ts).
+      SUPABASE_UNAVAILABLE_PAGE: 'off',
     },
   },
 });

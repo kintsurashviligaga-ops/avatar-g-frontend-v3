@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * Gap C2 (Agent G PART 5): a film's lip-sync pass is its own /api/video/lipsync charge (the avatar price, reserved when the
- * job starts, refunded when the render fails), and the film's quote never showed it. Pinned on OmniStudio's source: the
+ * Gap C2 (Agent G PART 5): a film's lip-sync pass was its own /api/video/lipsync charge, and the film's quote never showed
+ * it. v5.1 M-14 removed the pass (and the route): the switch is always off, so its add-on prices to 0. Pinned on OmniStudio's source: the
  * studio is one large client component, and these are the connections no component test can see.
  */
 import { readFileSync } from 'node:fs';
@@ -38,22 +38,11 @@ describe('the lip-sync charge is shown where the film is confirmed', () => {
   });
 });
 
-describe('the pass itself says what happened to the money', () => {
-  test('both lip-sync legs go through one runner that re-reads the balance and reports a 402 as no_credits', () => {
-    expect(code).toContain('async function runLipsyncJob(');
-    expect(code).toMatch(/if \(r\.status === 402 \|\| j\.code === 'insufficient_credits'\) return \{ url: null, noCredits: true \};/);
-    expect(code).toMatch(/function heygenSingerPerformance\([\s\S]*?\): Promise<LipsyncOutcome> \{[\s\S]*?return runLipsyncJob\(/);
-    expect(code).toMatch(/function heygenSpeakingHead\([\s\S]*?\): Promise<LipsyncOutcome> \{[\s\S]*?return runLipsyncJob\(/);
-  });
-
-  test('a short balance is named as such on both legs, never as "engine unavailable"', () => {
-    expect(code).toMatch(/if \(sung\.noCredits\) \{\s*patchLipsyncCard\('skipped', lipsyncSkipReason\('no_credits', locale\)\);/);
-    expect(code).toMatch(/if \(composited === NO_LIPSYNC_CREDITS\) \{ patchLipsyncCard\('skipped', lipsyncSkipReason\('no_credits', locale\)\); \}/);
-  });
-
-  test('a paid singer clip the montage could not use is named as saved in the Library (the route files it there)', () => {
-    for (const r of ['short_result', 'no_clips', 'composite_failed']) {
-      expect(code).toContain(`lipsyncSkipReason('${r}', locale, { saved: true })`);
-    }
+describe('the pass is removed (v5.1 M-14, GG 2026-11-12)', () => {
+  test('the switch is always off, so no lip-sync job starts and no add-on is charged', () => {
+    expect(code).toContain('const videoLipsync = false;');
+    expect(code).not.toContain("fetch('/api/video/lipsync");
+    expect(code).not.toContain('async function runLipsyncJob(');
+    expect(code).toContain("patchLipsyncCard('skipped', lipsyncSkipReason('not_requested', locale));");
   });
 });

@@ -61,7 +61,7 @@ test('a value kept by hand that is not on the list is ignored; refused storage s
     setItem: () => { throw new Error('denied'); },
     removeItem: () => { throw new Error('denied'); },
   };
-  expect(sttTrialModel(env('?stt=gemini-3.6-flash', refusing))).toBe('gemini-3.6-flash');
+  expect(sttTrialModel(env('?stt=gemini-3.7-flash', refusing))).toBe('gemini-3.7-flash');
   expect(sttTrialModel(env('', refusing))).toBeNull();
 });
 

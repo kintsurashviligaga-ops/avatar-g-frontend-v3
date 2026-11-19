@@ -34,11 +34,11 @@ const copy: Record<Lang, {
       items: [
         {
           q: 'რამდენი ხანი სჭირდება ავატარის ვიდეოს გენერაციას?',
-          a: 'მოკლე სცენარისთვის (≤30 წამი) — 2-დან 5 წუთამდე. გრძელი სცენარისთვის შესაძლოა 5 წუთამდე. გენერაცია ხდება HeyGen-ის სერვერებზე და გადახდილია მხოლოდ თქვენი დარჩენილი კრედიტებიდან.',
+          a: 'მოკლე სცენარისთვის (≤30 წამი) — 2-დან 5 წუთამდე. გრძელი სცენარისთვის შესაძლოა 5 წუთამდე. გენერაცია ხდება Google Vertex AI-ზე და გადახდილია მხოლოდ თქვენი დარჩენილი კრედიტებიდან.',
         },
         {
           q: 'რატომ არ ჩამოიტვირთა ვიდეო?',
-          a: 'სამი მიზეზი არსებობს — HeyGen-ის სერვერი დროებით ჩავარდა, თქვენი კრედიტი ამოიწურა, ან ქსელი დახურულია. შეცდომის შემთხვევაში ჩვენ გაჩვენებთ წითელ ბანერს და პირდაპირ ლინკს ვიდეოს გასახსნელად.',
+          a: 'სამი მიზეზი არსებობს — Google-ის სერვისი დროებით ჩავარდა, თქვენი კრედიტი ამოიწურა, ან ქსელი დახურულია. შეცდომის შემთხვევაში ჩვენ გაჩვენებთ წითელ ბანერს და პირდაპირ ლინკს ვიდეოს გასახსნელად.',
         },
         {
           q: 'შემიძლია გავაუქმო ანგარიში და მონაცემები წავშალო?',
@@ -54,7 +54,7 @@ const copy: Record<Lang, {
         },
         {
           q: 'შემიძლია გავყიდო ჩემი გენერირებული კონტენტი?',
-          a: 'დიახ — გენერირებული მედია მთლიანად ეკუთვნით თქვენ. გასათვალისწინებელია მესამე-მხარის სერვისების (HeyGen, Replicate და ა.შ.) საკუთარი ლიცენზიის პირობებიც.',
+          a: 'დიახ — გენერირებული მედია მთლიანად ეკუთვნით თქვენ. გასათვალისწინებელია Google-ის (Gemini, Veo) გამოყენების პირობებიც.',
         },
         {
           q: 'როგორ მუშაობს გადახდა?',
@@ -70,7 +70,7 @@ const copy: Record<Lang, {
     },
     status: {
       title: 'სისტემის სტატუსი',
-      body: 'რეალურ დროში სტატუსი 12 პროვაიდერისთვის (HeyGen, Replicate, LTX, Udio, ElevenLabs, Anthropic, Gemini, Stripe, Supabase, Sentry, Vercel, Upstash) ხელმისაწვდომია მთავარ ჩათში ზედა მარჯვენა ღილაკზე დაჭერით.',
+      body: 'რეალურ დროში სტატუსი ყველა სერვისისთვის (ჩატი, სურათი, ვიდეო, მუსიკა, ხმა, ავატარი) ხელმისაწვდომია მთავარ ჩათში ზედა მარჯვენა ღილაკზე დაჭერით.',
       link: 'სტატუსის ნახვა →',
     },
     issues: {
@@ -94,11 +94,11 @@ const copy: Record<Lang, {
       items: [
         {
           q: 'How long does avatar video generation take?',
-          a: 'For a short script (≤30 sec) — 2 to 5 minutes. Longer scripts can take up to 5 minutes. Generation runs on HeyGen and is paid for from your remaining credits.',
+          a: 'For a short script (≤30 sec) — 2 to 5 minutes. Longer scripts can take up to 5 minutes. Generation runs on Google Vertex AI and is paid for from your remaining credits.',
         },
         {
           q: 'Why didn\'t my video load?',
-          a: 'Three possible causes — HeyGen had a transient outage, your credit ran out, or your network is offline. On error we show a red banner with a direct link to open the video.',
+          a: 'Three possible causes — the Google service had a transient outage, your credit ran out, or your network is offline. On error we show a red banner with a direct link to open the video.',
         },
         {
           q: 'Can I delete my account and data?',
@@ -114,7 +114,7 @@ const copy: Record<Lang, {
         },
         {
           q: 'Can I sell my generated content?',
-          a: 'Yes — generated media is yours entirely. Note that the third-party providers (HeyGen, Replicate, etc.) also have their own license terms.',
+          a: 'Yes — generated media is yours entirely. Note that Google (Gemini, Veo) also has its own usage terms.',
         },
         {
           q: 'How does billing work?',
@@ -130,7 +130,7 @@ const copy: Record<Lang, {
     },
     status: {
       title: 'System Status',
-      body: 'Live status for all 12 providers (HeyGen, Replicate, LTX, Udio, ElevenLabs, Anthropic, Gemini, Stripe, Supabase, Sentry, Vercel, Upstash) is available from the chat top-right button.',
+      body: 'Live status for every service (chat, image, video, music, voice, avatar) is available from the chat top-right button.',
       link: 'View status →',
     },
     issues: {
@@ -154,11 +154,11 @@ const copy: Record<Lang, {
       items: [
         {
           q: 'Сколько занимает генерация видео-аватара?',
-          a: 'Короткий сценарий (≤30 сек) — от 2 до 5 минут. Длинные — до 5 минут. Генерация выполняется на серверах HeyGen и оплачивается из ваших кредитов.',
+          a: 'Короткий сценарий (≤30 сек) — от 2 до 5 минут. Длинные — до 5 минут. Генерация выполняется на Google Vertex AI и оплачивается из ваших кредитов.',
         },
         {
           q: 'Почему видео не загрузилось?',
-          a: 'Три возможные причины — HeyGen временно недоступен, кончились кредиты, или нет сети. При ошибке мы показываем красный баннер с прямой ссылкой на видео.',
+          a: 'Три возможные причины — сервис Google временно недоступен, кончились кредиты, или нет сети. При ошибке мы показываем красный баннер с прямой ссылкой на видео.',
         },
         {
           q: 'Можно ли удалить аккаунт и все данные?',
@@ -174,7 +174,7 @@ const copy: Record<Lang, {
         },
         {
           q: 'Можно ли продавать сгенерированный контент?',
-          a: 'Да — сгенерированный медиа полностью принадлежит вам. Помните о лицензионных условиях провайдеров (HeyGen, Replicate и пр.).',
+          a: 'Да — сгенерированный медиа полностью принадлежит вам. Помните о условиях использования Google (Gemini, Veo).',
         },
         {
           q: 'Как работает оплата?',
@@ -190,7 +190,7 @@ const copy: Record<Lang, {
     },
     status: {
       title: 'Состояние системы',
-      body: 'Статус в реальном времени для 12 провайдеров (HeyGen, Replicate, LTX, Udio, ElevenLabs, Anthropic, Gemini, Stripe, Supabase, Sentry, Vercel, Upstash) доступен по кнопке в правом верхнем углу чата.',
+      body: 'Статус в реальном времени для всех сервисов (чат, изображения, видео, музыка, голос, аватар) доступен по кнопке в правом верхнем углу чата.',
       link: 'Посмотреть статус →',
     },
     issues: {

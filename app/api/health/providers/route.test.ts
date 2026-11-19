@@ -18,11 +18,6 @@ jest.mock('../../../../lib/admin/guard', () => ({
 }));
 let mockVeo: 'vertex' | 'gemini' | null = 'vertex';
 jest.mock('../../../../lib/veo/engine', () => ({ veoTransport: () => mockVeo }));
-let mockImagen = false;
-jest.mock('../../../../lib/ai/geminiImagen', () => ({
-  ...jest.requireActual('../../../../lib/ai/geminiImagen'),
-  hasGeminiImagenProvider: () => mockImagen,
-}));
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
@@ -35,10 +30,9 @@ const VENDORS = /deepseek|atlas|anthropic|claude|replicate|runway|elevenlabs|ltx
 
 beforeEach(() => {
   process.env = { ...ENV };
-  for (const k of ['VIDEO_GOOGLE_ONLY', 'REPLICATE_VIDEO_MODEL', 'AUTO_ANCHOR_FRAME', 'ANCHOR_MODEL', 'GEMINI_FRAME_MODEL', 'GEMINI_IMAGEN_MODEL', 'VEO_MODEL_STANDARD', 'VEO_MODEL_FAST', 'VEO_MODEL_LITE', 'GEMINI_VEO_MODEL']) delete process.env[k];
+  for (const k of ['VIDEO_GOOGLE_ONLY', 'REPLICATE_VIDEO_MODEL', 'AUTO_ANCHOR_FRAME', 'ANCHOR_MODEL', 'GEMINI_FRAME_MODEL', 'GEMINI_IMAGEN_MODEL', 'GEMINI_IMAGEN_ENABLED', 'VEO_MODEL_STANDARD', 'VEO_MODEL_FAST', 'VEO_MODEL_LITE', 'GEMINI_VEO_MODEL']) delete process.env[k];
   mockAdmin = true;
   mockVeo = 'vertex';
-  mockImagen = false;
 });
 afterAll(() => { process.env = ENV; });
 
@@ -83,9 +77,9 @@ test.each([
   expect((await pipeline()).imageBase).toBe('Gemini gemini-3.1-flash-image');
 });
 
-test('Imagen switched on: the chat image line names Imagen first, then Google\'s image model', async () => {
-  mockImagen = true;
-  expect((await pipeline()).imageBase).toBe('Imagen imagen-4.0-generate-001, then Gemini gemini-3.1-flash-image');
+test('GEMINI_IMAGEN_ENABLED no longer changes the chat image line (Imagen 4 is retired)', async () => {
+  Object.assign(process.env, { GEMINI_IMAGEN_ENABLED: '1', GEMINI_IMAGEN_MODEL: 'imagen-4.0-generate-001' });
+  expect((await pipeline()).imageBase).toBe('Gemini gemini-3.1-flash-image');
 });
 
 test('no outside vendor is reported, even with its key bound', async () => {

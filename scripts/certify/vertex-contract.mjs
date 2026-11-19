@@ -494,6 +494,11 @@ export async function run(opts, deps = {}) {
       buf = wavFromPcm16(buf, rate);
       mimeType = 'audio/wav';
       out.wavBase64 = buf.toString('base64');
+    } else if (/^audio\/(?:x-)?wav\b/i.test(mimeType ?? '') || (buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WAVE')) {
+      // gemini-3.8-flash-tts answers in a WAV container (plan-3 run, 2026-11-12: Chirp was SKIPPED because only raw
+      // L16 PCM set wavBase64). A WAV is already what Chirp is given, so it is passed on as it came.
+      mimeType = 'audio/wav';
+      out.wavBase64 = buf.toString('base64');
     }
     const ext = /png/.test(mimeType) ? 'png' : /jpe?g/.test(mimeType) ? 'jpg' : /mp4/.test(mimeType) ? 'mp4' : /wav/.test(mimeType) ? 'wav' : /mpeg|mp3/.test(mimeType) ? 'mp3' : 'bin';
     writeFileSync(join(opts.out, 'media', `${call.id}.${ext}`), buf);

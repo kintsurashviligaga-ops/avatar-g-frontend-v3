@@ -41,3 +41,16 @@ test('an AI Studio key alone does not make Gemini configured', async () => {
   process.env.GEMINI_API_KEY = 'AQ.test-key';
   expect(await gemini()).toBe(false);
 });
+
+test('retired vendors are not listed, so a Google-only service reads ready (v5.1 M-14)', async () => {
+  Object.assign(process.env, VERTEX_ENV);
+  const body = (await (await GET(new NextRequest('https://myavatar.ge/api/app/status?service=text'))).json()) as {
+    keys: { providers: Array<{ id: string }> };
+    services?: Array<{ slug: string; status: string; providers: Array<{ id: string }> }>;
+  };
+  const ids = body.keys.providers.map((p) => p.id);
+  for (const retired of ['anthropic', 'udio', 'deepgram', 'elevenlabs', 'cartesia']) expect(ids).not.toContain(retired);
+  for (const s of body.services ?? []) {
+    for (const p of s.providers) expect(['anthropic', 'udio', 'deepgram', 'elevenlabs', 'cartesia']).not.toContain(p.id);
+  }
+});

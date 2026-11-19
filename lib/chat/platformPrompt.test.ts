@@ -2,7 +2,7 @@
  * lib/chat/platformPrompt — the Google-only platform prompt. Pins the four things the old prompt got wrong
  * (non-Google engines, USD tiers, two Markdown rules, no reliable date) plus the size budget and the locale variants.
  */
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { buildPlatformPrompt, OUTSIDE_ENGINE_TOOLS, PLATFORM_UI_LABELS, START_QUESTION, VEO_AVATAR_PROMPT_CREDITS, type PlatformPromptLocale } from './platformPrompt';
 import { veoAvatarCredits } from '@/lib/avatar/veoAvatar';
@@ -221,7 +221,7 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });
 
-  it('closes exactly the tools whose route always refuses them', () => {
+  it('closes exactly the tools whose route always refuses them (or was removed)', () => {
     // Read as text: mediaPolicy imports next/server, which needs the node test environment this suite does not use.
     const policy = readFileSync(join(process.cwd(), 'lib/providers/mediaPolicy.ts'), 'utf8');
     const gated = new Set([...policy.matchAll(/\{ file: '([^']+)'/g)].map((m) => m[1]));
@@ -231,7 +231,11 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
       motion: 'app/api/motion-control/route.ts',
       model3d: 'app/api/v2/model3d/create/route.ts',
     } as never;
-    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, gated: gated.has(route[id]) }).toEqual({ id, gated: true });
+    // v5.1 M-14 (GG 2026-11-12) deleted the lip-sync and Motion Control routes outright: no file is closed too.
+    const closed = (f: string) => gated.has(f) || !existsSync(join(process.cwd(), f));
+    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, closed: closed(route[id]) }).toEqual({ id, closed: true });
+    expect(existsSync(join(process.cwd(), route.avatar))).toBe(false);
+    expect(existsSync(join(process.cwd(), route.motion))).toBe(false);
   });
 });
 
