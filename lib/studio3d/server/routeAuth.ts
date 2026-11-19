@@ -5,7 +5,7 @@
  */
 import 'server-only';
 import { NextResponse } from 'next/server';
-import { authedClientFromRequest } from '@/lib/supabase/server';
+import type { User } from '@supabase/supabase-js';
 import { isAdminUserAsync } from '@/lib/admin/guard';
 import { studio3dAudience, studio3dAllowed } from '../flag';
 
@@ -13,9 +13,12 @@ export type Studio3dRouteContext = { ok: true; userId: string } | { ok: false; r
 
 export const notFound = () => NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-export async function studio3dContext(req: Request): Promise<Studio3dRouteContext> {
+/**
+ * The route reads the session itself (`authedClientFromRequest` in its own code, so __tests__/api-lockdown.test.ts sees
+ * the gate) and hands the user here: flag, audience and admin rules stay in one place.
+ */
+export async function studio3dContext(user: User | null): Promise<Studio3dRouteContext> {
   if (studio3dAudience() === 'off') return { ok: false, response: notFound() };
-  const { user } = await authedClientFromRequest(req);
   if (!user) {
     // Admin-only audience: an anonymous caller must not learn that the route exists.
     if (studio3dAudience() === 'admin') return { ok: false, response: notFound() };

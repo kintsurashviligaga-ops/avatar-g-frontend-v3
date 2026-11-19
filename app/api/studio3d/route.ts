@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { studio3dContext } from '@/lib/studio3d/server/routeAuth';
 import { createJob } from '@/lib/studio3d/server/service';
 import { studio3dDeps } from '@/lib/studio3d/server/deps';
@@ -15,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // the reference picture is drawn inside this request
 
 export async function POST(req: NextRequest) {
-  const ctx = await studio3dContext(req);
+  const ctx = await studio3dContext((await authedClientFromRequest(req)).user);
   if (!ctx.ok) return ctx.response;
   const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (limited) return limited;
