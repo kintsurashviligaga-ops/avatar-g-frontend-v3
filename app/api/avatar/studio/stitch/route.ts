@@ -1,11 +1,13 @@
 /**
- * POST /api/avatar/studio/stitch { projectId, jobIds } — the scenes, in order, as one presentation (free). 404 unless
+ * POST /api/avatar/studio/stitch { projectId, jobIds } — the scenes, in order, as one presentation (free), filed in the
+ * Library as an avatar video (vstudio_<projectId>). 404 unless
  * AVATAR_STUDIO_V2 allows this user. Every scene must be the caller's, ready, and from this project.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { StudioError } from '@/lib/avatar/studio/errors';
 import { liveSceneDeps } from '@/lib/avatar/studio/live';
 import { checkJobs, stitchPresentation } from '@/lib/avatar/studio/presentation.server';
@@ -29,7 +31,13 @@ export async function POST(req: NextRequest) {
   const deps = liveSceneDeps(user.id);
   try {
     const jobs = checkJobs(await Promise.all(ids.map((id) => deps.loadJob(user.id, id))), projectId);
-    return NextResponse.json({ ok: true, ...(await stitchPresentation(deps, user.id, projectId, jobs)) });
+    const cut = await stitchPresentation(deps, user.id, projectId, jobs);
+    // Filed in the Library as an avatar video (one row per presentation: a re-join replaces it). A miss never fails the cut.
+    const savedToLibrary = await recordCompletedAsset({
+      id: `vstudio_${projectId}`, userId: user.id, serviceType: 'avatar', url: cut.url,
+      prompt: jobs.map((j) => j.text).join(' ').slice(0, 500), source: 'avatar-studio', subtype: 'virtual-studio',
+    }).catch(() => false);
+    return NextResponse.json({ ok: true, ...cut, libraryId: `vstudio_${projectId}`, savedToLibrary });
   } catch (e) {
     if (e instanceof StudioError) return studioFail(e.code, e.message, e.status);
     return studioFail('stitch_failed', 'The presentation could not be joined.', 502);

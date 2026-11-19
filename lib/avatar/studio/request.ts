@@ -27,6 +27,9 @@ export function parseStudioRequest(v: unknown): Parsed<StudioRequest> {
   const presenterId = str(v.presenterId, 80);
   if (!presenterId) errors.push('presenterId is required');
   if (v.voiceId !== undefined && v.voiceId !== null && !str(v.voiceId, 40)) errors.push('voiceId must be a voice name');
+  for (const k of ['voiceSpeed', 'voicePitch'] as const) {
+    if (v[k] !== undefined && (typeof v[k] !== 'number' || !Number.isFinite(v[k]))) errors.push(`${k} must be a number`);
+  }
   if (v.tone !== undefined && !(TONES as readonly unknown[]).includes(v.tone)) errors.push('unknown tone');
   if (v.pace !== undefined && !(PACES as readonly unknown[]).includes(v.pace)) errors.push('unknown pace');
   if (v.format !== undefined && v.format !== '16:9' && v.format !== '9:16') errors.push('format must be 16:9 or 9:16');
@@ -47,6 +50,8 @@ export function parseStudioRequest(v: unknown): Parsed<StudioRequest> {
       script: script as string,
       presenterId: presenterId as string,
       voiceId: (v.voiceId as string | null | undefined) ?? undefined,
+      ...(typeof v.voiceSpeed === 'number' ? { voiceSpeed: v.voiceSpeed } : {}),
+      ...(typeof v.voicePitch === 'number' ? { voicePitch: v.voicePitch } : {}),
       tone: v.tone as StudioRequest['tone'],
       pace: v.pace as StudioRequest['pace'],
       format: v.format as StudioRequest['format'],

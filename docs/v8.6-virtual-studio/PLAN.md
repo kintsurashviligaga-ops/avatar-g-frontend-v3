@@ -22,3 +22,24 @@ Flag: `AVATAR_STUDIO_V2` = `off` (default) | `admin` | `everyone`. Full plan and
 
 ## Open decisions (D1–D6 in the plan doc)
 D1 Live default · D2 prices · D3 Algieba-on-Omni as labelled dub · D4 ~$1 paid probe after GREEN · D5 relay `/render` deploy · D6 pace chips everywhere, speed/pitch sliders only on the dub.
+
+## GG decisions (2026-11-15 11:07Z)
+- D1 Live presenter (Kira, Ben, Leo) is the default; Omni is the premium "Cinematic" option.
+- D2 Prices approved: Live ✦27 / 30 s, Cinematic 720p ✦250, 1080p ✦367, Algieba dub +✦2, background ✦8.
+- D3 Algieba (any named voice) on Omni is offered as "Studio voice (lips approximate)".
+- D4 ~$1 paid probe (Live renders, Omni green-screen test, Chirp timings) only after Supabase is back online.
+- D5 Approved a relay /render endpoint at 0 % traffic. PR B records Live takes from the server as a relay client, so no
+  relay change is needed; /render is added only if GG still wants it.
+- D6 Pace chips everywhere; exact speed/pitch sliders only on the dubbed Studio voice.
+
+## PR C (Agent G + Use in Video + Library + Studio voice) — built
+- Studio voice (D3/D6): Omni + a named voice → after the last turn the named Gemini-TTS voice reads the scene
+  (`synthesizeGoogleTts` `geminiVoice`), speed 0.8–1.25 and pitch −4…+4 semitones are applied with ffmpeg
+  (`voiceAdjust.ts`), and the line is laid on the mouth with `speechMatch.planDub`. No retake for a dubbed scene (it
+  reads every word); words timed by Chirp on the dubbed clip. A dub miss keeps the scene in Omni's voice, warns
+  `dub_failed`, and refunds only the dub's credits (ref `:dub-refund`).
+- Agent G (`agent.ts`): "Make a presentation from this script: …" in ka / en / ru, with presenter / voice / format hints
+  → the chat shows the Studio as a card (OmniStudio, behind `NEXT_PUBLIC_AVATAR_STUDIO_V2`); nothing is charged until Make.
+- Use in Video: Montage (in production, via `lib/studio/pendingEdit` or the chat's own Montage) or a ready scene for the
+  Director's Workflow (`videoHandoff.ts`, read by #355 once merged). Free.
+- Library: the joined presentation is filed as an avatar video `vstudio_<projectId>` (a re-join replaces it).

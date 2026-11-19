@@ -12,6 +12,8 @@ import { estimateSeconds, omniTurns, splitScript, type ScriptLang, type ScriptSc
 import { quotePresentation, type MarginGate, type OmniRes, type PresentationQuote, type StudioBook } from './price';
 import type { StudioBackground } from './prompts';
 
+import { clampVoiceAdjust, NO_ADJUST, type VoiceAdjust } from './voiceAdjust';
+
 /** Omni: one generate + up to three extends = 40 s. */
 export const OMNI_MAX_TURNS = 4;
 export const OMNI_SCENE_MAX_SEC = 36;
@@ -21,6 +23,9 @@ export interface StudioRequest {
   presenterId: string;
   /** Live: the named voice it speaks in. Omni: a named voice means a dub ("Studio voice, lips approximate"); null keeps Omni's own voice. */
   voiceId?: string | null;
+  /** The dubbed Studio voice only (D6): exact speed 0.8–1.25 and pitch −4…+4 semitones. Ignored otherwise. */
+  voiceSpeed?: number;
+  voicePitch?: number;
   tone?: Tone;
   pace?: Pace;
   format?: StudioFormat;
@@ -37,6 +42,8 @@ export interface StudioPlan {
   presenter: Presenter;
   voice: Voice | null;
   dub: boolean;
+  /** The Studio voice's speed and pitch; always NO_ADJUST unless `dub`. */
+  voiceAdjust: VoiceAdjust;
   tone: Tone;
   pace: Pace;
   format: StudioFormat;
@@ -116,5 +123,6 @@ export function buildStudioPlan(req: StudioRequest, opts: { book: StudioBook; ga
     })),
     { book: opts.book, generateBackground: bg.kind === 'generate' && presenter.engine === 'live', gate: opts.gate },
   );
-  return { ok: true, plan: { presenter, voice, dub, tone, pace, format, resolution, lang: split.lang, background, compose, scenes, quote, warnings } };
+  const voiceAdjust = dub ? clampVoiceAdjust({ speed: req.voiceSpeed, pitch: req.voicePitch }) : NO_ADJUST;
+  return { ok: true, plan: { presenter, voice, dub, voiceAdjust, tone, pace, format, resolution, lang: split.lang, background, compose, scenes, quote, warnings } };
 }
