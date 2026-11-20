@@ -2,14 +2,14 @@
  * GET /api/health/embed   (header `x-admin-key: $ADMIN_KEY`, or a signed-in admin)
  *
  * ⚠️ The key used to ride in `?key=` — a URL lands in access logs, traces and error reports. Header only now.
- * Admin-gated diagnostic for the OpenAI embeddings API. Returns the
+ * Admin-gated diagnostic for the embeddings call (gemini-embedding-001 on Vertex AI). Returns the
  * shape and (partial) values of an embedding so we can verify whether
  * `embed()` is working in production. If the call fails, the actual
  * upstream error (status + body) is surfaced.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { embed } from '@/lib/memory/embed';
+import { embed, EMBEDDING_MODEL_TAG } from '@/lib/memory/embed';
 import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
 import { isAdmin } from '@/lib/auth/adminGuard';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
@@ -33,6 +33,6 @@ export async function GET(req: NextRequest) {
     embedding_first_5: vec?.slice(0, 5) ?? null,
     // Embeddings run on Vertex AI (MASTER TASK v3.1): readiness, not an AI Studio key.
     vertex_ai_configured: googleAiConfigured(),
-    openai_key_present: !!process.env.OPENAI_API_KEY,
+    model: EMBEDDING_MODEL_TAG,
   });
 }
