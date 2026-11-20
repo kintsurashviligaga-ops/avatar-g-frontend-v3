@@ -12,6 +12,7 @@ import { cookies } from 'next/headers';
 import type { CookieOptions } from '@supabase/ssr';
 import { getServerEnv } from '@/lib/env/server';
 import { ShippingProfile, ShippingTracking, ShippingStatus } from '@/lib/commerce/types';
+import { getSessionUser } from '@/lib/supabase/server';
 
 /**
  * Initialize Supabase client for server operations
@@ -118,7 +119,7 @@ export async function addShippingEvent(input: AddShippingEventInput) {
   const supabase = getSupabaseClient();
   
   // Get current user
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await getSessionUser(supabase);
   if (authError || !user) {
     throw new Error('Not authenticated');
   }
@@ -276,7 +277,7 @@ export interface SelectShippingProfileInput {
 export async function selectShippingProfile(input: SelectShippingProfileInput) {
   const supabase = getSupabaseClient();
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await getSessionUser(supabase);
   if (authError || !user) {
     throw new Error('Not authenticated');
   }
@@ -375,7 +376,7 @@ export interface CreateShippingProfileInput {
 export async function createShippingProfile(input: CreateShippingProfileInput) {
   const supabase = getSupabaseClient();
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await getSessionUser(supabase);
   if (authError || !user) {
     throw new Error('Not authenticated');
   }

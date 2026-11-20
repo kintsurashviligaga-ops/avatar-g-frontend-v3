@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { isAdminUserAsync } from '@/lib/admin/guard';
 import AgentProposalsReview from '@/components/admin/AgentProposalsReview';
 
@@ -13,7 +13,7 @@ type Props = { params: Promise<{ locale: string }> };
 export default async function AgentProposalsPage({ params }: Props) {
   const { locale } = await params;
   const supabase = createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await getSessionUser(supabase);
   const admin = await isAdminUserAsync(user);
   if (!admin) redirect(`/${locale}/dashboard`);
 

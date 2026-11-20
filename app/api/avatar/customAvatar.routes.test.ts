@@ -9,6 +9,7 @@ jest.mock('../../../lib/supabase/server', () => ({
   createRouteHandlerClient: jest.fn(),
   createServerClient: jest.fn(),
   requireUser: jest.fn(),
+  getSessionUser: (c: { auth: { getUser: () => unknown } }) => c.auth.getUser(),
 }));
 jest.mock('../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { WRITE: {} } }));
 

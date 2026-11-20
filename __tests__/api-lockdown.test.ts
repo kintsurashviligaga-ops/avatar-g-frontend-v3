@@ -113,7 +113,7 @@ function providerChain(start: string): string[] | null {
 
 /** A gate in the route's own code: a session, an admin check, a signature / shared-secret / cron / ops check. */
 const GATE_SIGNALS: RegExp[] = [
-  /\b(requireUser|requireAuthenticatedUser|getAuthenticatedUser|authedClientFromRequest|guardGeneration|getAuthContext|requireAuthContext|sessionUserId|resolveTwinCaller)\s*\(/,
+  /\b(requireUser|requireAuthenticatedUser|getAuthenticatedUser|authedClientFromRequest|guardGeneration|getAuthContext|requireAuthContext|sessionUserId|resolveTwinCaller|getSessionUser)\s*\(/,
   /auth\.getUser\s*\(/,
   /\b(mustSignInToGenerate|mustSignInToChat|requireAuthForGeneration)\s*\(/,
   // Music Studio v1 (lib/music/studio/http.ts): musicUser() is authedClientFromRequest + refusal of anonymous and of the

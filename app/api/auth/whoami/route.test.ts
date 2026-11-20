@@ -3,6 +3,7 @@
 const mockGetUser = jest.fn();
 jest.mock('../../../../lib/supabase/server', () => ({
   createRouteHandlerClient: () => ({ auth: { getUser: () => mockGetUser() } }),
+  getSessionUser: (c: { auth: { getUser: () => unknown } }) => c.auth.getUser(),
 }));
 
 import { GET } from './route';

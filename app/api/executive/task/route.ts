@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { structuredLog } from '@/lib/logger';
 import { runExecutiveTask } from '@/lib/agent/executiveOrchestrator';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServerClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getSessionUser(supabase);
 
     if (!user) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

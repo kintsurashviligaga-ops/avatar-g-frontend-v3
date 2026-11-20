@@ -47,6 +47,7 @@ jest.mock('../../../../lib/supabase/server', () => ({
     from: jest.fn(() => queryBuilder()),
   })),
   createServiceRoleClient: jest.fn(() => { throw new Error('service role must not be needed in these tests'); }),
+  getSessionUser: (c: { auth: { getUser: () => unknown } }) => c.auth.getUser(),
 }));
 
 jest.mock('../../../../lib/api/rate-limit', () => ({

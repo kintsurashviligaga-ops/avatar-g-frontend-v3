@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import MemoryPanel from '@/components/memory/MemoryPanel';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getSessionUser } from '@/lib/supabase/server';
 import { signInPath } from '@/lib/routing/signIn';
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,7 @@ export default async function MemoryPage({ params }: Props) {
   const supabase = createServerClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getSessionUser(supabase);
 
   if (!user) {
     redirect(signInPath(locale, { redirect: `/${locale}/memory` }));
