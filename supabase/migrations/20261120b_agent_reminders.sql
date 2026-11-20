@@ -2,7 +2,7 @@
 -- reminders the user asks Agent G to keep ("remind me Friday 10:00"). Nothing reads or writes this table yet: the store,
 -- the cron sweep that sends due reminders, and their flag come in the follow-up once the database is back and GG OKs it.
 --
--- Additive only: one new table. Rollback: drop table public.agent_reminders;
+-- Additive only: one new table. Safe to run twice. Rollback: drop table public.agent_reminders;
 
 begin;
 
@@ -24,6 +24,7 @@ create index if not exists agent_reminders_user on public.agent_reminders (user_
 
 alter table public.agent_reminders enable row level security;
 -- The user sees and cancels their own; inserts and the sweep go through service_role only.
+drop policy if exists agent_reminders_select_own on public.agent_reminders;
 create policy agent_reminders_select_own on public.agent_reminders for select to authenticated using (user_id = auth.uid());
 revoke insert, update, delete on table public.agent_reminders from public, anon, authenticated;
 grant select on table public.agent_reminders to authenticated;
