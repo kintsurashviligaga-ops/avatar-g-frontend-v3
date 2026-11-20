@@ -18,21 +18,21 @@ const T = {
     title: 'საიტზე შესვლა', close: 'დახურვა', saved: 'შენახული შესვლები', none: 'ჯერ არცერთი.', forget: 'წაშლა',
     url: 'საიტის მისამართი', open: 'გახსნა', opening: 'ბრაუზერი იხსნება…', type: 'ჩაწერეთ აქ', send: 'ჩაწერა',
     save: 'შენახვა', cancel: 'გაუქმება', saving: 'ინახება…', done: (s: string) => `შესვლა შენახულია: ${s}. Agent G ამ საიტზე შესული იმუშავებს.`,
-    tap: 'დააჭირეთ სურათს, რომ დააკლიკოთ. ტექსტი ქვემოთ ჩაწერეთ.', hide: 'დამალვა', show: 'ჩვენება', back: 'უკან', up: 'ზემოთ', down: 'ქვემოთ',
+    tap: 'დააჭირეთ სურათს, რომ დააკლიკოთ. ტექსტი ქვემოთ ჩაწერეთ.', hide: 'დამალვა', show: 'ჩვენება', back: 'უკან', up: 'ზემოთ', down: 'ქვემოთ', enter: 'შეყვანა', tab: 'შემდეგი ველი', erase: 'ასოს წაშლა',
     note: 'პაროლს არ ვინახავთ. ვინახავთ მხოლოდ ამ საიტის შესვლის ქუქიებს, დაშიფრულად, 30 დღით.',
   },
   en: {
     title: 'Log in to a site', close: 'Close', saved: 'Saved logins', none: 'None yet.', forget: 'Forget',
     url: 'Site address', open: 'Open', opening: 'Opening the browser…', type: 'Type here', send: 'Type',
     save: 'Save', cancel: 'Cancel', saving: 'Saving…', done: (s: string) => `Login saved for ${s}. Agent G will work there logged in.`,
-    tap: 'Tap the picture to click. Type below.', hide: 'Hide', show: 'Show', back: 'Back', up: 'Up', down: 'Down',
+    tap: 'Tap the picture to click. Type below.', hide: 'Hide', show: 'Show', back: 'Back', up: 'Up', down: 'Down', enter: 'Enter', tab: 'Tab', erase: 'Backspace',
     note: 'We never keep your password. Only this site’s login cookies are kept, encrypted, for 30 days.',
   },
   ru: {
     title: 'Вход на сайт', close: 'Закрыть', saved: 'Сохранённые входы', none: 'Пока нет.', forget: 'Удалить',
     url: 'Адрес сайта', open: 'Открыть', opening: 'Браузер открывается…', type: 'Пишите здесь', send: 'Ввести',
     save: 'Сохранить', cancel: 'Отмена', saving: 'Сохраняю…', done: (s: string) => `Вход сохранён: ${s}. Agent G будет работать там с входом.`,
-    tap: 'Нажмите на картинку, чтобы кликнуть. Текст пишите ниже.', hide: 'Скрыть', show: 'Показать', back: 'Назад', up: 'Вверх', down: 'Вниз',
+    tap: 'Нажмите на картинку, чтобы кликнуть. Текст пишите ниже.', hide: 'Скрыть', show: 'Показать', back: 'Назад', up: 'Вверх', down: 'Вниз', enter: 'Ввод', tab: 'След. поле', erase: 'Стереть',
     note: 'Пароль мы не храним. Храним только cookies входа этого сайта, зашифрованно, 30 дней.',
   },
 } as const;
@@ -167,9 +167,9 @@ export function BrowserLoginSheet({ open, onClose, locale }: { open: boolean; on
             <button type="submit" disabled={!text} className={`${btn} bg-app-surface text-app-text disabled:opacity-50`}>{t.send}</button>
           </form>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => act({ op: 'key', key: 'Enter' })} className={`${btn} bg-app-surface text-app-text`} aria-label="Enter"><CornerDownLeft size={16} aria-hidden="true" />Enter</button>
-            <button type="button" onClick={() => act({ op: 'key', key: 'Tab' })} className={`${btn} bg-app-surface text-app-text`}>Tab</button>
-            <button type="button" onClick={() => act({ op: 'key', key: 'Backspace' })} className={`${btn} bg-app-surface text-app-text`} aria-label="Backspace"><Delete size={16} aria-hidden="true" /></button>
+            <button type="button" onClick={() => act({ op: 'key', key: 'Enter' })} className={`${btn} bg-app-surface text-app-text`} aria-label={t.enter}><CornerDownLeft size={16} aria-hidden="true" />{t.enter}</button>
+            <button type="button" onClick={() => act({ op: 'key', key: 'Tab' })} className={`${btn} bg-app-surface text-app-text`}>{t.tab}</button>
+            <button type="button" onClick={() => act({ op: 'key', key: 'Backspace' })} className={`${btn} bg-app-surface text-app-text`} aria-label={t.erase} title={t.erase}><Delete size={16} aria-hidden="true" /></button>
             <button type="button" onClick={() => act({ op: 'scroll', dy: -500 })} className={`${btn} bg-app-surface text-app-text`} aria-label={t.up}><ChevronUp size={16} aria-hidden="true" /></button>
             <button type="button" onClick={() => act({ op: 'scroll', dy: 500 })} className={`${btn} bg-app-surface text-app-text`} aria-label={t.down}><ChevronDown size={16} aria-hidden="true" /></button>
             <button type="button" onClick={() => act({ op: 'back' })} className={`${btn} bg-app-surface text-app-text`} aria-label={t.back}><ArrowLeft size={16} aria-hidden="true" /></button>
