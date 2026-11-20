@@ -33,6 +33,8 @@
  */
 import { driveOpenTo } from '@/lib/connectors/google/access';
 import { liveDriveDeps } from '@/lib/connectors/google';
+import { livePluginContext } from '@/lib/agent/plugins/live';
+import type { NotionDraft } from '@/lib/agent/plugins/tools';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { runLiveAgent, type AgentContext } from '@/lib/agent/react/bindLiveAgent';
@@ -107,9 +109,14 @@ export async function POST(req: NextRequest) {
   let browserQuote: Parameters<NonNullable<AgentContext['onBrowserQuote']>>[0] | undefined;
   // Google Drive (Phase 4): only where CONNECTORS_DRIVE opens it and it is configured; closed, the agent never hears of it.
   const driveDeps = driveOpenTo(user) ? await liveDriveDeps(user) : null;
+  // Agent G plugins (Notion, GitHub, Calendar): only where AGENT_PLUGINS opens them; closed = {} and the run is unchanged.
+  const plugins = await livePluginContext(user).catch(() => ({}));
+  let notionDraft: NotionDraft | undefined;
   const ctx: AgentContext = {
     userId: user.id,
     ...(driveDeps?.cfg ? { driveDeps } : {}),
+    ...plugins,
+    ...('notionDeps' in plugins ? { onNotionDraft: (d: NotionDraft) => { notionDraft = d; } } : {}),
     media: agentMediaOpenTo(user),
     analyze: agentAnalyzeOpenTo(user),
     onAudioQuote: (q) => { audioQuote = q; },
@@ -136,6 +143,6 @@ export async function POST(req: NextRequest) {
   // The last plan of each kind the agent made, signed, for the confirm card: nothing has run and nothing is charged yet.
   return NextResponse.json({
     ...result, ...(mediaQuote ? { mediaQuote } : {}), ...(audioQuote ? { audioQuote } : {}), ...(editQuote ? { editQuote } : {}),
-    ...(codeQuote ? { codeQuote } : {}), ...(browserQuote ? { browserQuote } : {}),
+    ...(codeQuote ? { codeQuote } : {}), ...(browserQuote ? { browserQuote } : {}), ...(notionDraft ? { notionDraft } : {}),
   }, { status });
 }
