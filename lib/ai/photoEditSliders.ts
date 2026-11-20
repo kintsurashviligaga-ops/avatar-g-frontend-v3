@@ -56,7 +56,7 @@ export function parsePhotoEditSliders(text: string): PhotoSliderCommand | null {
   const tKw = 'temperature|ტემპერატ|температур';
   if (has(lc, new RegExp(tKw, 'i')) && near(lc, tKw) != null) cmd.temperature = clamp(near(lc, tKw)!, -100, 100);
   else if (has(lc, /\b(?:warmer|warm|golden)\b|გაათბ|თბილ|теплее|тёпл|тепл/)) cmd.temperature = strong ? 70 : 45;
-  else if (has(lc, /\b(?:cooler|colder|cold|bluer)\b|გააცив|ცივ|холоднее|прохладн|синее/)) cmd.temperature = strong ? -70 : -45;
+  else if (has(lc, /\b(?:cooler|colder|cold|bluer)\b|გააცივ|ცივ|холоднее|прохладн|синее/)) cmd.temperature = strong ? -70 : -45;
 
   return (cmd.brightness !== undefined || cmd.contrast !== undefined || cmd.saturation !== undefined || cmd.temperature !== undefined) ? cmd : null;
 }
