@@ -36,6 +36,11 @@ export interface EngineOptions {
   replanOnFailure?: boolean;
   /** Steps one run keeps going at once: media runs keep today's 2 (lib/agent/run MAX_PARALLEL); at most MAX_WORKERS. */
   maxWorkers?: number;
+  /**
+   * Phase 8.10 (flag AGENT_ENGINE_REFUND_REJECTED, off): when VERIFY rejects a result the executor reported as ok and
+   * charged for, emit a `refund` effect for that attempt's credits. Off = exactly the Phase 3 behaviour.
+   */
+  refundRejected?: boolean;
 }
 
 /** The run deadline a plan gets unless the caller sets one: 30 min with a media render in it, else 10 (06 §3). */
@@ -175,6 +180,16 @@ export function tick(run: EngineRun, input: TickInput, opts: EngineOptions = {})
     const failure = r.ok
       ? (() => { const v = verify(ps, r.outputs); return v.ok ? null : { error: `verify: ${v.error}`, retryable: v.retryable }; })()
       : { error: r.error, retryable: r.retryable };
+    // What comes back for this attempt: the executor's own refund of a miss, or (opt-in) ours for a rejected result.
+    const back = !r.ok ? Math.min(credits, Math.max(0, r.refunded ?? 0))
+      : failure && opts.refundRejected ? credits : 0;
+    if (r.ok && failure && opts.refundRejected && credits > 0) {
+      t.effects.push({ type: 'refund', stepId: s.id, attemptId: r.attemptId, credits, reason: failure.error.slice(0, 120) });
+    }
+    if (back > 0) {
+      s.refundedCredits = (s.refundedCredits ?? 0) + back;
+      t.emit('run.refund', s.id, { credits: back });
+    }
     if (!failure && r.ok) {
       s.status = 'done';
       s.outputs = r.outputs.slice(0, 30);
@@ -329,8 +344,9 @@ function finish(t: Tick, opts: EngineOptions) {
   }
 }
 
+/** What the run cost the user: charged minus given back (the card's number; the ledger stays the truth). */
 function creditsOf(run: EngineRun): number {
-  return run.steps.reduce((a, s) => a + (s.credits ?? 0), 0);
+  return run.steps.reduce((a, s) => a + Math.max(0, (s.credits ?? 0) - (s.refundedCredits ?? 0)), 0);
 }
 
 /**
