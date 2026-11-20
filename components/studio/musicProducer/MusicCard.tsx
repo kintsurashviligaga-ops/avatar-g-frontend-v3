@@ -3,9 +3,9 @@
 /**
  * The Music Card (Phase 8.5): waveform player, scrolling lyrics synced by section, and the honest actions —
  * "Add 30 s (new section, same style)", "Restyle (new take)" (new genre / mood / instruments, same lyrics, structure and
- * tempo), "Use in Video" (wired in PR C), Download. No stems: not offered (GG 2026-11-15).
+ * tempo), "Use in Video" (a Director's Workflow scene, the whole film, or Montage), Download. No stems: not offered (GG 2026-11-15).
  */
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { WaveformPlayer, type PlayerHandle } from './WaveformPlayer';
 import { LyricsPane } from './LyricsPane';
 import { chip } from './ProducerControls';
@@ -25,7 +25,7 @@ const T = {
   part: { ka: 'ნაწილი', en: 'part', ru: 'часть' },
 } as const;
 
-export function MusicCard({ track, lang, busy, extendCredits, restyleCredits, onExtend, onRestyle, onUseInVideo, peaks }: {
+export function MusicCard({ track, lang, busy, extendCredits, restyleCredits, onExtend, onRestyle, onUseInVideo, peaks, footer, actions = true }: {
   track: MusicCardTrack;
   lang: ProducerLang;
   busy: boolean;
@@ -35,6 +35,10 @@ export function MusicCard({ track, lang, busy, extendCredits, restyleCredits, on
   onRestyle: (id: string, style: StyleChange) => void;
   onUseInVideo?: (track: MusicCardTrack) => void;
   peaks?: number[];
+  /** Rendered under the card (the Use in Video sheet). */
+  footer?: ReactNode;
+  /** false = player and lyrics only (Agent G's plan card shows the result; the actions live in the Music Producer). */
+  actions?: boolean;
 }) {
   const player = useRef<PlayerHandle>(null);
   const [time, setTime] = useState(0);
@@ -52,7 +56,7 @@ export function MusicCard({ track, lang, busy, extendCredits, restyleCredits, on
       <WaveformPlayer ref={player} url={track.url} durationSec={m.durationSec} peaks={peaks} onTime={setTime} label={specSummary(m.spec, lang)} />
       <LyricsPane lines={m.lines} time={time} onSeek={(s) => player.current?.seek(s)} lang={lang} />
 
-      <div className="flex flex-wrap gap-2">
+      {actions && <div className="flex flex-wrap gap-2">
         <button type="button" data-testid="mp-extend" disabled={busy || !canExtend} title={LABELS.extendTip[lang]}
           onClick={() => onExtend(track.id)} className={chip(false)}>
           {LABELS.extend[lang]} <span className="tabular-nums">✦{extendCredits}</span>
@@ -65,7 +69,7 @@ export function MusicCard({ track, lang, busy, extendCredits, restyleCredits, on
           {LABELS.useInVideo[lang]}
         </button>
         <a data-testid="mp-download" href={track.url} download={`myavatar-${track.id}.mp3`} className={chip(false)}>{T.download[lang]}</a>
-      </div>
+      </div>}
 
       {restyling && (
         <div data-testid="mp-restyle-panel" className="space-y-2 rounded-xl border border-app-border/15 bg-app-bg/40 p-3">
@@ -91,6 +95,7 @@ export function MusicCard({ track, lang, busy, extendCredits, restyleCredits, on
           </div>
         </div>
       )}
+      {footer}
     </article>
   );
 }

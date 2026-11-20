@@ -13,3 +13,7 @@ export * from './book';
 export * from './request';
 export * from './library';
 export * from './errors';
+export * from './placement';
+export * from './placeRequest';
+export * from './agent';
+export * from './videoTargets';
