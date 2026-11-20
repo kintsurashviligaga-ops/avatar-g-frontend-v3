@@ -54,22 +54,26 @@ export function decryptToken(sealed: string, userId: string, keys: ConnectorKeys
 export const STATE_TTL_MS = 10 * 60 * 1000;
 const STATE_DOMAIN = 'drive-oauth-state:v1';
 
-function stateMac(payload: string, keys: ConnectorKeys): string {
-  return b64u(createHmac('sha256', keys.mac).update(`${STATE_DOMAIN}:${payload}`).digest());
+function stateMac(payload: string, keys: ConnectorKeys, domain: string): string {
+  return b64u(createHmac('sha256', keys.mac).update(`${domain}:${payload}`).digest());
 }
 
-export function signState(userId: string, keys: ConnectorKeys, now = Date.now()): string {
+/**
+ * `domain` separates one connector's link flow from another's (Drive's default stays byte-for-byte what it was): a state
+ * signed for the Notion flow never verifies in the GitHub callback, and the other way round.
+ */
+export function signState(userId: string, keys: ConnectorKeys, now = Date.now(), domain = STATE_DOMAIN): string {
   const payload = `${b64u(Buffer.from(userId, 'utf8'))}.${b64u(randomBytes(16))}.${now + STATE_TTL_MS}`;
-  return `${payload}.${stateMac(payload, keys)}`;
+  return `${payload}.${stateMac(payload, keys, domain)}`;
 }
 
 export type StateCheck = { ok: true } | { ok: false; reason: 'invalid' | 'expired' | 'other_user' };
 
-export function verifyState(state: string, userId: string, keys: ConnectorKeys, now = Date.now()): StateCheck {
+export function verifyState(state: string, userId: string, keys: ConnectorKeys, now = Date.now(), domain = STATE_DOMAIN): StateCheck {
   const parts = state.split('.');
   const [user, nonce, expiry, mac] = parts;
   if (parts.length !== 4 || !user || !nonce || !expiry || !mac) return { ok: false, reason: 'invalid' };
-  const want = Buffer.from(stateMac(`${user}.${nonce}.${expiry}`, keys));
+  const want = Buffer.from(stateMac(`${user}.${nonce}.${expiry}`, keys, domain));
   const got = Buffer.from(mac);
   if (want.length !== got.length || !timingSafeEqual(want, got)) return { ok: false, reason: 'invalid' };
   const exp = Number(expiry);
