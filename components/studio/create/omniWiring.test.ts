@@ -169,8 +169,9 @@ describe('the unified composer (GG 2026-10-25): one conversation on screen, sett
     expect(src).not.toContain('<ImageDesk');
     expect(src).not.toContain('<VideoStage');
     expect(src).not.toContain('<MusicCentrePane');
-    // The thread's own image bubble carries every action the desk had: upscale, re-roll, save, edit, a tile's retry, the batch's re-roll.
-    for (const handler of ['void upscale(m.imageUrl!)', 'void regenerate(m.regen!)', "saveLibButton(m.imageUrl, 'image'", "editButton(m.imageUrl, 'image')", 'void runImageBatch(m.batch!.spec, 1)', 'void runImageBatch(m.batch!.spec, m.batch!.tiles.length)', 'startImageEdit', 'sendImageToVideo']) {
+    // The thread's own image bubble carries every action the desk had: re-roll, save, edit, a tile's retry, the batch's re-roll.
+    // (Upscale is gone: Real-ESRGAN ran on Replicate and /api/ai/upscale refuses every request, so the button was dead.)
+    for (const handler of ['void regenerate(m.regen!)', "saveLibButton(m.imageUrl, 'image'", "editButton(m.imageUrl, 'image')", 'void runImageBatch(m.batch!.spec, 1)', 'void runImageBatch(m.batch!.spec, m.batch!.tiles.length)', 'startImageEdit', 'sendImageToVideo']) {
       expect(src).toContain(handler);
     }
     expect(src).toContain("${imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
