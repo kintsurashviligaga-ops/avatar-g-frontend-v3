@@ -272,7 +272,7 @@ import { useImageStudioAccess } from '@/components/studio/image/useImageStudioAc
 import { imageCopy } from '@/components/studio/image/copy';
 import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
-import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
+import { IMG_ASPECTS, IMG_STYLES, imageAspectsOffered, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { saveMedia } from '@/lib/media/saveMedia';
 
@@ -3410,7 +3410,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setVideoDuration(h.video.seconds); setVideoOrientation(h.video.orientation);
       dispatchVeo({ type: 'tier', tier: h.video.tier });
     }
-    if (h.image && (IMG_ASPECTS as readonly string[]).includes(h.image.aspect)) {
+    if (h.image && (imageAspectsOffered() as readonly string[]).includes(h.image.aspect)) {
       setImgAspect(h.image.aspect as ImgAspect); setImgCount(h.image.count); setImgStyle(h.image.style);
     }
     if (h.music) { setMusicInstrumental(h.music.instrumental); setMusicStyles(h.music.styles); setMusicDuration(h.music.duration); }

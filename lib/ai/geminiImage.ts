@@ -19,6 +19,7 @@ import 'server-only';
 import { googleImageModelFetch, googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
 import { imageLifecycleRefusal } from '@/lib/image/lifecycle';
+import { IMAGE_MULTI_REF_MAX, imageExtraRatiosServerOn, isImgExtraAspect } from '@/lib/studio/imageExtras';
 const MAX_REF_BYTES = 12 * 1024 * 1024;
 
 export function geminiFrameModel(): string {
@@ -30,13 +31,15 @@ const ASPECTS = new Set(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16'
 
 export interface GeminiImageArgs {
   prompt: string;
-  /** Character photos (https or data: URLs), at most 3 — each becomes an inline image part before the text. */
+  /** Character photos (https or data: URLs), at most `maxReferences` — each becomes an inline image part before the text. */
   referenceImages?: string[];
   aspectRatio?: string;
   model?: string;
   timeoutMs?: number;
   /** Every reference must load, or nothing is generated: an edit of the user's photo never quietly becomes a new image. */
   requireReferences?: boolean;
+  /** How many references to keep (default 3, the model's limit 14). Only the image route raises it, with IMAGE_MULTI_REF on. */
+  maxReferences?: number;
 }
 
 export interface GeminiImageResult {
@@ -62,7 +65,8 @@ async function toInlinePart(src: string): Promise<{ inlineData: { mimeType: stri
 
 /** Build the generateContent body (exported for tests). */
 export function buildGeminiImageBody(prompt: string, inlineRefs: Array<{ inlineData: { mimeType: string; data: string } }>, aspectRatio?: string): Record<string, unknown> {
-  const aspect = aspectRatio && ASPECTS.has(aspectRatio) ? aspectRatio : undefined;
+  // Phase 7.5: 1:4, 4:1, 1:8, 8:1 reach Google only with IMAGE_EXTRA_RATIOS on (lib/studio/imageExtras); off, dropped as today.
+  const aspect = aspectRatio && (ASPECTS.has(aspectRatio) || (imageExtraRatiosServerOn() && isImgExtraAspect(aspectRatio))) ? aspectRatio : undefined;
   return {
     contents: [{ role: 'user', parts: [...inlineRefs, { text: prompt.slice(0, 4000) }] }],
     generationConfig: {
@@ -92,7 +96,8 @@ export async function generateGeminiImage(args: GeminiImageArgs): Promise<Gemini
     console.warn(`[gemini-image] ${retired}`);
     return null;
   }
-  const wanted = (args.referenceImages ?? []).slice(0, 3);
+  const keep = Math.min(Math.max(Math.floor(args.maxReferences ?? 3), 0), IMAGE_MULTI_REF_MAX);
+  const wanted = (args.referenceImages ?? []).slice(0, keep);
   const refs = (await Promise.all(wanted.map(toInlinePart)))
     .filter((p): p is { inlineData: { mimeType: string; data: string } } => !!p);
   if (args.requireReferences && refs.length < wanted.length) return null;
