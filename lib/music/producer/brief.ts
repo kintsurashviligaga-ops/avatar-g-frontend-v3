@@ -11,7 +11,7 @@
  * The user's own description goes through verbatim, first.
  */
 import { songDirections, songLanguageOf } from '@/lib/ai/musicVocals';
-import { GENRES, INSTRUMENTS, MOODS, PRO_MAX_SEC, modelFor, presetOf, type ProducerSpec } from './spec';
+import { GENRES, INSTRUMENTS, MOODS, PRO_MAX_SEC, SING_LANGUAGES, modelFor, presetOf, type ProducerSpec } from './spec';
 import { mmss, planTimeline, timelineLines, type Section } from './timeline';
 
 export const LYRIA_CLIP = 'lyria-3-clip-preview';
@@ -54,10 +54,12 @@ export function buildProducerBrief(spec: ProducerSpec): ProducerBrief {
   if (spec.bpm) parts.push(sentence(`Tempo: ${spec.bpm} BPM`));
   if (spec.vocals) {
     if (VOICE[spec.voice]) parts.push(sentence(VOICE[spec.voice]));
+    const chosen = SING_LANGUAGES.find((l) => l.id === (spec.language ?? 'auto'));
+    if (chosen && chosen.name) parts.push(sentence(`Sung in ${chosen.name}`));
     for (const d of songDirections({
       instrumental: false,
       hasLyrics: !!spec.lyrics.trim(),
-      language: songLanguageOf(spec.lyrics, spec.brief),
+      language: chosen && chosen.name ? null : songLanguageOf(spec.lyrics, spec.brief),
       briefEn: spec.brief,
       targetSec: lengthSec,
     })) parts.push(sentence(d));
