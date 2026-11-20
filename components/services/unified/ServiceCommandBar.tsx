@@ -147,7 +147,7 @@ export function ServiceCommandBar({
     noResults: { en: 'No services found', ka: 'სერვისი ვერ მოიძებნა', ru: 'Сервисы не найдены' },
     hint: { en: 'Navigate', ka: 'ნავიგაცია', ru: 'Навигация' },
     select: { en: 'Select', ka: 'არჩევა', ru: 'Выбрать' },
-    close: { en: 'Close', ka: 'დახურვა', ru: 'Закრытие' },
+    close: { en: 'Close', ka: 'დახურვა', ru: 'Закрыть' },
   }
 
   return (
