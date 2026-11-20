@@ -2,6 +2,8 @@
 
 Prepared 2026-11-14. Updated 2026-11-19: Phases 8.4 to 8.9 added (Step 6 items 13 to 19, Step 7 paid checks), plus the plan for stacked PRs (Step 8). Use this the moment the production Supabase project (zwksnayknzggdcenqqxy) is active again.
 
+Updated 2026-11-20 (before GREEN): Step 1d live checks, Step 2d old CSP hosts, Step 3b migrations 20261120a/b, Step 4 deadline note, Step 6 item 22 (drafts #375, #376, #390, #391, #392, #393, #395). The combined CI run of every launch PR is #374 (run 2, head d3a8b51e). Readiness report: `/mnt/project-files/launch-green/LAUNCH_READY_2026-11-20.md`.
+
 The repo copy is `docs/launch/LAUNCH_COMMANDS.md`. Keep the two identical.
 
 - **Who runs what:** GG runs every SQL file and every paid command. Claude merges only after GG approves each PR.
@@ -27,6 +29,19 @@ curl -s https://zwksnayknzggdcenqqxy.supabase.co/auth/v1/.well-known/jwks.json
 ```
 
 Then open myavatar.ge signed in. The "temporarily unavailable" page from #294 must be gone.
+
+### 1d. Live checks after GREEN (free, Claude and GG)
+
+Claude does these right after Step 1 passes and reports each one. Nothing here spends money.
+
+| Check | How | Pass |
+|---|---|---|
+| Sign-in | GG signs in on myavatar.ge (phone and desktop) | Chat opens, no 503 page |
+| Balance | The credits chip and `/ka/admin` Billing | The same balance as before the pause |
+| Library | `/ka/library` and `/ka/library/workspace` | Old items list and play; signed links renew |
+| Generations | Chat history with old images, clips and songs | Results show after a reopen. A **new** paid generation belongs to Step 7 |
+| Cron sweeps | Vercel runtime logs for `/api/cron/*`, 30 minutes after GREEN | The ENOTFOUND errors stop |
+| Agent G | Open Agent G, run one free web search | Answer with sources |
 
 > Do not rely on `/api/health/public`. It said 6/6 during the outage because it never touches the database.
 
@@ -82,6 +97,13 @@ group by 1, 2;
 
 Nothing is fixed from these results until GG has seen them. Any refund goes through the existing refund path, and live BOG code is never changed.
 
+### 2d. Old CSP hosts still in use? (read only)
+
+Paste `/mnt/project-files/launch-green/02_old_csp_hosts_readonly.sql`. It counts rows in every text and json column of `public` that still point at `*.replicate.delivery`, `api.ltx.video` or `files2.heygen.ai`.
+
+- **No rows:** Claude prepares the small CSP clean-up PR (`lib/security/csp.js` and its test). It merges only with GG's card.
+- **Any row:** the hosts stay. The result shows which old items still need them.
+
 ---
 
 ## Step 3. The one SQL change before a merge: #306 chat memory
@@ -120,9 +142,33 @@ unset MYAVATAR_COOKIE
 - If a batch answers `repeated_failures`, check `curl -s https://myavatar.ge/api/health/embed` before calling it again.
 - Cost: a fraction of a cent per thousand rows.
 
+### 3b. Agent G plugin migrations 20261120a/b (with #392, GG's OK)
+
+Both are additive. Each was tested on 2026-11-20 on a local Postgres 16: applied twice, rolled back, applied again. They are needed only before the Notion, GitHub or reminders flags go on. Merging #392 without them is safe, because the plugins then say "needs setup".
+
+Before you start, check the constraint name (read only):
+
+```sql
+select conname from pg_constraint
+where conrelid = 'public.connector_accounts'::regclass and contype = 'c';
+-- Expect connector_accounts_provider_check among the rows. If it is missing, stop and tell Claude.
+```
+
+Then paste `supabase/migrations/20261120a_connector_accounts_providers.sql` and `supabase/migrations/20261120b_agent_reminders.sql` from branch `claude/agent-g-plugins`, and check them:
+
+```sql
+select public.connector_providers_allowed();            -- expect {google_drive,notion,github}
+select count(*) from public.agent_reminders;             -- expect 0
+select provider, count(*) from public.connector_accounts group by 1;   -- Drive rows unchanged
+```
+
+The rollback is written at the top of each file.
+
 ---
 
 ## Step 4. Paid Omni checks (#307), about $1, before 19 Nov ~21:16 UTC
+
+> **2026-11-20:** the C3 deadline passed while the database was paused, and the Omni 1.1 clips have expired. Run with `--skip-c3`. C1 (✦20) still applies.
 
 Run these on GG's Mac, in the probe clone. They cannot run from localhost or from a Preview.
 
@@ -223,6 +269,13 @@ The order:
     - **#312** (Browser Agent loop, App Builder): not wired. Stays draft until `myavatar-apps.ge` exists.
     - **#315** (Georgian QA corpus): docs and tests, any time.
 21. *(new)* The 24 old PRs: follow `CLEANUP.md` once GG approves it. Nothing there is closed before that.
+
+22. *(new, 2026-11-20)* The drafts made since the 19 November run. All were refreshed with main on 2026-11-20 and are in #374 run 2.
+    - **#375, #376, #391, #395:** based on main, independent of each other, any order. Each needs green CI on current main before its card.
+    - **#390 → #392:** #392 is stacked on #390. Migrations 20261120a/b (Step 3b) are needed only before the plugin flags go on.
+      - If **#346** merges first, #390 conflicts in `components/studio/ConnectorsButton.tsx`. Keep both sides. The tested result is in `/mnt/project-files/launch-green/resolutions/ConnectorsButton.tsx`.
+      - If **#325** merges first, #392 conflicts in `components/agent/AgentTerminal.tsx`. Keep #325's `agentTerminalCopy` import and add #392's `NotionDraftCard` import.
+    - **#393** (Reel Task) is now stacked on **#310** (`claude/engine-media`), so it goes after #308 → #309 → #310. Its flag `AGENT_REEL_TASK` stays off. The Reel paid E2E needs a budget from GG.
 
 **If a merge goes wrong:** in Vercel, promote the previous production deployment. This is instant and needs no rebuild. Then revert the merge commit. No step here runs SQL inside a merge, so a rollback never needs a database change.
 
