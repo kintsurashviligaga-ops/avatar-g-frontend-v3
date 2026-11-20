@@ -30,7 +30,7 @@ const GESTURES: Record<Expression, { microGestures: string[]; posture: string; t
 export function extractPersonaDirective(text: string): PersonaDirective {
   const t = (text || '').toLowerCase();
   let expression: Expression = 'professional';
-  if (/\b(sorry|apolog|understand|support|difficult|condolence|here for you|ბოდიш|извин)\b/.test(t)) expression = 'empathetic';
+  if (/\b(sorry|apolog|understand|support|difficult|condolence|here for you)\b|ბოდიშ|извин/.test(t)) expression = 'empathetic';
   else if (/(!|🎉|\b(exciting|amazing|incredible|launch|congrat|welcome|let'?s go|excited)\b)/.test(t)) expression = 'enthusiastic';
   else if (/\b(urgent|critical|warning|important|risk|alert|must|deadline)\b/.test(t)) expression = 'serious';
   else if (/\b(relax|calm|breathe|gentle|spa|peaceful|slow)\b/.test(t)) expression = 'calm';
