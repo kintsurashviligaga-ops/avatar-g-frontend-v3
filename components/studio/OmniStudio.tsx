@@ -253,6 +253,8 @@ import { imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
+import { copyText } from '@/lib/clipboard/copyText';
+import { COPY_FAILED, replyLang, recordErrorText } from '@/components/studio/chat/replyActions';
 import { DictationMetricsReadout } from '@/components/chat/composer/DictationMetricsReadout';
 import { typedSpeechLang } from '@/lib/voice/speechLang';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -2099,6 +2101,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [keyboardOffset]);
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
+  // A toast that reports a failure (copy refused, microphone blocked) shows a warning icon, not the ✓ of a done copy.
+  const [shareToastWarn, setShareToastWarn] = useState(false);
   // FIX 5 — URLs the user has explicitly filed into the Library (drives the ✓ saved state).
   const [savedUrls, setSavedUrls] = useState<Set<string>>(new Set());
   // Credit-deduction toast — shown briefly after each successful generation
@@ -7973,15 +7977,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [input, enhancing, busy]);
 
   // Copy an assistant reply to the clipboard (2s ✓ feedback).
-  const copyMsg = useCallback(async (text: string, i: number) => {
-    try {
-      await navigator.clipboard.writeText(text);
+  // ⚠️ IT WAS A DEAD TAP IN IN-APP BROWSERS. navigator.clipboard alone failed silently in Facebook / Instagram webviews
+  // and on a denied permission; copyText adds the legacy fallback, and a copy that really failed now says so.
+  const copyMsg = useCallback(async (text: string, i: number): Promise<boolean> => {
+    const ok = await copyText(text);
+    if (ok) {
       setCopiedIdx(i);
       setTimeout(() => setCopiedIdx((c) => (c === i ? null : c)), 2000);
-    } catch {
-      /* clipboard blocked — no-op */
+      return true;
     }
-  }, []);
+    const note = COPY_FAILED[replyLang(locale)];
+    setShareToastWarn(true);
+    setShareToast(note);
+    setTimeout(() => setShareToast((cur) => (cur === note ? null : cur)), 3200);
+    return false;
+  }, [locale]);
 
   // Share a reply's TEXT (Gemini's share): the system share sheet where there is one (phones), otherwise a copy with a
   // "copied" note — the share button must never be a dead tap. A dismissed sheet (AbortError) is the user's answer,
@@ -7993,8 +8003,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if ((e as { name?: string } | null)?.name === 'AbortError') return;
       }
     }
-    await copyMsg(text, i);
+    if (!(await copyMsg(text, i))) return;
     const note = locale === 'en' ? 'Copied — paste it anywhere' : locale === 'ru' ? 'Скопировано — вставьте куда угодно' : 'დაკოპირდა — ჩასვი სადაც გინდა';
+    setShareToastWarn(false);
     setShareToast(note);
     setTimeout(() => setShareToast((cur) => (cur === note ? null : cur)), 2200);
   }, [copyMsg, locale]);
@@ -8124,10 +8135,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (n >= 60) stopVoiceRecording(); // cap at 60s
         return n;
       }), 1000);
-    } catch {
+    } catch (err) {
+      // ⚠️ A BLOCKED MICROPHONE LOOKED LIKE A DEAD BUTTON: the rejection was swallowed. Say why, in the UI language.
+      voiceStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+      voiceStreamRef.current = null;
       setVoiceRecording(false);
+      const note = recordErrorText(err, locale);
+      setShareToastWarn(true);
+      setShareToast(note);
+      setTimeout(() => setShareToast((cur) => (cur === note ? null : cur)), 6000);
     }
-  }, [addVoiceMedia, addAvatarAudio, stopVoiceRecording]);
+  }, [addVoiceMedia, addAvatarAudio, stopVoiceRecording, locale]);
   // Live voice asks every in-page mic holder to let go before it takes the mic (lib/voice/micBus): Android Chrome and
   // some Windows drivers refuse a second capture of a busy device, and Live reported that as „the microphone could
   // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
@@ -10758,7 +10776,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
                 {m.role === 'assistant' && m.text && !m.researchId && !m.docWorking && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
-                  const act = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white touch-manipulation';
+                  // 44 px on touch (as the user bubble's Copy / Edit), 36 px where there is a fine pointer: the comment above
+                  // always said 44 on touch, but the class was 36 everywhere, so the two rows did not line up on a phone.
+                  const act = 'inline-flex h-11 w-11 [@media(pointer:fine)]:h-9 [@media(pointer:fine)]:w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white touch-manipulation';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
                   // „Thinking“ is Flash with deep reasoning — name it as the menu does, so the label matches the choice.
                   const modelLabel = answeredBy && m.chatMode === 'thinking' && /flash/i.test(m.chatModelId ?? '') && !/lite/i.test(m.chatModelId ?? '')
@@ -12730,10 +12750,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           root-level chrome (the cookie banner) instead of being trapped in the chat
           shell's lower stacking context. */}
       <Portal>
-      {/* Transient "link copied" toast — only shows when a share falls back to clipboard. */}
+      {/* Transient toast: "copied" when a share falls back to the clipboard, or a warning (copy refused, microphone
+          blocked). Capped to the screen width so a long Georgian sentence wraps instead of running off a phone. */}
       {shareToast && (
         <div
-          className="pointer-events-none fixed inset-x-0 z-[110] mx-auto flex w-fit items-center gap-2 rounded-full bg-app-elevated px-4 py-2 text-[13px] font-medium text-app-text shadow-lg ring-1 ring-app-border/20"
+          role="status"
+          data-testid="chat-toast"
+          className="pointer-events-none fixed inset-x-0 z-[110] mx-auto flex w-fit max-w-[calc(100vw-32px)] items-center gap-2 rounded-full bg-app-elevated px-4 py-2 text-[13px] font-medium text-app-text shadow-lg ring-1 ring-app-border/20"
           // ⚠️ position:fixed IS ANCHORED TO THE LAYOUT VIEWPORT, WHICH DOES NOT SHRINK FOR THE
           // KEYBOARD. ChatChrome shrinks the SHELL by keyboardOffset, but a fixed overlay is not
           // inside that coordinate space — it stayed pinned to the bottom of the full-height viewport
@@ -12743,7 +12766,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // a fixed offset put this toast on top of the composer's own controls.
           style={{ bottom: `calc(env(safe-area-inset-bottom) + ${composerH + 16 + keyboardOffset}px)` }}
         >
-          <Check size={14} className="text-app-accent" /> {shareToast}
+          {shareToastWarn ? <AlertTriangle size={14} className="shrink-0 text-amber-400" aria-hidden="true" /> : <Check size={14} className="shrink-0 text-app-accent" aria-hidden="true" />} {shareToast}
         </div>
       )}
       {/* Credit-deduction toast — dark card, green check, 3 lines (done · charged · balance). It never takes a tap from
