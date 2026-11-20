@@ -11720,8 +11720,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {chatOnly ? (
           <>
             <ModelSwitcher variant="desktop" locale={locale} />
+            {/* A guest's „Log in" + „Sign up for free" take ~350 px on the right: 40 % ran the centred name under them at
+                1280-1440 px (seen 2026-11-20), so a guest's name also stops 48rem short of the bar's width. */}
             <h2 title={sessionTitle}
-              className="sr-only xl:not-sr-only xl:pointer-events-none xl:absolute xl:left-1/2 xl:top-1/2 xl:max-w-[40%] xl:-translate-x-1/2 xl:-translate-y-1/2 xl:truncate xl:text-[16px] xl:font-normal xl:text-app-muted">
+              className={`sr-only xl:not-sr-only xl:pointer-events-none xl:absolute xl:left-1/2 xl:top-1/2 ${guest ? 'xl:max-w-[min(40%,calc(100%-48rem))]' : 'xl:max-w-[40%]'} xl:-translate-x-1/2 xl:-translate-y-1/2 xl:truncate xl:text-[16px] xl:font-normal xl:text-app-muted`}>
               {sessionTitle}
             </h2>
             <span className="flex-1" aria-hidden="true" />
