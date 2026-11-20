@@ -275,7 +275,8 @@ export function routeV2Reply(r: RouteV2): string | null {
 export function envFlagReader(env: Record<string, string | undefined>, isAdmin = false): FlagReader {
   return (flag) => {
     const v = (env[flag] ?? '').trim().toLowerCase();
-    if (v === 'admins') return isAdmin;
+    // 'admin' too: STUDIO_3D_V2, MONTAGE_SMART_EDITOR, IMAGE_ART_DIRECTOR and the runbook all use 'admin' (Phase 8.12).
+    if (v === 'admins' || v === 'admin') return isAdmin;
     return v === '1' || v === 'true' || v === 'on' || v === 'everyone';
   };
 }
