@@ -502,7 +502,8 @@ export async function POST(req: NextRequest) {
   // knew what it had generated. The serializer drops empty turns, turns results into `[generated image: <url>]`,
   // merges same-role neighbours, keeps media bytes only in the last media turns and trims the oldest turns to a
   // budget — the same rules the browser applies, run again over an untrusted body.
-  const wire = serializeHistory(wireToHistory(body.messages));
+  // Phase 8.10 (flag off): the same goal pin as the browser, so a server-side trim can't drop the opening ask either.
+  const wire = serializeHistory(wireToHistory(body.messages), process.env.NEXT_PUBLIC_CHAT_PIN_GOAL === '1' ? { pinGoal: true } : undefined);
   const lastTurn = wire[wire.length - 1];
   if (!lastTurn || lastTurn.role !== 'user') {
     return json({ error: 'The conversation must end with a non-empty user message' }, 400);
