@@ -68,6 +68,9 @@ const NOUNS: ReadonlyArray<{ id: SubAgentId; re: RegExp }> = [
   { id: 'music', re: re(`მუსიკ|სიმღერ|${B0}(?:music|song|soundtrack|track)s?(?![\\p{L}])|музык|песн|${B0}трек`) },
   { id: 'avatar', re: re(`ავატარ|${B0}avatar|аватар|talking\\s+head`) },
   { id: 'image', re: re(`სურათ|ფოტო|ნახატ|ილუსტრაცი|დამიხატე|დახატე|${B0}(?:image|picture|photo|drawing|illustration|poster)s?(?![\\p{L}])|${B0}draw(?![\\p{L}])|картинк|изображени|${B0}фото|рисун|нарисуй|постер`) },
+  // Phase 8.10 (voice planner): a search step in a chain („მოძებნე …, მერე პრეზენტაცია"). It only counts when the part
+  // names no service (see nounsIn), so "find me a photo" is still an image ask.
+  { id: 'web-search', re: re(`მოძებნ|მოიძიე|ინტერნეტში|გუგლში|${B0}(?:search\\s+(?:the\\s+)?(?:web|internet|online)|look\\s+up|google)(?![\\p{L}])|в\\s+интернете|${B0}найди|${B0}поищи|загугли`) },
 ];
 
 const MAKE = /გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიგენერირ|დააგენერირ|დამიმზად|ამიწყ|ააწყ|გადააქციე|აქციე|დამიხატე|დახატე|make|create|generate|build|produce|turn\s+(?:it|this|that)\s+into|draw|сделай|создай|сгенерируй|собери|преврати|нарисуй/iu;
@@ -96,7 +99,9 @@ export function nounsIn(text: string): SubAgentId[] {
     if (m) hits.push({ id: n.id, at: m.index });
   }
   // „3D ვიდეო" / "3D video" is ONE 3D ask (a turntable), not 3D then video, when the two are next to each other.
-  return hits.sort((a, b) => a.at - b.at).map((h) => h.id);
+  const sorted = hits.sort((a, b) => a.at - b.at).map((h) => h.id);
+  // A search word next to a service noun is about that service ("find me a photo" is an image ask).
+  return sorted.length > 1 ? sorted.filter((id) => id !== 'web-search') : sorted;
 }
 
 /** Is the ask a make-verb with nothing to make? („გააკეთე რამე მაგარი", "make it", «сделай что-нибудь») */
