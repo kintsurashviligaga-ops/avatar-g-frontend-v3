@@ -24,6 +24,12 @@ const ROLE_LABEL: Record<ArtRole, { ka: string; en: string; ru: string }> = {
 };
 
 const ADD = { ka: 'სურათის დამატება', en: 'Add picture', ru: 'Добавить' } as const;
+// Phase 8.12: screen-reader names in the reader's language (they were English words).
+const A11Y = {
+  remove: { ka: 'სურათის მოხსნა', en: 'Remove picture', ru: 'Убрать картинку' },
+  lock: { ka: 'ჩაკეტვა', en: 'Lock', ru: 'Закрепить' },
+  role: { ka: 'სურათის როლი', en: 'Picture role', ru: 'Роль картинки' },
+} as const;
 
 export function ReferenceTray({ refs, onChange, onAdd, lang, busy }: {
   refs: TrayRef[];
@@ -43,12 +49,12 @@ export function ReferenceTray({ refs, onChange, onAdd, lang, busy }: {
             {/* eslint-disable-next-line @next/next/no-img-element -- private signed preview */}
             <img src={r.previewUrl} alt="" className="h-[84px] w-[84px] rounded-xl border border-app-border/20 object-cover" />
             <span className="absolute left-1 top-1 rounded-md bg-app-bg/80 px-1.5 text-[12px] font-bold text-app-text">{REF_LETTERS[i]}</span>
-            <button type="button" aria-label="remove" onClick={() => onChange(refs.filter((_, j) => j !== i))} className="absolute right-1 top-1 rounded-full bg-app-bg/80 p-0.5 text-app-text"><X size={12} /></button>
-            <button type="button" aria-pressed={r.locked} aria-label="lock" data-testid={`art-ref-lock-${REF_LETTERS[i]}`} onClick={() => patch(i, { locked: !r.locked })}
+            <button type="button" aria-label={A11Y.remove[lang]} onClick={() => onChange(refs.filter((_, j) => j !== i))} className="absolute right-1 top-1 rounded-full bg-app-bg/80 p-0.5 text-app-text"><X size={12} /></button>
+            <button type="button" aria-pressed={r.locked} aria-label={A11Y.lock[lang]} data-testid={`art-ref-lock-${REF_LETTERS[i]}`} onClick={() => patch(i, { locked: !r.locked })}
               className={`absolute bottom-7 right-1 rounded-full p-1 ${r.locked ? 'bg-app-accent text-app-bg' : 'bg-app-bg/80 text-app-text'}`}>
               {r.locked ? <Lock size={11} /> : <Unlock size={11} />}
             </button>
-            <select aria-label="role" value={r.role} data-testid={`art-ref-role-${REF_LETTERS[i]}`} onChange={(e) => patch(i, { role: e.target.value as ArtRole })}
+            <select aria-label={A11Y.role[lang]} value={r.role} data-testid={`art-ref-role-${REF_LETTERS[i]}`} onChange={(e) => patch(i, { role: e.target.value as ArtRole })}
               className="mt-1 w-full rounded-md border border-app-border/25 bg-app-elevated text-[11px] text-app-text">
               {ART_ROLES.map((role) => <option key={role} value={role}>{ROLE_LABEL[role][lang]}</option>)}
             </select>
