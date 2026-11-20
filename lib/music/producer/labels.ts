@@ -19,6 +19,7 @@ export const LABELS = {
   },
   useInVideo: { en: 'Use in Video', ka: 'ვიდეოში გამოყენება', ru: 'Использовать в видео' },
   regenerate: { en: 'Regenerate', ka: 'თავიდან შექმნა', ru: 'Создать заново' },
+  lyrics: { en: 'Lyrics', ka: 'ტექსტი', ru: 'Текст' },
   synced: { en: 'Synced by section', ka: 'სინქრონი ნაწილების მიხედვით', ru: 'Синхронизация по частям' },
   targetTempo: { en: 'Target tempo', ka: 'სასურველი ტემპი', ru: 'Желаемый темп' },
   writeLyrics: { en: 'Write lyrics for me', ka: 'ტექსტი შენ დაწერე', ru: 'Напиши текст за меня' },

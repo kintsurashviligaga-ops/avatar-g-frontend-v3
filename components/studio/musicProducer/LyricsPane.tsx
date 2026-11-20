@@ -22,7 +22,7 @@ export function LyricsPane({ lines, time, onSeek, lang }: { lines: LyricLine[]; 
   return (
     <div data-testid="mp-lyrics-pane" className="rounded-xl border border-app-border/15 bg-app-bg/40">
       <div className="flex items-center justify-between px-3 pt-2 text-[11px] uppercase tracking-wide text-app-muted">
-        <span>Lyrics</span>
+        <span>{LABELS.lyrics[lang]}</span>
         <span data-testid="mp-synced" className="normal-case tracking-normal">{LABELS.synced[lang]}</span>
       </div>
       <ol ref={box} className="max-h-48 space-y-0.5 overflow-y-auto px-3 pb-3 pt-1">
