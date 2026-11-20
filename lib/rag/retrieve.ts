@@ -40,8 +40,9 @@ const HEADER: Record<string, string> = {
 };
 
 export function isRagConfigured(): boolean {
-  // Query embeddings run through lib/memory/embed: Vertex AI first (MASTER TASK v3.1), not an AI Studio key.
-  const hasEmbedKey = googleAiConfigured() || !!process.env.OPENAI_API_KEY;
+  // Query embeddings run through lib/memory/embed: Vertex AI only (MASTER TASK v3.1). An OpenAI key never makes
+  // retrieval possible: the corpus holds gemini-embedding-001 vectors and nothing else may query it (v5.1 M-14).
+  const hasEmbedKey = googleAiConfigured();
   const hasDb = !!(
     process.env.SUPABASE_SERVICE_ROLE_KEY &&
     (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)

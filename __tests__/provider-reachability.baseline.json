@@ -4,15 +4,6 @@
     "app/api/admin/model-catalog/route.ts": [
       "nanobananaapi"
     ],
-    "app/api/agent-g/telegram/route.ts": [
-      "openai"
-    ],
-    "app/api/agent-g/telegram/webhook/route.ts": [
-      "openai"
-    ],
-    "app/api/agent-g/webhook/telegram/route.ts": [
-      "openai"
-    ],
     "app/api/agent-g/webhook/whatsapp/route.ts": [
       "nanobananaapi"
     ],
@@ -24,12 +15,6 @@
     ],
     "app/api/agent/run/route.ts": [
       "nanobananaapi"
-    ],
-    "app/api/app/health/route.ts": [
-      "openai"
-    ],
-    "app/api/app/worker/tick/route.ts": [
-      "openai"
     ],
     "app/api/calls/bridge/[op]/route.ts": [
       "gemini_developer_api",
@@ -61,7 +46,6 @@
       "higgsfield"
     ],
     "app/api/editing/jobs/[id]/route.ts": [
-      "openai",
       "replicate"
     ],
     "app/api/estimate/route.ts": [

@@ -40,6 +40,11 @@ export async function embed(text: string): Promise<number[] | null> {
 
 export const GEMINI_EMBED_MODEL = 'gemini-embedding-001';
 const EMBED_DIM = 1536;
+/**
+ * What a stored row's `embedding_model` says when this function wrote its vector (supabase/migrations/20261113a).
+ * match_memories / match_rag_documents compare only rows with this tag; change it together with that migration.
+ */
+export const EMBEDDING_MODEL_TAG = `${GEMINI_EMBED_MODEL}@${EMBED_DIM}`;
 
 /** The Vertex AI `:predict` body for the same model, task and dimension (exported for tests). */
 export function buildVertexEmbedBody(input: string): Record<string, unknown> {
