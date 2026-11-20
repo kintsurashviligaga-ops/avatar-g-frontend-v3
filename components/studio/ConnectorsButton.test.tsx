@@ -2,9 +2,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ConnectorsButton, connectorRowState } from './ConnectorsButton';
 
-jest.mock('./research/api', () => ({
-  fetchConnectors: jest.fn(async () => ({ ok: true, connectors: [{ id: 'google_drive', label: 'Google Drive', status: 'connectable', linked: true }], limits: null })),
-}));
+const mockFetchConnectors = jest.fn(async (): Promise<unknown> => ({ ok: true, connectors: [{ id: 'google_drive', label: 'Google Drive', status: 'connectable', linked: true }], limits: null }));
+jest.mock('./research/api', () => ({ fetchConnectors: () => mockFetchConnectors() }));
 const openConnectors = jest.fn();
 jest.mock('./research/store', () => ({ researchActions: { openConnectors: () => openConnectors() } }));
 
@@ -24,5 +23,26 @@ describe('ConnectorsButton (GG 2026-11-07: beside „+")', () => {
     expect(connectorRowState({ status: 'connectable' })).toBe('connect');
     expect(connectorRowState({ status: 'unavailable' })).toBe('off');
     expect(connectorRowState({ status: 'soon', linked: true })).toBe('linked');
+  });
+  test('Phase 8.13: Drive says „checking" with a spinner while the state loads, never a guessed „soon"', async () => {
+    let resolve!: (v: unknown) => void;
+    mockFetchConnectors.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    render(<ConnectorsButton locale="ka" className="" />);
+    fireEvent.click(screen.getByTestId('composer-connectors'));
+    const row = screen.getByTestId('connector-row-google_drive');
+    expect(row.getAttribute('data-state')).toBe('loading');
+    expect(row.textContent).toContain('მოწმდება…');
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    resolve({ ok: true, connectors: [{ id: 'google_drive', label: 'Google Drive', status: 'connectable', linked: false }], limits: null });
+    await waitFor(() => expect(row.getAttribute('data-state')).toBe('connect'));
+    expect(row.textContent).toContain('დაკავშირება');
+  });
+  test('Phase 8.13: a failed or thrown state check reads „unavailable", and Drive is not tappable', async () => {
+    mockFetchConnectors.mockImplementationOnce(async () => { throw new Error('offline'); });
+    render(<ConnectorsButton locale="ka" className="" />);
+    fireEvent.click(screen.getByTestId('composer-connectors'));
+    await waitFor(() => expect(screen.getByTestId('connector-row-google_drive').getAttribute('data-state')).toBe('off'));
+    expect(screen.getByTestId('connector-row-google_drive').textContent).toContain('მიუწვდომელია');
+    expect((screen.getByTestId('connector-row-google_drive') as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -9,7 +9,7 @@
  * "connected": the state comes from GET /api/connectors.
  */
 import { useEffect, useState } from 'react';
-import { Calendar, ChevronRight, Clapperboard, Cloud, KeyRound, Mail, Plug } from 'lucide-react';
+import { Calendar, ChevronRight, Clapperboard, Cloud, KeyRound, Loader2, Mail, Plug } from 'lucide-react';
 import { BrowserLoginSheet } from '@/components/agent/BrowserLoginSheet';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { fetchConnectors } from './research/api';
@@ -18,9 +18,9 @@ import type { ConnectorState } from '@/lib/connectors/types';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T = {
-  ka: { logins: 'საიტზე შესვლა', manage: 'მართვა', open: 'კონექტორები', title: 'კონექტორები', linked: 'დაკავშირებულია', connect: 'დაკავშირება', soon: 'მალე', export: 'XML ექსპორტი', off: 'მიუწვდომელია', close: 'დახურვა', note: 'Agent G ამ სერვისებთან თავად იმუშავებს, როცა დავალება მოითხოვს.' },
-  en: { logins: 'Log in to a site', manage: 'Manage', open: 'Connectors', title: 'Connectors', linked: 'Connected', connect: 'Connect', soon: 'Soon', export: 'XML export', off: 'Unavailable', close: 'Close', note: 'Agent G works with these by itself when a task needs them.' },
-  ru: { logins: 'Вход на сайт', manage: 'Управлять', open: 'Коннекторы', title: 'Коннекторы', linked: 'Подключено', connect: 'Подключить', soon: 'Скоро', export: 'Экспорт XML', off: 'Недоступно', close: 'Закрыть', note: 'Agent G сам работает с ними, когда задаче это нужно.' },
+  ka: { logins: 'საიტზე შესვლა', manage: 'მართვა', open: 'კონექტორები', title: 'კონექტორები', linked: 'დაკავშირებულია', connect: 'დაკავშირება', soon: 'მალე', export: 'XML ექსპორტი', off: 'მიუწვდომელია', loading: 'მოწმდება…', close: 'დახურვა', note: 'Agent G ამ სერვისებთან თავად იმუშავებს, როცა დავალება მოითხოვს.' },
+  en: { logins: 'Log in to a site', manage: 'Manage', open: 'Connectors', title: 'Connectors', linked: 'Connected', connect: 'Connect', soon: 'Soon', export: 'XML export', off: 'Unavailable', loading: 'Checking…', close: 'Close', note: 'Agent G works with these by itself when a task needs them.' },
+  ru: { logins: 'Вход на сайт', manage: 'Управлять', open: 'Коннекторы', title: 'Коннекторы', linked: 'Подключено', connect: 'Подключить', soon: 'Скоро', export: 'Экспорт XML', off: 'Недоступно', loading: 'Проверяем…', close: 'Закрыть', note: 'Agent G сам работает с ними, когда задаче это нужно.' },
 } as const;
 
 /** What a row says, from the server's state (Drive) or the plan (Gmail, Calendar). */
@@ -40,10 +40,19 @@ export function ConnectorsButton({ locale, className }: { locale: string; classN
   // Logging in inside Agent G's cloud browser: the row shows only when the server has it on for this person.
   const [logins, setLogins] = useState<{ enabled: boolean; count: number }>({ enabled: false, count: 0 });
   const [loginOpen, setLoginOpen] = useState(false);
+  // While the state is on its way the Drive row says „checking" (it used to read „soon" for that second, then flip);
+  // a failed check says „unavailable", never a guessed state.
+  const [driveCheck, setDriveCheck] = useState<'loading' | 'done' | 'failed'>('loading');
   useEffect(() => {
     if (!open) return;
     let live = true;
-    void fetchConnectors().then((r) => { if (live && r.ok) setDrive(r.connectors.find((c) => c.id === 'google_drive')); });
+    setDriveCheck('loading');
+    fetchConnectors()
+      .then((r) => {
+        if (!live) return;
+        if (r.ok) { setDrive(r.connectors.find((c) => c.id === 'google_drive')); setDriveCheck('done'); } else setDriveCheck('failed');
+      })
+      .catch(() => { if (live) setDriveCheck('failed'); });
     // No fetch (old browsers, test env) = the row simply stays hidden.
     if (typeof fetch === 'function') {
       void fetch('/api/agent/browser/login', { cache: 'no-store' }).then((r) => r.json()).then((j: { enabled?: boolean; sites?: unknown[] }) => {
@@ -52,9 +61,10 @@ export function ConnectorsButton({ locale, className }: { locale: string; classN
     }
     return () => { live = false; };
   }, [open]);
+  const driveState = driveCheck === 'loading' && !drive ? 'loading' : driveCheck === 'failed' && !drive ? 'off' : connectorRowState(drive);
 
-  const rows: Array<{ id: string; label: string; Icon: typeof Cloud; state: ReturnType<typeof connectorRowState> | 'export' | 'manage'; onTap?: () => void }> = [
-    { id: 'google_drive', label: 'Google Drive', Icon: Cloud, state: connectorRowState(drive), onTap: () => { setOpen(false); researchActions.openConnectors(); } },
+  const rows: Array<{ id: string; label: string; Icon: typeof Cloud; state: ReturnType<typeof connectorRowState> | 'export' | 'manage' | 'loading'; onTap?: () => void }> = [
+    { id: 'google_drive', label: 'Google Drive', Icon: Cloud, state: driveState, onTap: () => { setOpen(false); researchActions.openConnectors(); } },
     { id: 'gmail', label: 'Gmail', Icon: Mail, state: 'soon' },
     { id: 'google_calendar', label: 'Google Calendar', Icon: Calendar, state: 'soon' },
     // GG 2026-11-07 07:58Z / card 08:02Z. Premiere Pro has no web app to drive: Agent G exports its montage as a project
@@ -64,7 +74,7 @@ export function ConnectorsButton({ locale, className }: { locale: string; classN
       ? [{ id: 'site_logins', label: t.logins, Icon: KeyRound, state: (logins.count ? 'linked' : 'manage') as 'linked' | 'manage', onTap: () => { setOpen(false); setLoginOpen(true); } }]
       : []),
   ];
-  const word = { linked: t.linked, connect: t.connect, soon: t.soon, off: t.off, export: t.export, manage: t.manage };
+  const word = { linked: t.linked, connect: t.connect, soon: t.soon, off: t.off, export: t.export, manage: t.manage, loading: t.loading };
 
   return (
     <>
@@ -82,7 +92,10 @@ export function ConnectorsButton({ locale, className }: { locale: string; classN
                   className="flex min-h-[52px] w-full items-center gap-3 px-4 text-left text-[15px] text-app-text disabled:cursor-default">
                   <Icon size={20} aria-hidden="true" className="text-app-accent" />
                   <span className="flex-1">{label}</span>
-                  <span className={`text-[13px] ${state === 'linked' || state === 'export' ? 'text-app-accent' : 'text-app-muted'}`}>{word[state]}</span>
+                  <span aria-live={state === 'loading' ? 'polite' : undefined} className={`inline-flex items-center gap-1.5 text-[13px] ${state === 'linked' || state === 'export' ? 'text-app-accent' : 'text-app-muted'}`}>
+                    {state === 'loading' && <Loader2 size={14} aria-hidden="true" className="motion-safe:animate-spin" />}
+                    {word[state]}
+                  </span>
                   {tappable && <ChevronRight size={16} aria-hidden="true" className="text-app-muted" />}
                 </button>
               </li>
