@@ -463,6 +463,15 @@ export async function POST(req: NextRequest) {
   const contentLength = Number(req.headers.get('content-length') ?? 0);
   if (contentLength > MAX_BODY_BYTES) return json({ error: 'Request body too large (max 16 MB)' }, 413);
 
+  // Phase 8.0 P1-1: the body is read WHILE the session is checked. Reading it is the client's upload (a turn with a
+  // photo or a file is megabytes) and the session check is a round trip to Supabase Auth; neither needs the other,
+  // so the turn waits for the slower of the two instead of both in a row. The IP guard above still runs first, so a
+  // capped IP still costs no Auth call. Settled into a result here, so an early return below (401) leaves no
+  // unhandled rejection behind.
+  const bodyRead: Promise<{ ok: true; value: unknown } | { ok: false; error: unknown }> = timing
+    .time('body', req.json())
+    .then((value: unknown) => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
+
   // ⚠️ SIGN-IN, SERVER-SIDE — OR THE GUEST POLICY. This route used to answer anyone at 100 turns/min per IP (a script
   // spending our Gemini balance), then refused every anonymous caller. The home page now opens on the chat, so a
   // visitor may talk to it under lib/chat/guestChat: Fast only, text only, no grounding, short answers, capped per IP
@@ -487,7 +496,9 @@ export async function POST(req: NextRequest) {
 
   let body: ChatRequestBody;
   try {
-    const parsed: unknown = await timing.time('body', req.json());
+    const read = await bodyRead;
+    if (!read.ok) throw read.error;
+    const parsed: unknown = read.value;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('body is not an object');
     body = parsed as ChatRequestBody;
   } catch (error) {
