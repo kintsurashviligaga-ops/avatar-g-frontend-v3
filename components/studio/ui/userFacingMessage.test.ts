@@ -3,7 +3,7 @@
  * Phase 8.11 zero-error pass: a caught error becomes a line written for the reader, never the browser's „Failed to
  * fetch", a stack fragment or a provider's English prose in a Georgian bubble.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describeServiceError, userFacingMessage, UserFacingError } from './serviceError';
 
@@ -48,7 +48,11 @@ test('guard: the surfaces fixed in 8.11 never print a raw error message again', 
     'components/onboarding/OnboardingWizard.tsx',
     'components/service/SmartIntakeForm.tsx',
   ];
-  for (const f of files) {
+  // #334 deletes CommandCenter, UnifiedServiceLayout and OnboardingWizard. A screen that no longer exists cannot
+  // print a raw error, so it is skipped instead of failing the guard after both PRs land (Phase 8.12 cross-PR check).
+  const present = files.filter((f) => existsSync(join(process.cwd(), f)));
+  expect(present).toContain('components/studio/OmniStudio.tsx');
+  for (const f of present) {
     const src = readFileSync(join(process.cwd(), f), 'utf8');
     expect({ f, raw: /(?:set\w+\(|text:\s*`?[^`\n]*|error:\s*|errorMessage:\s*|content:\s*`?[^`\n]*)\$?\{?\s*(?:e|err) instanceof Error \? (?:e|err)\.message/.test(src) }).toEqual({ f, raw: false });
     expect({ f, raw: /`Error: \$\{/.test(src) }).toEqual({ f, raw: false });
