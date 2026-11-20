@@ -12,6 +12,7 @@ import { createGoogleGenerativeAI as createGeminiSdk } from '@ai-sdk/google';
 import { NotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { getVertexAccessToken, vertexAiConfig, vertexAiConfigProblems } from '@/lib/veo/vertexAuth';
 import { googleTransportKind, vertexPublisherBase } from './transport';
+import { takesSafetyLabel, withSafetyLabel } from './safetyIdentifier';
 
 /** Never leaves the process: vertexFetch deletes the header it travels in. */
 const VERTEX_SDK_PLACEHOLDER_KEY = 'vertex-oauth';
@@ -20,7 +21,10 @@ export const vertexFetch: typeof fetch = async (input, init) => {
   const headers = new Headers(init?.headers);
   headers.delete('x-goog-api-key');
   headers.set('Authorization', `Bearer ${await getVertexAccessToken(false)}`);
-  return fetch(input, { ...init, headers, redirect: 'manual' });
+  // Phase 8.9: labels.safety_identifier (hashed account id) when SAFETY_IDENTIFIER=1; off → body untouched.
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const body = takesSafetyLabel(url) ? withSafetyLabel(init?.body) : init?.body;
+  return fetch(input, { ...init, body: body as BodyInit | null | undefined, headers, redirect: 'manual' });
 };
 
 /**

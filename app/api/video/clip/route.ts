@@ -40,6 +40,7 @@ import { CLIP_SPEECH_MAX_CHARS, asksForCuts, asksForMusic, asksForSubtitles, cli
 import { readClipPrompt } from '@/lib/video/clipSpeech';
 import { DIRECT_CLIP_BODY_MAX_BYTES, directClipCredits, directClipEngine, directClipResolution, parseDirectClipRequest, type DirectClipRequest, type DirectClipSpeech } from '@/lib/video/directClip';
 import { OMNI_MODEL, submitOmniClip } from '@/lib/video/omniClip';
+import { setEndUser } from '@/lib/ai/google/safetyIdentifier';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     userId = null;
   }
   if (!userId || mustSignInToGenerate(userId)) return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+  setEndUser(userId); // Phase 8.9: hashed labels.safety_identifier on the Veo submit (flag off → no-op)
   // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
   const serviceOff = await serviceOffResponse('video');
   if (serviceOff) return serviceOff;
