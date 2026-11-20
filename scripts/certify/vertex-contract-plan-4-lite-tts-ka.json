@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "approvedBy": "NOT APPROVED YET. Prepared 2026-11-19 for GG's Phase 8.9 item 3 (Georgian backup voice on gemini-3.8-flash-lite-tts). Run with --confirm only after GG approves the paid probe (cap $0.05).",
+  "capUsd": 0.05,
+  "calls": [
+    {
+      "id": "get-tts-38-lite",
+      "model": "gemini-3.8-flash-lite-tts",
+      "adapter": "publisher model card (free GET): is the lite TTS model visible to this project",
+      "kind": "get",
+      "estimateUsd": 0,
+      "url": "https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.8-flash-lite-tts"
+    },
+    {
+      "id": "count-tts-38-lite",
+      "model": "gemini-3.8-flash-lite-tts",
+      "adapter": "entitlement probe (free countTokens, nothing generated)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-lite-tts:countTokens",
+      "estimateUsd": 0,
+      "body": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "გამარჯობა"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "tts-38-lite-ka-aoede",
+      "model": "gemini-3.8-flash-lite-tts",
+      "adapter": "app/api/tts/gemini/route.ts with GEMINI_TTS_MODEL=gemini-3.8-flash-lite-tts: Georgian, default voice Aoede, no languageCode, no directive (byte-for-byte, plan.contract.test.ts)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-lite-tts:generateContent",
+      "estimateUsd": 0.01,
+      "body": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "გამარჯობა, ეს არის ხმის მოკლე შემოწმება."
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseModalities": [
+            "AUDIO"
+          ],
+          "speechConfig": {
+            "voiceConfig": {
+              "prebuiltVoiceConfig": {
+                "voiceName": "Aoede"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "tts-38-lite-ka-algieba",
+      "model": "gemini-3.8-flash-lite-tts",
+      "adapter": "same shape, voice Algieba (GG's preferred Georgian male voice; the route's voice list does not offer it yet)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-lite-tts:generateContent",
+      "estimateUsd": 0.01,
+      "body": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "დღეს არის 19 ნოემბერი. ფასი: 12 ლარი და 50 თეთრი. შეკვეთა მზად იქნება ხვალ, დილის ათ საათზე."
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseModalities": [
+            "AUDIO"
+          ],
+          "speechConfig": {
+            "voiceConfig": {
+              "prebuiltVoiceConfig": {
+                "voiceName": "Algieba"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "tts-38-ka-algieba-ref",
+      "model": "gemini-3.8-flash-tts",
+      "adapter": "reference: the same Algieba line on the current read-aloud model, to compare by ear",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent",
+      "estimateUsd": 0.01,
+      "body": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "დღეს არის 19 ნოემბერი. ფასი: 12 ლარი და 50 თეთრი. შეკვეთა მზად იქნება ხვალ, დილის ათ საათზე."
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseModalities": [
+            "AUDIO"
+          ],
+          "speechConfig": {
+            "voiceConfig": {
+              "prebuiltVoiceConfig": {
+                "voiceName": "Algieba"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
