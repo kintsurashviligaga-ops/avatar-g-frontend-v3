@@ -99,7 +99,9 @@ import { RELAY_NUDGE_FRAME, relayControlOf } from './relay/wire';
 // `models/`-prefixed resource form the wire was verified with.
 import { turnDetection } from './experience/provider';
 
-export const DEFAULT_LIVE_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
+// 2026-11-12 (v5.1 M-2, owner decision D-12): the default moves to gemini-3.8-live because Vertex retires
+// gemini-live-2.5-flash-native-audio on 2026-12-13. 3.8 Live takes no thinkingConfig (takesThinkingBudget below).
+export const DEFAULT_LIVE_MODEL = 'models/gemini-3.8-live';
 
 // Built-in Google prebuilt voices for native audio (both verified live on the native-audio model). The
 // female/male split mirrors the app's existing KaGender voice convention; passed via GeminiLiveConfig.voiceName.

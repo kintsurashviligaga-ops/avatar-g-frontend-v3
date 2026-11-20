@@ -213,7 +213,7 @@ describe('gates', () => {
     const res = await POST(post({}));
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ error: 'budget_exhausted' });
-    expect(budgetMock).toHaveBeenCalledWith(expect.any(String), 'gemini-2.5-flash-native-audio-latest');
+    expect(budgetMock).toHaveBeenCalledWith(expect.any(String), 'gemini-3.8-live');
     expect(mintSpy).not.toHaveBeenCalled();
   });
 });
@@ -235,10 +235,11 @@ describe('the mint', () => {
     const m = mintBody();
     expect(m.uses).toBe(1);
     const s = m.bidiGenerateContentSetup;
-    expect(s.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+    expect(s.model).toBe('models/gemini-3.8-live');
     expect(s.generationConfig.responseModalities).toEqual(['AUDIO']);
     expect(s.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Aoede');
-    expect(s.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+    // gemini-3.8-live takes no thinking config ("omit from setup"); 2.5 got thinkingBudget 0 (v5.1 M-2).
+    expect(s.generationConfig.thinkingConfig).toBeUndefined();
     // Default profile: the model's own temperature, exactly as the Live session has always run.
     expect(s.generationConfig.temperature).toBeUndefined();
     // Opt-ins stay off unless the browser asks: today's wire.
@@ -248,7 +249,7 @@ describe('the mint', () => {
     expect(s.tools).toBeUndefined();
     expect(j).toMatchObject({
       token: 'auth_tokens/eph-123',
-      model: 'models/gemini-2.5-flash-native-audio-latest',
+      model: 'models/gemini-3.8-live',
       setupLocked: true,
       voice: 'Aoede',
       locale: 'ka',
@@ -306,14 +307,14 @@ describe('the mint', () => {
     for (const model of ['gemini-3.1-pro-preview', 'models/gemini-2.0-flash-live-001', '../../x?key=1', 42]) {
       mintSpy.mockClear();
       await POST(post({ model }));
-      expect(mintBody().bidiGenerateContentSetup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+      expect(mintBody().bidiGenerateContentSetup.model).toBe('models/gemini-3.8-live');
     }
     mintSpy.mockClear();
-    await POST(post({ model: 'gemini-3.8-live' }));
+    await POST(post({ model: 'gemini-2.5-flash-native-audio-latest' }));
     const s = mintBody().bidiGenerateContentSetup;
-    expect(s.model).toBe('models/gemini-3.8-live');
-    // 3.x Live models must not get the 2.5 thinking budget.
-    expect(s.generationConfig.thinkingConfig).toBeUndefined();
+    // the legacy model (rollback until 2026-12-13) is still allowlisted and keeps its thinking budget.
+    expect(s.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+    expect(s.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
   });
 
   test('a custom persona is re-validated server-side and locked in: directive, spoken rule, voice, temperature', async () => {
@@ -382,7 +383,7 @@ describe('the mint', () => {
     expect(res.status).toBe(200);
     expect(mintSpy).toHaveBeenCalledTimes(2);
     const legacy = mintBody(1).bidiGenerateContentSetup;
-    expect(legacy.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+    expect(legacy.model).toBe('models/gemini-3.8-live');
     expect(legacy.systemInstruction).toBeDefined(); // still server-owned
     for (const f of ['inputAudioTranscription', 'outputAudioTranscription', 'sessionResumption', 'contextWindowCompression', 'tools']) {
       expect(legacy[f]).toBeUndefined();
@@ -771,7 +772,7 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
   test('switched off, over the daily cap, or an unknown name: a voice call, and the browser is told why', async () => {
     delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
     let j = await (await POST(post({ avatar: 'Kira' }))).json();
-    expect(j).toMatchObject({ avatar: null, avatarRefused: 'disabled', model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'disabled', model: 'models/gemini-3.8-live' });
     expect(avatarSetup(0).avatarConfig).toBeUndefined();
     expect(avatarSetup(0).generationConfig.responseModalities).toEqual(['AUDIO']);
 
@@ -793,7 +794,7 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
     mockAvatarAccess = { allowed: false, dailySessions: 0 };
     let j = await (await POST(post({ avatar: 'Kira' }))).json();
     expect(mockAvatarAudience).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }));
-    expect(j).toMatchObject({ avatar: null, avatarRefused: 'audience', avatarAllowed: false, model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'audience', avatarAllowed: false, model: 'models/gemini-3.8-live' });
     expect(avatarSetup(0).avatarConfig).toBeUndefined();
     expect(perUserMock).not.toHaveBeenCalledWith('user-1', expect.objectContaining({ keyPrefix: RATE_LIMITS.LIVE_AVATAR_USER.keyPrefix }));
 
