@@ -22,7 +22,7 @@ import { ClipProgress } from './ClipProgress';
 import { PromptQuote } from './PromptQuote';
 import {
   changeClip, clipCancelledText, clipFinishingText, clipHold, clipHoldText, clipIsOmni, clipLengthsFor, clipPhotoNote, clipRunningText,
-  clipSpecLine, clipSpeechNote, type ClipAskState, type ClipChange,
+  clipAdvancedLine, clipSpecLine, clipSpeechNote, type ClipAskState, type ClipChange,
 } from './clipOrder';
 
 const ASPECTS: readonly DirectClipAspect[] = ['9:16', '16:9'];
@@ -123,6 +123,7 @@ export function ClipAskCard({
           )}
         </>)}
         <p data-testid="clip-spec" className="text-[12px] tabular-nums text-app-muted">{clipSpecLine(ask, locale)}</p>
+        {clipAdvancedLine(ask, locale) && <p data-testid="clip-advanced" className="text-[12px] text-app-muted [overflow-wrap:anywhere]">{clipAdvancedLine(ask, locale)}</p>}
         {speechNote && <p data-testid="clip-speech" className="text-[11.5px] leading-snug text-app-muted">{speechNote}</p>}
       </div>
 
