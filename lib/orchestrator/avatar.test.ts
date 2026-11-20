@@ -20,3 +20,11 @@ describe('extractPersonaDirective (Agent V)', () => {
     expect(p.tone).toBeTruthy();
   });
 });
+
+describe('extractPersonaDirective — Georgian and Russian apologies', () => {
+  // `\b` is an ASCII word boundary: inside `\b(...)\b` a Georgian or Cyrillic word could never match,
+  // and the Georgian alternative was also misspelled with a Cyrillic „ш" (ბოდიш).
+  it.each(['ბოდიში, რომ დაგაგვიანდა', 'извините за ожидание'])('reads %s as empathetic', (line) => {
+    expect(extractPersonaDirective(line).expression).toBe('empathetic');
+  });
+});
