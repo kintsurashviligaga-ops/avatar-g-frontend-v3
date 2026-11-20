@@ -113,7 +113,7 @@ export default async function LocaleLayout({
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
         <HtmlLangSync locale={safeLocale} />
         <QueryProvider>
-          <AppProviders>
+          <AppProviders locale={safeLocale}>
             <PageTransitionWrapper>{children}</PageTransitionWrapper>
             <AgentScreenPanel locale={safeLocale} />
             <SiteAgentHost locale={safeLocale} />

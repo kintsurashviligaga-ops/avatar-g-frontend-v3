@@ -43,6 +43,12 @@ describe('ModelSwitcher — the trigger', () => {
     expect(t.textContent).not.toContain('Gemini');
   });
 
+  it('phone: the header’s narrow-screen class lands on the wordmark, so the mode name keeps its room', () => {
+    // ChatChrome passes max-[419px]:hidden for guests; it used to be accepted and dropped, leaving „3.8…" on a 390 px phone.
+    render(<ModelSwitcher variant="phone" locale="ka" brandClassName="max-[419px]:hidden" />);
+    expect(within(trigger()).getByTestId('model-switcher-brand').className).toContain('max-[419px]:hidden');
+  });
+
   it('shows the saved mode on first paint', () => {
     window.localStorage.setItem(CHAT_MODE_STORAGE_KEY, 'pro');
     render(<ModelSwitcher variant="desktop" locale="en" />);
