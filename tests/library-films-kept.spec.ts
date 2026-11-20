@@ -63,6 +63,8 @@ test('a reload finds the tab, the search and the scroll as they were left', asyn
   await tab('Music').click();
   await expect(page.locator('audio')).toHaveCount(12, { timeout: 30_000 });
   await page.getByPlaceholder('Search…').fill('music');
+  // The search goes to the server a moment after typing stops: wait for that read before counting what the reload asks.
+  await expect.poll(() => traffic.library.some((r) => new URL(r.url()).searchParams.get('q') === 'music')).toBe(true);
   // The shell's scroll box (ChatChrome scrollBody): the gallery's nearest ancestor that scrolls.
   const scrollBox = (y?: number) => page.evaluate((to) => {
     let at = [...document.querySelectorAll('h1')].find((h) => h.textContent === 'Library')?.parentElement ?? null;
@@ -83,4 +85,5 @@ test('a reload finds the tab, the search and the scroll as they were left', asyn
   await expect.poll(() => scrollBox(), { timeout: 10_000 }).toBe(left);
   const kinds = traffic.library.slice(libraryBefore).map((r) => new URL(r.url()).searchParams.get('kind'));
   expect(kinds).toEqual(['music']); // the Video tab was never asked for
+  expect(new URL(traffic.library.at(-1)!.url()).searchParams.get('q')).toBe('music'); // and the kept search, at once
 });
