@@ -1545,11 +1545,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <div ref={profileDialogRef} role="dialog" aria-modal="true" aria-label={locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
-              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setProfileOpen(false)} aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'} className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
             {/* Profile photo (FIX 2) — click to upload; service-role route stores it. */}
             <div className="mb-4 flex flex-col items-center gap-2">
-              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label="Change photo"
+              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label={locale === 'en' ? 'Change photo' : locale === 'ru' ? 'Сменить фото' : 'ფოტოს შეცვლა'}
                 className="group relative h-20 w-20 overflow-hidden rounded-full bg-app-accent/15 ring-2 ring-app-border/15 transition hover:ring-app-accent/40">
                 {avatarUrl && !avatarBroken ? (
                   // eslint-disable-next-line @next/next/no-img-element
