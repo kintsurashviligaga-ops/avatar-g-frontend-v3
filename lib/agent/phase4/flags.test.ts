@@ -1,9 +1,9 @@
 /** @jest-environment node */
 import { phase4Allowed, phase4Audience } from './flags';
 
-test('every Phase 4 flag fails closed: only the exact value "admins" turns it on, and only for admins', () => {
-  for (const raw of [undefined, null, '', 'on', 'everyone', 'true', '1', 'admin', 'Admins ']) {
-    expect(phase4Audience(raw)).toBe(raw === 'Admins ' ? 'admins' : 'off');
+test('every Phase 4 flag fails closed: only "admins" or "admin" turns it on, and only for admins', () => {
+  for (const raw of [undefined, null, '', 'on', 'everyone', 'true', '1', 'admin', 'Admin', 'Admins ', 'adminz', 'administrators']) {
+    expect(phase4Audience(raw)).toBe(raw === 'Admins ' || raw === 'admin' || raw === 'Admin' ? 'admins' : 'off');
   }
   const env = { AGENT_BROWSER_AGENT: 'admins', AGENT_SANDBOX_PACKAGES: 'everyone', AGENT_APP_BUILDER: undefined };
   expect(phase4Allowed('AGENT_BROWSER_AGENT', { isAdmin: true }, env)).toBe(true);
