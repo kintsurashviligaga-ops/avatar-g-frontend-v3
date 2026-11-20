@@ -94,6 +94,8 @@ export interface StepState {
   inputsHash?: string;
   outputs?: string[];
   credits?: number;
+  /** Of `credits`, what was given back (an executor's own refund of a failed attempt, or a `refund` effect). */
+  refundedCredits?: number;
   error?: string;
   /** Delivered by an earlier run and reused, never paid again. */
   reused?: boolean;
@@ -137,7 +139,7 @@ export interface EngineRun {
 export type TimelineType =
   | 'run.planned' | 'step.queued' | 'step.started' | 'step.progress' | 'step.checkpoint' | 'step.needs_approval'
   | 'step.done' | 'step.failed' | 'step.skipped' | 'step.cancelled' | 'step.retry'
-  | 'run.paused' | 'run.resumed' | 'run.replanned' | 'run.cost' | 'run.status' | 'run.delivered';
+  | 'run.paused' | 'run.resumed' | 'run.replanned' | 'run.cost' | 'run.refund' | 'run.status' | 'run.delivered';
 
 export interface TimelineEvent {
   seq: number;
@@ -151,12 +153,19 @@ export interface TimelineEvent {
 /** What the caller must do after a tick. The engine never does it itself. */
 export type EngineEffect =
   | { type: 'start'; stepId: string; attemptId: string; tool: EngineTool; inputs: string[]; approvedCredits: number }
-  | { type: 'stop'; stepId: string; attemptId: string };
+  | { type: 'stop'; stepId: string; attemptId: string }
+  /**
+   * Give back what an attempt charged although the run does not count it (Phase 8.10): the executor said ok and charged,
+   * then VERIFY rejected the result, so no executor refund will ever come for it. The caller hands this to the
+   * executor's own refund path (the engine still never touches the ledger). Only with EngineOptions.refundRejected.
+   */
+  | { type: 'refund'; stepId: string; attemptId: string; credits: number; reason: string };
 
 /** An executor's answer about one attempt. */
 export type StepResult =
   | { stepId: string; attemptId: string; ok: true; outputs: string[]; credits: number; inputsHash?: string }
-  | { stepId: string; attemptId: string; ok: false; error: string; retryable: boolean; credits?: number };
+  /** `refunded`: of `credits`, what the executor already gave back for this failed attempt (it refunds its own misses). */
+  | { stepId: string; attemptId: string; ok: false; error: string; retryable: boolean; credits?: number; refunded?: number };
 
 /** The owner's presses. `approve` is their yes to a held quote, and must name that quote. */
 export type EngineCommand = 'pause' | 'resume' | 'cancel' | { type: 'approve'; stepId: string; quoteId: string };
