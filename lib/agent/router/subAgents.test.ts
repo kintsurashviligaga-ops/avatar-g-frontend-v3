@@ -165,6 +165,10 @@ describe('flags', () => {
     const r = envFlagReader({ A: '1', B: 'admins', C: 'yes', D: '' });
     expect([r('A'), r('B'), r('C'), r('D'), r('E')]).toEqual([true, false, false, false, false]);
     expect(envFlagReader({ B: 'admins' }, true)('B')).toBe(true);
+    // 'admin' (the value STUDIO_3D_V2, MONTAGE_SMART_EDITOR and IMAGE_ART_DIRECTOR use) opens it for admins only.
+    expect(envFlagReader({ B: 'admin' }, true)('B')).toBe(true);
+    expect(envFlagReader({ B: 'admin' }, false)('B')).toBe(false);
+    expect(envFlagReader({ B: 'administrator' }, true)('B')).toBe(false);
   });
   it('every sub-agent that is not on main names its draft PR and flag', () => {
     for (const [id, info] of Object.entries(SUB_AGENTS)) {
