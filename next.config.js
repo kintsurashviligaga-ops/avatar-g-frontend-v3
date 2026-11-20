@@ -15,6 +15,7 @@ const isDev = process.env.NODE_ENV === 'development';
 // which is how the `data:` media-src regression — inline data:video/audio
 // previews blocked from playback — is now locked down against re-introduction.
 const { CSP_DIRECTIVES } = require('./lib/security/csp');
+const { imageRemotePatterns } = require('./lib/security/imageHosts');
 
 // ─── Service-worker cache-buster (Vercel build only) ─────────────────────────
 // Vercel runs `next build` DIRECTLY (not our npm `vercel-build`), so THIS is where the SW cache name is made
@@ -47,14 +48,11 @@ const nextConfig = {
     NEXT_PUBLIC_APP_VERSION: require('./package.json').version,
   },
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**.supabase.co' },
-      { protocol: 'https', hostname: 'placehold.co' },
-      { protocol: 'https', hostname: '*.r2.cloudflarestorage.com' },
-      { protocol: 'https', hostname: 'example.com' },
-    ],
+    // Only OUR Supabase project, R2 and placehold.co (lib/security/imageHosts.js): every host here is fetched and
+    // optimized on our quota for anyone who asks.
+    remotePatterns: imageRemotePatterns(),
     formats: ['image/avif', 'image/webp'],
-    // ⚠️ 24 h STAYS THE FLOOR FOR EVERY OPTIMIZED IMAGE. remotePatterns admits any *.supabase.co URL, so user media —
+    // ⚠️ 24 h STAYS THE FLOOR FOR EVERY OPTIMIZED IMAGE. remotePatterns admits our Supabase project, so user media —
     // signed links to private files included — can pass through /_next/image; a longer floor would keep optimized copies
     // reachable long after the original link expired. Shipped template thumbnails get their year from the versioned-path
     // Cache-Control in headers() instead: the optimizer keeps the larger of the source's max-age and this floor.
