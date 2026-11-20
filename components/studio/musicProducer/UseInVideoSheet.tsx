@@ -16,6 +16,7 @@ import type { ProducerPost } from './MusicProducerPanel';
 
 const T = {
   title: { ka: 'ვიდეოში გამოყენება', en: 'Use in Video', ru: 'Использовать в видео' },
+  close: { ka: 'დახურვა', en: 'Close', ru: 'Закрыть' },
   noFilm: { ka: 'ჯერ ფილმი არ გაქვს. შექმენი ფილმი რეჟისორის რეჟიმში და აქ გამოჩნდება.', en: 'No film yet. Make one in Director\'s Workflow and it shows up here.', ru: 'Фильма пока нет. Создайте его в режиме режиссёра, и он появится здесь.' },
   scene: { ka: 'სცენა', en: 'Scene', ru: 'Сцена' },
   whole: { ka: 'მთელი ფილმი', en: 'Whole film', ru: 'Весь фильм' },
@@ -69,7 +70,7 @@ export function UseInVideoSheet({ track, lang, post, onClose, onOpenMontage, ini
     <div data-testid="mp-use-sheet" role="dialog" aria-label={T.title[lang]} className="space-y-3 rounded-xl border border-app-accent/25 bg-app-bg/60 p-3">
       <div className="flex items-center justify-between">
         <h4 className="text-[13px] font-semibold text-app-text">{T.title[lang]}</h4>
-        <button type="button" onClick={onClose} aria-label="Close" className="text-app-muted hover:text-app-text">×</button>
+        <button type="button" onClick={onClose} aria-label={T.close[lang]} className="text-app-muted hover:text-app-text">×</button>
       </div>
       {!film && <p data-testid="mp-no-film" className="text-[13px] text-app-muted">{T.noFilm[lang]}</p>}
       {films.length > 1 && (
