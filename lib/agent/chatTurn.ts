@@ -22,6 +22,7 @@
  *   analyze          a question about the one attached video or audio file, or about one public YouTube link: Agent G
  *                    reads the whole file with Gemini (./media/analyzeChat) and answers on a card; nothing is charged
  */
+import { routeV2, routeV2Reply, type FlagReader } from './router/subAgents';
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
 import { asksForEdit, mineEdits, onlyDescribing, type EditAsk } from './media/editWords';
@@ -92,12 +93,20 @@ export interface ChatSnapshot {
   resumableRunId?: string | null;
   /** Agent G's whole-file analysis is open to this user (AGENT_G_FILE_ANALYSIS, the route's GET). */
   analyzeOn?: boolean;
+  /**
+   * Agent G Router v2 (lib/agent/router/subAgents, Phase 8.10): ask instead of guessing, plan two-service asks as steps,
+   * never turn a website or a closed sub-agent's ask into a picture. NEXT_PUBLIC_AGENT_G_ROUTER_V2=1 only; off = main.
+   */
+  routerV2?: boolean;
+  /** Which sub-agent flags are open for this user (Router v2 only). Default: all closed. */
+  subAgentOpen?: FlagReader;
 }
 
 export type ChatStep =
   | { kind: 'pass'; intent: AgentIntent }
   /** keepComposer: the words and files stay in the box (an ask: add what is missing and send again). */
-  | { kind: 'say'; text: string; keepComposer?: boolean; intent: AgentIntent }
+  /** composer: words put in the box for the user to send (Router v2: the first step of a chained ask). */
+  | { kind: 'say'; text: string; keepComposer?: boolean; composer?: string; intent: AgentIntent }
   | {
     kind: 'stop';
     text: string;
@@ -302,8 +311,28 @@ function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): Ch
   return { kind: 'edit', source, edits: mined.edits, ...(file !== undefined ? { file } : {}), ...(logo !== undefined ? { logo } : {}), intent };
 }
 
+/**
+ * Router v2's own answer (a clarifying question, a chained plan, a closed sub-agent), or null when the existing reading
+ * stands. The send path calls it BEFORE its own video shortcut, which would otherwise open a clip for „3D … და მერე
+ * ვიდეო". Starts nothing and charges nothing: every reply here is words.
+ */
+export function routerV2Step(text: string, s: ChatSnapshot): ChatStep | null {
+  if (!s.routerV2) return null;
+  const r = routeV2({ text, attachments: s.attachments ?? [], mode: s.mode, locale: s.locale, ...(s.subAgentOpen ? { open: s.subAgentOpen } : {}) });
+  const reply = routeV2Reply(r);
+  if (!reply) return null;
+  if (r.kind === 'chain') {
+    const first = r.steps.find((st) => st.open);
+    const blocked = r.steps.some((st) => !st.open);
+    return { kind: 'say', text: reply, ...(first && !blocked ? { composer: first.text } : {}), intent: r.intent };
+  }
+  return { kind: 'say', text: reply, keepComposer: r.kind === 'clarify', intent: r.intent };
+}
+
 /** One message, read against the screen: the step the studio takes. */
 export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
+  const v2 = routerV2Step(text, s);
+  if (v2) return v2;
   const pending: { capability: CapabilityId } | null = s.pendingMontageId && s.montageOn ? { capability: 'agent.montage' } : null;
   const intent = classifyAgentIntent({
     text,
