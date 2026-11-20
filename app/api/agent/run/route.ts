@@ -126,7 +126,11 @@ export async function POST(req: NextRequest) {
   // What the user told Agent G before (lib/memory/context): capped, their data, never instructions. Fail-open.
   const memory = await memoryContextOf(user.id);
   // What the run used (tokens, cache hits, estimated provider cost) is logged by runLiveAgent and stays on the server.
-  const { metrics: _metrics, ...result } = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs, ...(memory ? { systemExtra: memory } : {}) });
+  const { metrics: _metrics, ...result } = await runLiveAgent(goal, ctx, {
+    maxSteps, deadlineMs, ...(memory ? { systemExtra: memory } : {}),
+    // Phase 8.10 prompt-injection shield: off unless AGENT_G_SHIELD=1 (draft, flag off).
+    ...(process.env.AGENT_G_SHIELD === '1' ? { shield: true } : {}),
+  });
   if (result.stopReason === 'llm_error') {
     // `source` labels the report only (a voice call's failures are told apart); it changes nothing about the run.
     const source = body.source === 'live' ? { source: 'live', budgetMs } : {};
