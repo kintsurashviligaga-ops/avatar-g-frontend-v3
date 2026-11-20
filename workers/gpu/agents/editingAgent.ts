@@ -114,9 +114,8 @@ function addProcessingNote(ctx: EditingContext, note: string): void {
   structuredLog('warn', 'editing_note', { jobId: ctx.jobId, note })
 }
 
-function hasOpenAIKey(): boolean {
-  return Boolean(String(process.env.OPENAI_API_KEY || '').trim())
-}
+/** Chirp 3 answers one clip of under a minute in a single request (lib/voice-v2v/chirpStt). */
+const CHIRP_SUBTITLE_MAX_SEC = 60
 
 function getLipSyncModelId(): string {
   return String(process.env.REPLICATE_LIP_SYNC_MODEL || 'cjwbw/wav2lip').trim()
@@ -915,21 +914,16 @@ async function generateSubtitles(ctx: EditingContext): Promise<void> {
   const instructionText = getInstructionText(ctx)
   const currentProbe = getCurrentProbe(ctx)
 
-  if (currentProbe?.hasAudio && hasOpenAIKey()) {
+  // Chirp 3 (Google) instead of OpenAI (v5.1 M-14 cleanup): WAV, a track under a minute, and no word timings, so the
+  // lines are spread over the clip by the heuristic. A longer track keeps the instruction overlay below.
+  if (currentProbe?.hasAudio && currentProbe.durationSec > 0 && currentProbe.durationSec < CHIRP_SUBTITLE_MAX_SEC) {
     try {
-      const extractedAudio = await extractAudioTrack(ctx, 'subtitle-audio', 'aac')
+      const extractedAudio = await extractAudioTrack(ctx, 'subtitle-audio', 'pcm_s16le')
       if (extractedAudio) {
         const audioBuffer = await readFile(extractedAudio.localPath)
-        const transcription = await transcribeAudioBuffer({
-          audioBuffer,
-          filename: 'editing-track.m4a',
-          mimeType: extractedAudio.mimeType,
-          withSegments: true,
-        })
+        const transcription = await transcribeAudioBuffer({ audioBuffer })
 
-        const subtitleSegments = transcription.segments?.length
-          ? transcription.segments
-          : buildHeuristicSubtitleSegments(transcription.transcript, currentProbe.durationSec)
+        const subtitleSegments = buildHeuristicSubtitleSegments(transcription.transcript, currentProbe.durationSec)
 
         if (subtitleSegments.length > 0) {
           await burnSrtSubtitles(ctx, transcription.transcript, subtitleSegments)
@@ -940,8 +934,8 @@ async function generateSubtitles(ctx: EditingContext): Promise<void> {
       addProcessingNote(
         ctx,
         error instanceof Error
-          ? `OpenAI subtitle transcription failed: ${error.message}`
-          : 'OpenAI subtitle transcription failed',
+          ? `Subtitle transcription (Chirp 3) failed: ${error.message}`
+          : 'Subtitle transcription (Chirp 3) failed',
       )
     }
   }
