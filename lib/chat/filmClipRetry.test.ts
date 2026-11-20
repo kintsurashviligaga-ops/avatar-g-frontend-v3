@@ -9,8 +9,6 @@ import {
   clipDispatchJitterMs,
   clipDispatchConcurrency,
   clipRetryBackoffMs,
-  shouldDownshiftToLtx,
-  LTX_DOWNSHIFT_AFTER_ATTEMPT,
   mapWithConcurrency,
 } from './filmClipRetry';
 
@@ -101,18 +99,14 @@ describe('mapWithConcurrency — caps the dispatch burst, preserves order', () =
     expect(CLIP_DISPATCH_CONCURRENCY).toBe(1);
   });
 
-  describe('clipDispatchConcurrency — provider-aware create fan-out', () => {
+  describe('clipDispatchConcurrency — create fan-out', () => {
     const base: NodeJS.ProcessEnv = {};
-    test('Replicate-only fallback path stays serial-1 (burst-1 safe)', () => {
+    test('serial-1 by default; a leftover LTX key no longer widens it (LTX retired, v5.1 M-14)', () => {
       expect(clipDispatchConcurrency({ ...base })).toBe(1);
-    });
-    test('funded DIRECT LTX key → a small parallel wave (3)', () => {
-      expect(clipDispatchConcurrency({ ...base, LTX_API_KEY: 'k' })).toBe(3);
-      expect(clipDispatchConcurrency({ ...base, LTX2_API_KEY: 'k' })).toBe(3);
-      expect(clipDispatchConcurrency({ ...base, LTX_VIDEO_API_KEY: 'k' })).toBe(3);
+      expect(clipDispatchConcurrency({ ...base, LTX_API_KEY: 'k' })).toBe(1);
     });
     test('an explicit CLIP_DISPATCH_CONCURRENCY env always wins, clamped 1..5', () => {
-      expect(clipDispatchConcurrency({ ...base, LTX_API_KEY: 'k', CLIP_DISPATCH_CONCURRENCY: '1' })).toBe(1);
+      expect(clipDispatchConcurrency({ ...base, CLIP_DISPATCH_CONCURRENCY: '1' })).toBe(1);
       expect(clipDispatchConcurrency({ ...base, CLIP_DISPATCH_CONCURRENCY: '5' })).toBe(5);
       expect(clipDispatchConcurrency({ ...base, CLIP_DISPATCH_CONCURRENCY: '99' })).toBe(5);
     });
@@ -137,33 +131,5 @@ describe('mapWithConcurrency — caps the dispatch burst, preserves order', () =
   test('a degenerate limit (0 / NaN) is clamped up to a single worker', async () => {
     const out = await mapWithConcurrency([1, 2, 3], 0, async (n) => n * 10);
     expect(out).toEqual([10, 20, 30]);
-  });
-});
-
-describe('shouldDownshiftToLtx — Phase 23 deterministic engine down-shift', () => {
-  test('attempt 1 NEVER down-shifts — the premium Kling engine always gets the first shot', () => {
-    expect(shouldDownshiftToLtx(1)).toBe(false);
-  });
-
-  test('the default threshold keeps Kling on attempts 1-2, then forces LTX on 3-4', () => {
-    // With MAX_CLIP_DISPATCH_ATTEMPTS=4 and the default LTX_DOWNSHIFT_AFTER_ATTEMPT=2.
-    expect(LTX_DOWNSHIFT_AFTER_ATTEMPT).toBe(2);
-    expect(shouldDownshiftToLtx(1)).toBe(false); // Kling-first
-    expect(shouldDownshiftToLtx(2)).toBe(false); // Kling gets a second shot
-    expect(shouldDownshiftToLtx(3)).toBe(true);  // down-shift: clean LTX-only
-    expect(shouldDownshiftToLtx(4)).toBe(true);  // last resort stays on LTX
-    // The final attempt is ALWAYS a down-shift so a saturated Kling cluster can never eat every retry.
-    expect(shouldDownshiftToLtx(MAX_CLIP_DISPATCH_ATTEMPTS)).toBe(true);
-  });
-
-  test('an explicit threshold overrides the default (e.g. force LTX from attempt 2)', () => {
-    expect(shouldDownshiftToLtx(2, 1)).toBe(true);
-    expect(shouldDownshiftToLtx(1, 1)).toBe(false); // attempt 1 never down-shifts even at threshold 1
-  });
-
-  test('degenerate attempt values never down-shift (fail-safe: keep the premium engine)', () => {
-    // The Number.isFinite guard rejects NaN and Infinity → neither forces a down-shift.
-    expect(shouldDownshiftToLtx(Number.NaN)).toBe(false);
-    expect(shouldDownshiftToLtx(Infinity)).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * The live wiring of the unpolled-job settle sweep (3D only since v5.1 M-14): read through the SAME poller its client route uses,
- * a delivery writes the SAME row id that route writes, and a refund goes through refundDebitByRef (`${ref}:refund`,
+ * The live wiring of the unpolled-job settle sweep (3D only since v5.1 M-14; 3D itself retired, so the verdict comes from our
+ * hosted copy alone and nothing reaches Replicate): a delivery writes the SAME row id the status route writes, and a refund goes through refundDebitByRef (`${ref}:refund`,
  * idempotent with the poll routes). Providers, storage, the job table and the ledger are mocked — no network.
  */
 jest.mock('server-only', () => ({}));
@@ -23,8 +23,6 @@ jest.mock('../supabase/server', () => ({
     },
   }),
 }));
-jest.mock('../services/model3d/replicate3dClient', () => ({ pollReconstruction: jest.fn(), fetchGlbBuffer: jest.fn(async () => Buffer.from('glb')) }));
-jest.mock('../services/model3d/model3dPlan', () => ({ isTerminal: (s: string) => s === 'succeeded' || s === 'failed' }));
 jest.mock('./storage-adapter', () => ({
   uploadBufferAndSign: jest.fn(async (_b: string, path: string) => `https://x.supabase.co/sign/${path}`),
   storageObjectExists: jest.fn(async () => null),
@@ -38,7 +36,6 @@ jest.mock('./ledger', () => ({ refundDebitByRef: jest.fn() }));
 
 import { createSettleDeps } from './unpolledSettleRuntime';
 import type { SettleRecord, SettleRow } from './unpolledSettle';
-import { pollReconstruction, fetchGlbBuffer } from '../services/model3d/replicate3dClient';
 import { storageObjectExists } from './storage-adapter';
 import { completeJob } from './jobs';
 import { refundDebitByRef } from './ledger';
@@ -67,39 +64,39 @@ test('lists only live rows that carry `_settle`, older than the cutoff, oldest f
   });
 });
 
-describe('poll — the client route’s own reading of each provider', () => {
-  test('model3d: failed / mesh / no mesh decided like /status (data_removed, then our hosted copy)', async () => {
-    (pollReconstruction as jest.Mock).mockResolvedValueOnce({ status: 'failed', glbUrl: null, error: 'oom' });
-    expect(await deps.poll(rec('model3d', 'pred1'))).toEqual({ state: 'failed', reason: 'oom' });
-    (pollReconstruction as jest.Mock).mockResolvedValueOnce({ status: 'succeeded', glbUrl: 'https://replicate.delivery/m.glb' });
-    expect(await deps.poll(rec('model3d', 'pred1'))).toEqual({ state: 'succeeded', url: 'https://replicate.delivery/m.glb' });
-    (pollReconstruction as jest.Mock).mockResolvedValueOnce({ status: 'succeeded', glbUrl: null, dataRemoved: false });
-    expect(await deps.poll(rec('model3d', 'pred1'))).toMatchObject({ state: 'failed' });
-    (pollReconstruction as jest.Mock).mockResolvedValueOnce({ status: 'succeeded', glbUrl: null, dataRemoved: true });
+describe('poll — our hosted copy decides (3D retired, no provider call)', () => {
+  test('model3d: hosted copy → delivered; confirmed absent → failed (refund); unknown → wait', async () => {
     (storageObjectExists as jest.Mock).mockResolvedValueOnce(true);
-    expect(await deps.poll(rec('model3d', 'pred1'))).toEqual({ state: 'succeeded', url: '' }); // delivered earlier
-    (pollReconstruction as jest.Mock).mockResolvedValueOnce({ status: 'succeeded', glbUrl: null, dataRemoved: true });
+    expect(await deps.poll(rec('model3d', 'pred1'))).toEqual({ state: 'succeeded', url: '' });
+    (storageObjectExists as jest.Mock).mockResolvedValueOnce(false);
+    expect(await deps.poll(rec('model3d', 'pred1'))).toMatchObject({ state: 'failed' });
     (storageObjectExists as jest.Mock).mockResolvedValueOnce(null);
     expect(await deps.poll(rec('model3d', 'pred1'))).toEqual({ state: 'processing' }); // never refund on a guess
   });
 
-  test('model3d: a malformed prediction id is never sent anywhere', async () => {
+  test('model3d: a malformed prediction id is never looked up', async () => {
     expect(await deps.poll(rec('model3d', '../../etc'))).toEqual({ state: 'processing' });
-    expect(pollReconstruction).not.toHaveBeenCalled();
+    expect(storageObjectExists).not.toHaveBeenCalled();
+  });
+
+  test('nothing reaches the network', async () => {
+    (storageObjectExists as jest.Mock).mockResolvedValueOnce(false);
+    await deps.poll(rec('model3d', 'pred1'));
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
 describe('deliver — the same row the client route would have written', () => {
-  test('model3d: a GLB that cannot be fetched is NOT a delivery (retried next tick)', async () => {
-    (fetchGlbBuffer as jest.Mock).mockResolvedValueOnce(null);
+  test('model3d: no hosted copy is NOT a delivery', async () => {
+    (storageObjectExists as jest.Mock).mockResolvedValueOnce(false);
     expect(await deps.deliver(row('job-1'), rec('model3d', 'pred1'), 'https://replicate.delivery/m.glb')).toBe(false);
     expect(completeJob).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('model3d: an existing hosted copy is handed over without downloading again', async () => {
+  test('model3d: an existing hosted copy is handed over', async () => {
     (storageObjectExists as jest.Mock).mockResolvedValueOnce(true);
     expect(await deps.deliver(row('job-1'), rec('model3d', 'pred1'), '')).toBe(true);
-    expect(fetchGlbBuffer).not.toHaveBeenCalled();
     expect(completeJob).toHaveBeenCalledWith('job-1', expect.objectContaining({ result: expect.objectContaining({ predictionId: 'pred1' }) }));
   });
 });
