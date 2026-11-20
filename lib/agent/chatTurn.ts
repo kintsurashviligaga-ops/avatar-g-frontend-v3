@@ -22,6 +22,7 @@
  *   analyze          a question about the one attached video or audio file, or about one public YouTube link: Agent G
  *                    reads the whole file with Gemini (./media/analyzeChat) and answers on a card; nothing is charged
  */
+import { commandLang, commandOf, creditsReply, undoAction, undoReply } from './router/commands';
 import { routeV2, routeV2Reply, type FlagReader } from './router/subAgents';
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
@@ -98,6 +99,10 @@ export interface ChatSnapshot {
    * never turn a website or a closed sub-agent's ask into a picture. NEXT_PUBLIC_AGENT_G_ROUTER_V2=1 only; off = main.
    */
   routerV2?: boolean;
+  /** „How many credits?" / „undo" (lib/agent/router/commands). NEXT_PUBLIC_AGENT_G_COMMANDS=1 only; off = main. */
+  commandsOn?: boolean;
+  /** The balance the header chip shows (credits), null while unknown. Read only. */
+  balance?: number | null;
   /** Which sub-agent flags are open for this user (Router v2 only). Default: all closed. */
   subAgentOpen?: FlagReader;
 }
@@ -312,6 +317,31 @@ function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): Ch
 }
 
 /**
+ * „რამდენი კრედიტი მაქვს?" and „გააუქმე ბოლო მოქმედება" (Phase 8.10): answered from the screen, never by the chat
+ * model guessing. Undo drops plans waiting for Start (free, nothing ran); it never deletes a result or stops paid work.
+ */
+export function commandStep(text: string, s: ChatSnapshot): ChatStep | null {
+  if (!s.commandsOn || (s.attachments ?? []).length) return null;
+  const cmd = commandOf(text);
+  if (!cmd) return null;
+  const lang = commandLang(text, s.locale);
+  const intent: AgentIntent = { kind: 'chat', lang };
+  if (cmd === 'credits') return { kind: 'say', text: creditsReply(s.balance, lang), intent };
+  const waiting = s.cards.filter((c) => c.phase === 'quoted');
+  const view = {
+    waitingPlans: waiting.length,
+    running: s.cards.filter((c) => c.phase === 'running').length + s.jobs.filter((j) => j.status === 'queued' || j.status === 'rendering').length,
+    hasResult: !!s.previous,
+  };
+  if (undoAction(view) === 'drop-plans') {
+    // The newest waiting plan only: „undo" takes back ONE step.
+    const last = waiting[waiting.length - 1]!;
+    return { kind: 'stop', text: undoReply(view, lang), cards: [last.id], jobs: [], durable: [], foreground: false, intent };
+  }
+  return { kind: 'say', text: undoReply(view, lang), intent };
+}
+
+/**
  * Router v2's own answer (a clarifying question, a chained plan, a closed sub-agent), or null when the existing reading
  * stands. The send path calls it BEFORE its own video shortcut, which would otherwise open a clip for „3D … და მერე
  * ვიდეო". Starts nothing and charges nothing: every reply here is words.
@@ -331,6 +361,8 @@ export function routerV2Step(text: string, s: ChatSnapshot): ChatStep | null {
 
 /** One message, read against the screen: the step the studio takes. */
 export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
+  const cmd = commandStep(text, s);
+  if (cmd) return cmd;
   const v2 = routerV2Step(text, s);
   if (v2) return v2;
   const pending: { capability: CapabilityId } | null = s.pendingMontageId && s.montageOn ? { capability: 'agent.montage' } : null;
