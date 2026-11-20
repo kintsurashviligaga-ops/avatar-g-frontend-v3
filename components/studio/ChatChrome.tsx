@@ -1102,11 +1102,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       paddingRight: 'env(safe-area-inset-right, 0px)',
     }}>
       {/* ── WHAT IS GENERATING, while ANY generation runs: a small pill naming the service. The thin sweeping bar that
-          sat above it is gone since Phase 2 (MASTER TASK v3.1 §3.3): the job's own card carries the number. ── */}
+          sat above it is gone since Phase 2 (MASTER TASK v3.1 §3.3): the job's own card carries the number. From lg it sits
+          just under the desktop title bar: at top-2 it covered the centred session name. ── */}
       {genBusy && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[999]" aria-hidden style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           {genService && (
-            <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full border border-app-border/15 bg-app-surface/95 px-3 py-1 text-[11px] font-medium text-app-text shadow-lg backdrop-blur-sm">
+            <div className="absolute left-1/2 top-2 -translate-x-1/2 lg:top-[4.5rem] rounded-full border border-app-border/15 bg-app-surface/95 px-3 py-1 text-[11px] font-medium text-app-text shadow-lg backdrop-blur-sm">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-app-accent align-middle motion-safe:animate-pulse" />
               {genService === 'video' ? (lang === 'en' ? 'Video' : lang === 'ru' ? 'Видео' : 'ვიდეო')
                 : genService === 'image' ? (lang === 'en' ? 'Image' : lang === 'ru' ? 'Фото' : 'სურათი')
