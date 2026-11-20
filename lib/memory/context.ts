@@ -97,3 +97,26 @@ export async function memoryContextOf(userId: string): Promise<string | null> {
     return null;
   }
 }
+
+/** How long Agent G waits for memory before starting without it (Phase 8.10; the chat route waits 500 ms, too). */
+export const AGENT_MEMORY_DEADLINE_MS = 500;
+
+/**
+ * `memoryContextOf`, but never waited for longer than `ms`: a slow database read (prod Supabase is in ap-southeast-1,
+ * the functions in iad1) must not hold the whole agent run. Late = no memory this run; never throws.
+ */
+export async function memoryContextWithin(
+  userId: string,
+  ms: number = AGENT_MEMORY_DEADLINE_MS,
+  read: (id: string) => Promise<string | null> = memoryContextOf,
+): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      read(userId).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), Math.max(0, ms)); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
