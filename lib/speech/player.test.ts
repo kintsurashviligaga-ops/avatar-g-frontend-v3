@@ -62,7 +62,7 @@ class FakeAudio implements SpeechAudio {
 const players: SpeechPlayer[] = [];
 afterEach(() => { for (const p of players.splice(0)) p.dispose(); });
 
-interface Call { text: string; signal: AbortSignal; settled: boolean; answer(b: Blob | null): void; throws(e: unknown): void }
+interface Call { text: string; index: number | undefined; signal: AbortSignal; settled: boolean; answer(b: Blob | null): void; throws(e: unknown): void }
 
 function rig(opts: { blocked?: () => SpeechFault | null } = {}) {
   const audio = new FakeAudio();
@@ -71,9 +71,10 @@ function rig(opts: { blocked?: () => SpeechFault | null } = {}) {
   const revoked: string[] = [];
   let n = 0;
   const deps: SpeechPlayerDeps = {
-    synth: (text, _locale, signal) => new Promise<Blob | null>((resolve, reject) => {
+    synth: (text, _locale, signal, index) => new Promise<Blob | null>((resolve, reject) => {
       const call: Call = {
         text,
+        index,
         signal,
         settled: false,
         answer: (b) => { call.settled = true; resolve(b); },
@@ -158,6 +159,8 @@ test('reads every chunk in order, at most SPEECH_AHEAD (3) syntheses in flight a
   }
   await until(() => r.s().status === 'done', 'done');
   expect(r.calls.map((c) => c.text)).toEqual(SENTENCES);
+  // Each synthesis is told its chunk's place in the read (the listening trial numbers its rows by it).
+  expect(r.calls.map((c) => c.index)).toEqual(SENTENCES.map((_, i) => i));
   expect(r.audio.plays.slice(1)).toEqual(r.created);
   expect(r.live()).toEqual([]);
   expect(r.s()).toMatchObject({ status: 'done', owner: 'a', index: 4 });

@@ -108,8 +108,11 @@ export interface SpeechAudio {
 }
 
 export interface SpeechPlayerDeps {
-  /** One chunk's WAV, or null on any miss. A throw counts as a miss. */
-  synth(text: string, locale: SpeechLocale, signal: AbortSignal): Promise<Blob | null>;
+  /**
+   * One chunk's WAV, or null on any miss. A throw counts as a miss. `index` is the chunk's place in the read (0-based):
+   * answers arrive in any order (SPEECH_AHEAD are asked at once), and the listening trial numbers its rows by it.
+   */
+  synth(text: string, locale: SpeechLocale, signal: AbortSignal, index?: number): Promise<Blob | null>;
   createAudio(): SpeechAudio;
   createObjectURL(blob: Blob): string;
   revokeObjectURL(url: string): void;
@@ -337,7 +340,7 @@ export class SpeechPlayer {
     const last = Math.min(read.chunks.length - 1, read.current + this.ahead);
     for (let k = Math.max(read.current, read.taken + 1); k <= last && read.pending.size < this.ahead; k++) {
       if (read.answered.has(k) || read.pending.has(k)) continue;
-      const asked = this.deps.synth(read.chunks[k]!.text, read.req.locale, read.ctrl.signal).catch(() => null);
+      const asked = this.deps.synth(read.chunks[k]!.text, read.req.locale, read.ctrl.signal, k).catch(() => null);
       read.pending.set(k, asked.then((blob) => {
         if (!this.live(read)) return;
         read.pending.delete(k);
@@ -473,7 +476,7 @@ export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlaye
   return {
     // A listening trial (lib/speech/trial) skips the replay cache: it holds audio of another model, and a replay would
     // make the model under trial sound faster than it is. Nothing of the trial is kept; what it took is measured.
-    synth: async (text, locale, signal) => {
+    synth: async (text, locale, signal, index) => {
       if (!speechTrialModel()) return cache ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal);
       const askedAt = Date.now();
       const result = await speechResult(text, locale, signal);
@@ -481,9 +484,12 @@ export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlaye
         const synthMs = Date.now() - askedAt;
         // Where the route's time went (Google, our checks, the network), when it said (GG 2026-11-06: ~4 s a chunk).
         const timing = parseSpeechTiming(result.timing);
+        // Its place in the read, not in the order of the answers: the first chunk may well answer second (2026-11-06,
+        // the 43-character first chunk answered after the 61-character second one, and the card called it #2).
+        const at = index !== undefined ? { index } : {};
         const chunk: SpeechTrialChunk = result.ok
-          ? { chars: text.length, synthMs, audioMs: wavAudioMs(result.answer.blob.size, result.answer.profile) }
-          : { chars: text.length, synthMs, audioMs: null, miss: trialMiss(result.miss) };
+          ? { ...at, chars: text.length, synthMs, audioMs: wavAudioMs(result.answer.blob.size, result.answer.profile) }
+          : { ...at, chars: text.length, synthMs, audioMs: null, miss: trialMiss(result.miss) };
         speechTrialRecorder().onChunk(timing ? { ...chunk, timing: speechTimingRow(timing, synthMs) } : chunk);
       }
       return result.ok ? result.answer.blob : null;
