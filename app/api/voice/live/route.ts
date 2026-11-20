@@ -76,7 +76,8 @@ import type { User } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/supabase/server';
 import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
 import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
-import { LIVE_ACTIONS_RULE } from '@/lib/voice/liveTools';
+import { LIVE_ACTIONS_RULE, LIVE_FUNCTION_DECLARATIONS } from '@/lib/voice/liveTools';
+import { LIVE_PLANNER_RULE, PLAN_AGENT_TASK_DECLARATION } from '@/lib/voice/livePlanner';
 import { resolveLiveModel, toModelResource } from '@/lib/ai/google/models';
 import { resolveAgentProfile, toGeminiLiveSetup, livePersonaReminder, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
@@ -299,9 +300,12 @@ export async function POST(request: NextRequest) {
     const parityFor = (withActions: boolean) => {
       const l = withActions === actionsWanted ? live : liveFor(withActions);
       const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
+      // Phase 8.10 (flag LIVE_AGENT_PLANNER, off): the call also gets plan_agent_task and its rule. Same actions + one.
+      const planner = withActions && process.env.LIVE_AGENT_PLANNER === '1';
       return buildLiveSetup({
         model,
-        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
+        systemInstruction: l.systemInstruction + (planner ? `\n${LIVE_PLANNER_RULE}` : '') + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
+        ...(planner ? { functionDeclarations: [...LIVE_FUNCTION_DECLARATIONS, PLAN_AGENT_TASK_DECLARATION] } : {}),
         ...(experience ? { turnEagerness: experience.eagerness } : {}),
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.

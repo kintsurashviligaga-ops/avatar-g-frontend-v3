@@ -67,6 +67,8 @@ import {
   type OpenArtifactDetail,
 } from '@/lib/voice/liveTools';
 import { judgeSince, judgeUtterance, lastSaidSince, type HeardUtterance, type SpokenVerdict } from '@/lib/voice/spokenYes';
+import { PLAN_AGENT_TASK, planSpokenTask } from '@/lib/voice/livePlanner';
+import { envFlagReader } from '@/lib/agent/router/subAgents';
 import { createVoiceLedger, type LiveHeardEvent, type LiveVoicePort, type VoiceLedger } from '@/lib/voice/voiceLedger';
 import {
   controlName,
@@ -667,6 +669,13 @@ function safeSnapshot(ui: LiveUiPort): { controls: LiveControl[]; sheet?: string
   try { return ui.snapshot(); } catch { return null; }
 }
 
+/** The sub-agent flags a client build can see (static reads, so Next inlines them). */
+const PLANNER_FLAGS = envFlagReader({
+  NEXT_PUBLIC_IMAGE_ART_DIRECTOR: process.env.NEXT_PUBLIC_IMAGE_ART_DIRECTOR,
+  NEXT_PUBLIC_STUDIO_3D_V2: process.env.NEXT_PUBLIC_STUDIO_3D_V2,
+  NEXT_PUBLIC_MONTAGE_SMART_EDITOR: process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR,
+});
+
 /**
  * Validate + execute ONE function call and build its answer. Pure apart from `env`; never throws.
  * `localId` names the card when the model sent no call id.
@@ -679,6 +688,10 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
   if (voiceNeedsUiConfirmation({ id, name, args: call?.args })) {
     return { response: answer({ ok: false, error: 'ui_confirmation_required', message: 'Review the quote and use its confirmation button. Nothing started.' }) };
   }
+
+  // Phase 8.10 (declared only when the voice route has LIVE_AGENT_PLANNER=1): a spoken order becomes a plan and one line
+  // to say back. Pure: it opens, prepares, prices and starts nothing, so it needs no studio and no confirmation.
+  if (name === PLAN_AGENT_TASK) return { response: answer(planSpokenTask(call?.args, PLANNER_FLAGS)) };
 
   const v = validateLiveToolCall(name, call?.args);
   if (!v.ok) {
