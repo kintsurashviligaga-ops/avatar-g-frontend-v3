@@ -10,6 +10,8 @@
 import { useEffect, useState } from 'react';
 import { PlanStartCard, type SignedPlan } from './PlanStartCard';
 import { TERMINAL_COPY, terminalErrorText, terminalLang } from './agentTerminalCopy';
+import { NotionDraftCard } from './NotionDraftCard';
+import type { NotionDraft } from '@/lib/agent/plugins/tools';
 
 interface Step {
   thought?: string;
@@ -26,6 +28,8 @@ interface RunResult {
   browserQuote?: SignedPlan;
   /** A program plan Agent G signed (lib/agent/sandbox/codeQuote): runs only on the card's Start. */
   codeQuote?: SignedPlan;
+  /** A Notion page Agent G prepared (plugin): saved only on the card's Save. */
+  notionDraft?: NotionDraft;
 }
 
 function pretty(v: unknown, max = 1200): string {
@@ -200,6 +204,7 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
           {/* Plans Agent G signed: each runs only on its own Start (nothing ran yet). */}
           {result.browserQuote && <PlanStartCard key={`b-${result.browserQuote.token.slice(-12)}`} kind="browser" plan={result.browserQuote} locale={locale} />}
           {result.codeQuote && <PlanStartCard key={`c-${result.codeQuote.token.slice(-12)}`} kind="code" plan={result.codeQuote} locale={locale} />}
+          {result.notionDraft && <NotionDraftCard draft={result.notionDraft} locale={locale} />}
 
           {/* Status footer */}
           {stopBadge && (

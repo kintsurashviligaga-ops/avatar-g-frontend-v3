@@ -39,6 +39,15 @@ test('the live allowlist, exactly: three that read or prepare, inspectors (a fil
     workspace_premiere_xml: 'versioned',
     workspace_task_plan: 'versioned',
     workspace_task_read: 'inspect',
+    // Agent G plugins (GG 2026-11-20, lib/agent/plugins/tools): reads of linked data, and drafts the USER saves.
+    notion_search: 'inspect',
+    notion_read_page: 'inspect',
+    notion_prepare_page: 'prepare',
+    github_list_repos: 'inspect',
+    github_list_issues: 'inspect',
+    github_read_file: 'inspect',
+    github_prepare_issue: 'prepare',
+    calendar_prepare_event: 'prepare',
   });
   expect(LIVE_TOOL_SPECS.find((s) => s.name === 'analyze_media')?.confirms).toBeUndefined();
   expect(LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('drive_')).map((s) => s.confirms)).toEqual([undefined, undefined]);
@@ -142,4 +151,21 @@ test('the browser plan is offered only with the sandbox gate, the browser switch
   // The model's steps are parsed before the tool runs: an unknown op never reaches the policy.
   expect(b.input.safeParse({ steps: [{ op: 'eval', url: 'x' }] }).success).toBe(false);
   expect(b.input.safeParse({ steps: [{ op: 'goto', url: 'https://example.com' }] }).success).toBe(true);
+});
+
+test('the plugin tools are offered only when their plugin is open (all flags empty = none of them)', () => {
+  const plugin = LIVE_TOOL_SPECS.filter((s) => /^(notion|github|calendar)_/.test(s.name));
+  expect(plugin).toHaveLength(8);
+  for (const s of plugin) {
+    expect(s.confirms).toBeUndefined();
+    expect(s.offered?.({ userId: 'u' } as never)).toBe(false);
+  }
+  const ready = { cfg: {}, store: {}, tableReady: true };
+  const notReady = { cfg: {}, store: {}, tableReady: false };
+  const on = (n: string, ctx: object) => LIVE_TOOL_SPECS.find((s) => s.name === n)!.offered!({ userId: 'u', ...ctx } as never);
+  expect(on('notion_search', { notionDeps: ready })).toBe(true);
+  expect(on('notion_search', { notionDeps: notReady })).toBe(false);
+  expect(on('github_read_file', { githubDeps: ready })).toBe(true);
+  expect(on('github_read_file', { notionDeps: ready })).toBe(false);
+  expect(on('calendar_prepare_event', { calendar: true })).toBe(true);
 });
