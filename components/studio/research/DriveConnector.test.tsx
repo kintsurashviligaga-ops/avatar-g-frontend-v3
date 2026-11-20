@@ -116,3 +116,32 @@ describe('Phase 8.13 — reconnect, return reasons, connecting state', () => {
     err.mockRestore();
   });
 });
+
+test('a blocked Picker explains the browser fix and offers Try again, which opens the Picker', async () => {
+  render(<DriveConnector lang="en" linked onChanged={jest.fn()} />);
+  await screen.findByText('No files picked yet.');
+  load.mockRejectedValueOnce(new Error('picker_timeout'));
+  fireEvent.click(screen.getByRole('button', { name: 'Pick files' }));
+  expect(await screen.findByText(/Prevent Cross-Site Tracking/)).toBeTruthy();
+  fireEvent.click(screen.getByTestId('drive-pick-retry'));
+  await waitFor(() => expect(visible).toHaveBeenCalledWith(true));
+  expect(screen.queryByTestId('drive-pick-retry')).toBeNull();
+});
+
+test('the Picker reporting an error itself is said, disposed and retryable', async () => {
+  render(<DriveConnector lang="ka" linked onChanged={jest.fn()} />);
+  await screen.findByText('ჯერ ფაილი არ აგირჩევია.');
+  fireEvent.click(screen.getByTestId('drive-pick'));
+  await waitFor(() => expect(visible).toHaveBeenCalledWith(true));
+  act(() => callback({ action: 'error' }));
+  expect(dispose).toHaveBeenCalled();
+  expect(await screen.findByText(/შეცდომა დააბრუნა/)).toBeTruthy();
+  expect(screen.getByTestId('drive-pick-retry').textContent).toBe('თავიდან ცდა');
+});
+
+test('pickFailureMessage: loader codes get the browser advice, anything else the plain retry line', () => {
+  const { pickFailureMessage } = jest.requireActual('./DriveConnector') as typeof import('./DriveConnector');
+  for (const c of ['gapi_load', 'picker_load', 'picker_timeout', 'picker_missing']) expect(pickFailureMessage(new Error(c), 'ru')).toMatch(/Safari/);
+  expect(pickFailureMessage(new Error('boom'), 'en')).toBe('Google Drive did not answer. Try again.');
+  expect(pickFailureMessage('x', 'en')).toBe('Google Drive did not answer. Try again.');
+});
