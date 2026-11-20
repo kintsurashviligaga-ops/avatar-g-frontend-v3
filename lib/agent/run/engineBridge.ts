@@ -214,6 +214,10 @@ export function planTickV2(
       if (step.taskId) actions.push({ type: 'cancel', step: step.id, taskId: step.taskId });
       continue;
     }
+    // Only a `start` (re)queues a step. #383 adds a `refund` effect, emitted only with EngineOptions.refundRejected,
+    // which this bridge does not set yet: until that refund is wired to the executor's refund path, any other
+    // effect must never fall through to the start branch below (a refund read as a start would re-run the step).
+    if (eff.type !== 'start') continue;
     step.attemptId = eff.attemptId;
     step.approvedCredits = eff.approvedCredits;
     const approved = step.approvedQuoteId && step.quote && step.quote.quoteId === step.approvedQuoteId;
