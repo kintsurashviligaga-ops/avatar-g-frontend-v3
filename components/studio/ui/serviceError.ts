@@ -45,7 +45,10 @@ type Known =
   // curated) — refused before any charge. The route's own sentence names the gap and wins; this line is its fallback.
   | 'capability_unavailable'
   // 503 `preview_not_isolated` (lib/api/billingCopy): a test link that shares Production's wallet never charges.
-  | 'preview_test_link';
+  | 'preview_test_link'
+  // A request that never reached us (offline, Wi-Fi dropped, Safari's „Load failed"): the browser's own English words
+  // used to reach a Georgian bubble. Nothing is promised about a charge, because the request may or may not have landed.
+  | 'network';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -78,6 +81,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     voice_off: 'ქართული ხმა ახლა გამორთულია, ამიტომ ავატარი ვერ გაკეთდება. თანხა არ ჩამოგეჭრა.',
     locked: 'ეს ხელსაწყო შენს ანგარიშზე ჯერ ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრა.',
     capability_unavailable: 'ეს შესაძლებლობა Google-ზე ჯერ ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრა.',
+    network: 'კავშირი გაწყდა. შეამოწმე ინტერნეტი და სცადე ხელახლა.',
     preview_test_link: 'ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.',
   },
   en: {
@@ -110,6 +114,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     voice_off: 'The Georgian voice is switched off right now, so the avatar cannot be made. You were not charged.',
     locked: 'This tool isn’t available on your account yet. You were not charged.',
     capability_unavailable: 'This isn’t available on Google yet. You were not charged.',
+    network: 'The connection dropped. Check your internet and try again.',
     preview_test_link: 'This is a test link: paid generation is off here and no credits are spent. Real creation works on myavatar.ge.',
   },
   ru: {
@@ -142,6 +147,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     voice_off: 'Грузинский голос сейчас отключён, поэтому аватар не получится. Списания не было.',
     locked: 'Этот инструмент пока недоступен для вашего аккаунта. Списания не было.',
     capability_unavailable: 'Эта возможность пока недоступна в Google. Списания не было.',
+    network: 'Связь прервалась. Проверьте интернет и попробуйте снова.',
     preview_test_link: 'Это тестовая ссылка: платная генерация здесь выключена, кредиты не списываются. Создавать можно на myavatar.ge.',
   },
 };
@@ -175,6 +181,7 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^capability_unavailable$/, 'capability_unavailable'],
   [/^preview_not_isolated$/, 'preview_test_link'],
   [/^not_configured$/, 'provider_not_configured'],
+  [/failed to fetch|^load failed$|networkerror|network request failed|err_internet_disconnected|err_network_changed/i, 'network'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a
   // stack trace on the user's screen.
@@ -264,4 +271,36 @@ export function describeGenerationFailure(body: unknown, locale: string, fallbac
   }
   const message = typeof b.message === 'string' && b.message.trim() ? b.message : b.error;
   return describeServiceError(message, locale, fallback);
+}
+
+/**
+ * An Error whose message was written for the person reading the screen (an already-mapped line, a route's own sentence).
+ * Throw this instead of `new Error(line)` when a catch further up will show the message.
+ */
+export class UserFacingError extends Error {
+  readonly userFacing = true as const;
+  constructor(message: string) { super(message); this.name = 'UserFacingError'; }
+}
+
+/**
+ * A caught error → the line a person reads. Replaces `e instanceof Error ? e.message : fallback`, which put the browser's
+ * „Failed to fetch", a stack fragment or a provider's English prose into a Georgian bubble.
+ *
+ *  1. a UserFacingError keeps its message (it was written for the user);
+ *  2. a known code or browser error is mapped (network, timeout, rate limit, credits …);
+ *  3. a line already in the reader's script (Georgian for ka, Cyrillic for ru) was written by us — kept;
+ *  4. anything else falls back to the caller's own copy, and goes to the console where a developer finds it.
+ */
+export function userFacingMessage(e: unknown, locale: string, fallback: string): string {
+  const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  const msg = (e instanceof Error ? e.message : typeof e === 'string' ? e : '').trim();
+  if (!msg) return fallback;
+  if (e && typeof e === 'object' && (e as { userFacing?: unknown }).userFacing === true) return msg;
+  const key = knownFor(msg);
+  if (key) return COPY[lang][key];
+  if (lang === 'ka' && /[\u10A0-\u10FF]/.test(msg)) return msg;
+  if (lang === 'ru' && /[\u0400-\u04FF]/.test(msg)) return msg;
+  // eslint-disable-next-line no-console
+  console.warn('[service] unmapped error shown as generic copy:', msg.slice(0, 200));
+  return fallback;
 }

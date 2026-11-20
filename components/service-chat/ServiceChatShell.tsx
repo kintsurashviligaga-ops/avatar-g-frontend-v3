@@ -39,6 +39,7 @@ import { ServiceComposer } from './ServiceComposer';
 import { ServiceStatusBar } from './ServiceStatusBar';
 import { ServiceRuntimeStatusPanel, type RuntimeStatusData, type RuntimeServiceStatus } from './ServiceRuntimeStatusPanel';
 import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
+import { userFacingMessage } from '@/components/studio/ui/serviceError';
 
 interface Props {
   config: ServiceChatConfig;
@@ -506,7 +507,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
             id: previewId,
             updates: {
               status: 'failed',
-              errorMessage: err instanceof Error ? err.message : shellCopy.genericError,
+              errorMessage: userFacingMessage(err, language, shellCopy.genericError),
             },
           });
         }

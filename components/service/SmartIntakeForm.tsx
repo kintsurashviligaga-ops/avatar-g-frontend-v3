@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { SmartIntake } from '@/types/core'
 import type { ServiceId } from '@/lib/services/registry'
 import { useMemo, useState } from 'react'
+import { userFacingMessage } from '@/components/studio/ui/serviceError'
 
 type IntakeLocale = 'ka' | 'en' | 'ru'
 
@@ -197,7 +198,7 @@ export function SmartIntakeForm({
         throw new Error(message)
       }
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : t.submitFailed)
+      setSubmitError(userFacingMessage(err, activeLocale, t.submitFailed))
     } finally {
       setSubmitting(false)
     }
