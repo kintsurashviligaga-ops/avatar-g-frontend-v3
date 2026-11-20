@@ -69,7 +69,7 @@ export interface ModelSwitcherProps {
   className?: string;
 }
 
-export function ModelSwitcher({ locale, className = '' }: ModelSwitcherProps) {
+export function ModelSwitcher({ locale, brandClassName = '', className = '' }: ModelSwitcherProps) {
   const lang = toLang(locale);
   const t = COPY[lang];
   const [mode, setMode] = useChatMode();
@@ -172,7 +172,8 @@ export function ModelSwitcher({ locale, className = '' }: ModelSwitcherProps) {
         onClick={() => setOpen((v) => !v)}
         className="group inline-flex h-11 min-w-0 items-center gap-2 rounded-full px-2.5 py-1 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
       >
-        <span className="flex shrink-0 items-center" aria-hidden="true">
+        {/* brandClassName steps the wordmark aside on narrow phones (ChatChrome), so the mode name is never cut to „3.8…". */}
+        <span data-testid="model-switcher-brand" className={`flex shrink-0 items-center ${brandClassName}`} aria-hidden="true">
           <Wordmark size="sm" mark />
         </span>
         <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-app-accent">

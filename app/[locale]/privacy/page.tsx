@@ -47,6 +47,7 @@ const copy: Record<Lang, {
         { what: 'გენერირებული მედია',          why: 'ხელახლა ნახვა, შენახვა, გაზიარება', basis: 'ხელშეკრულების შესრულება' },
         { what: 'ფოტო / ხმოვანი ნიმუში',       why: 'ავატარის ან ხმის კლონის შექმნა',     basis: 'მკაფიო თანხმობა' },
         { what: 'Google Drive-ის ფაილები, რომლებსაც თავად აირჩევ (არჩევითი)', why: 'Agent G კითხულობს მათ ტექსტს შენი კითხვის საპასუხოდ. სხვა ფაილებს ვერ ხედავს, ტექსტს არ ვინახავთ, Google-ის მონაცემებს რეკლამისთვის ან AI-ის სასწავლად არ ვიყენებთ. გათიშვა: Connectors → „გათიშვა“.', basis: 'თანხმობა' },
+        { what: 'Agent G დავალებები', why: 'როცა Agent G-ს დავალებას აძლევთ (მაგ. „შემიქმენი Reel“), ის ხედავს მხოლოდ თქვენს მიერ გამოგზავნილ ტექსტს და ფაილებს, ქმნის გეგმას და გაჩვენებთ ფასს, სანამ რაიმე კრედიტი ჩამოიჭრება. ტექსტი და ფაილები მუშავდება Google Vertex AI-ში (ევროკავშირის ან აშშ-ის რეგიონი) მხოლოდ ამ დავალების შესასრულებლად. დავალების ისტორია და ნაბიჯების ჩანაწერი ინახება თქვენს ანგარიშში, სანამ არ წაშლით. ფასიანი ნაბიჯი, ფაილის გაგზავნა ან გამოქვეყნება ყოველთვის თქვენს დადასტურებას საჭიროებს; დავალების გაჩერება ან წაშლა ნებისმიერ დროს შეგიძლიათ.', basis: 'ხელშეკრულების შესრულება' },
         { what: 'გადახდის ისტორია',            why: 'საფასურის გადახდა, თაღლითობის თავიდან აცილება', basis: 'სამართლებრივი ვალდებულება' },
         { what: 'მოწყობილობის ID, IP, ლოგები', why: 'უსაფრთხოება, შეცდომების მონიტორი',    basis: 'კანონიერი ინტერესი' },
       ],
@@ -116,6 +117,7 @@ const copy: Record<Lang, {
         { what: 'Generated media',        why: 'Revisit, download, share',         basis: 'Contract performance' },
         { what: 'Photo / voice sample',   why: 'Build avatar or voice clone',      basis: 'Explicit consent' },
         { what: 'Google Drive files you pick (optional)', why: 'Agent G reads their text to answer your question. It cannot see other files; we do not keep the text, and we never use Google user data for ads or to train AI models (Google API Services User Data Policy, Limited Use). Disconnect any time in Connectors.', basis: 'Consent' },
+        { what: 'Agent G tasks', why: 'When you give Agent G a task (e.g. "make me a Reel"), it sees only the text and files you send, builds a plan and shows you the price before any credit is charged. The text and files are processed in Google Vertex AI (EU or US region) only to carry out that task. The task history and step log are kept in your account until you delete them. A paid step, sending a file or publishing always needs your confirmation; you can stop or delete a task at any time.', basis: 'Contract performance' },
         { what: 'Purchase history',       why: 'Billing, fraud prevention',         basis: 'Legal obligation' },
         { what: 'Device ID, IP, logs',    why: 'Security, error monitoring',        basis: 'Legitimate interest' },
       ],
@@ -185,6 +187,7 @@ const copy: Record<Lang, {
         { what: 'Сгенерированный медиа',    why: 'Просмотр, скачивание, шеринг',     basis: 'Исполнение договора' },
         { what: 'Фото / голос. сэмпл',      why: 'Создание аватара или клона голоса', basis: 'Явное согласие' },
         { what: 'Файлы Google Drive, выбранные вами (опц.)', why: 'Agent G читает их текст, чтобы ответить на ваш вопрос. Другие файлы ему не видны, текст мы не храним, данные Google не используем для рекламы и обучения ИИ. Отключить: Connectors → «Отключить».', basis: 'Согласие' },
+        { what: 'Задачи Agent G', why: 'Когда вы даёте Agent G задачу (например, «сделай Reel»), он видит только отправленные вами текст и файлы, составляет план и показывает цену до списания любых кредитов. Текст и файлы обрабатываются в Google Vertex AI (регион ЕС или США) только для выполнения этой задачи. История задачи и журнал шагов хранятся в вашем аккаунте, пока вы их не удалите. Платный шаг, отправка файла или публикация всегда требуют вашего подтверждения; остановить или удалить задачу можно в любой момент.', basis: 'Исполнение договора' },
         { what: 'История покупок',          why: 'Расчёты, защита от мошенничества', basis: 'Юр. обязательство' },
         { what: 'ID устройства, IP, логи',  why: 'Безопасность, мониторинг ошибок',  basis: 'Законный интерес' },
       ],
@@ -254,7 +257,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
         <Section title={t.data.title}>
           <p className="mb-4">{t.data.body}</p>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
+          {/* Focusable so a keyboard can scroll the table sideways on a phone (WCAG 2.1.1). */}
+          <div tabIndex={0} role="region" aria-label={t.data.title} className="overflow-x-auto rounded-xl border border-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
             <table className="w-full text-sm">
               <thead className="bg-white/[0.04] text-white/70">
                 <tr>
@@ -278,7 +282,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
         <Section title={t.share.title}>
           <p className="mb-4">{t.share.body}</p>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
+          <div tabIndex={0} role="region" aria-label={t.share.title} className="overflow-x-auto rounded-xl border border-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
             <table className="w-full text-sm">
               <thead className="bg-white/[0.04] text-white/70">
                 <tr>
