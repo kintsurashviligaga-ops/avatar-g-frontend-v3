@@ -16,7 +16,8 @@ export function renderEnvRegistry(): string {
     '"Turns ON with" list leaves the feature OFF without any error. After a change in Vercel, open',
     '`/api/admin/launch-flags` (admins only) to see how the code reads every switch.',
     '',
-    '`NEXT_PUBLIC_` names are baked in at build time, so a change needs a redeploy.',
+    'Every change needs a redeploy: Vercel applies an environment change only to deployments made after it. `NEXT_PUBLIC_` names',
+    'are also baked into the browser bundle at build time.',
     '',
   ];
   const features = [...new Set(LAUNCH_FLAGS.map((f) => f.feature))];
