@@ -18,6 +18,7 @@ import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate
 import { agentSandboxAccess, agentSandboxOpenTo } from '@/lib/agent/media/access';
 import { quoteBrowserTask, runBrowserQuote, type BrowserErrorCode } from '@/lib/agent/browser/quote';
 import { browserEnabled, liveBrowserDeps } from '@/lib/agent/browser';
+import { withFeatureLog } from '@/lib/observability/featureLog';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ enabled }, { headers: NO_STORE });
 }
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
+async function postBrowserRun(req: NextRequest): Promise<NextResponse> {
   if (agentSandboxAccess() === 'off') return notFound();
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -94,3 +95,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   return NextResponse.json({ ok: false, error: 'bad_input', message: "action: 'quote' or 'run'" }, { status: 400 });
 }
+
+/** Every failed answer leaves one `[feature-error]` line (user, status, code) in the server log (Phase 8.14). */
+export const POST = withFeatureLog('browser-agent', postBrowserRun);
