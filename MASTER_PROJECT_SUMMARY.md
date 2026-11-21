@@ -1,10 +1,26 @@
 # MyAvatar.ge and Agent G: master project summary
 
-**As of:** 2026-11-19, 09:30 UTC
+**As of:** 2026-11-19, 09:30 UTC (update block for 2026-11-21 below)
 **Covers:** Master Task v3.1 Phases 0 to 6, v5.1 Phases 0 to 9, and Phases 7.5 to 8.9
 **Status:** docs only. This file changes no code and turns on no flags.
 
 **Update 2026-11-19, later the same day:** the runbook now covers Phases 8.2 to 8.9 and the stacked-PR plan (`docs/launch/LAUNCH_COMMANDS.md`, Steps 6 to 8). The 24 old PRs have a proposed list in `CLEANUP.md`, which waits for GG's approval. #274 has main merged in and its conflict fixed (f234ae4), and its CI is running. Sections 4 and 5 below are the state as it was at 09:20 UTC.
+
+**Update 2026-11-21 (before GREEN).** Sections 0 to 5 below are the state on 2026-11-19. What changed since then:
+
+- **`main` is `54e0df05`** (#394, privacy paragraph for Agent G tasks, merged 2026-11-20). #377 to #380 merged on 2026-11-19. Nothing else has merged.
+- **96 PRs are open** (94 drafts, 32 stacked on another branch), read with `gh api` at 2026-11-21.
+- **New drafts, all flags off:**
+  - Phase 8.10 Agent G audit: #381 to #386.
+  - Phase 8.11: #387 (browser agent v2) and #388 (Georgian error safety, not in the launch order).
+  - Phase 8.13: #390 (Drive reconnect) and #391 (chat copy, mic errors).
+  - Agent G plugins #392 (migrations 20261120a/b, approved, GG runs them at Step 3b). Reel Task #393. E2E fixes #395.
+  - Phase 8.14 pre-flight: #396 (launch-flag registry, `/api/admin/launch-flags`, `docs/launch/ENV_REGISTRY.md`) and #397 (3D per-user limits).
+  - Phase 8.15 final polish: #398 (screen-reader labels in ka/en/ru, 44px icon targets, dev-only logs, README).
+- **Combined CI:** throwaway #374 run 2 (head `d3a8b51e`, every launch PR together) was 18/18 green on 2026-11-20 and was closed unmerged.
+- **Local checks on #398 (2026-11-21):** Jest 1157 suites, 17,211 passed, 0 failed, 119 skipped (Postgres, ffmpeg, BOG sandbox and e2e suites); `tsc` 0 errors; `next lint` 0 errors.
+- **Runbook:** `docs/launch/LAUNCH_COMMANDS.md` now has Step 0 (exact Vercel environment variables, one redeploy rule, per-flag values) and Step 6 items 22 to 24. It is a copy of `/mnt/project-files/launch/LAUNCH_COMMANDS.md`.
+- **Still waiting on:** the Supabase invoice and GG's GREEN. After GREEN the order is Step 1 health checks, then one merge card per PR, then paid checks within GG's $6.00 cap, run by GG.
 
 This summary states what was checked and how. Where the facts differ from the plan, it says so. Each fact was checked against one of these sources:
 

@@ -2,7 +2,7 @@
 
 Prepared 2026-11-14. Updated 2026-11-19: Phases 8.4 to 8.9 added (Step 6 items 13 to 19, Step 7 paid checks), plus the plan for stacked PRs (Step 8). Use this the moment the production Supabase project (zwksnayknzggdcenqqxy) is active again.
 
-Updated 2026-11-20 (before GREEN): Step 1d live checks, Step 2d old CSP hosts, Step 3b migrations 20261120a/b, Step 4 deadline note, Step 6 item 22 (drafts #375, #376, #390, #391, #392, #393, #395). The combined CI run of every launch PR is #374 (run 2, head d3a8b51e). Readiness report: `/mnt/project-files/launch-green/LAUNCH_READY_2026-11-20.md`.
+Updated 2026-11-20 (before GREEN): Step 1d live checks, Step 2d old CSP hosts, Step 3b migrations 20261120a/b, Step 4 deadline note, Step 6 item 22 (drafts #375, #376, #390, #391, #392, #393, #395). 2026-11-21: Step 6 item 23 (#396, #397, Phase 8.14 pre-flight); then Step 0 (Vercel environment variables, exact values) and Step 6 item 24 (#398, Phase 8.15 polish). The combined CI run of every launch PR is #374 (run 2, head d3a8b51e). Readiness report: `/mnt/project-files/launch-green/LAUNCH_READY_2026-11-20.md`.
 
 The repo copy is `docs/launch/LAUNCH_COMMANDS.md`. Keep the two identical.
 
@@ -12,6 +12,57 @@ The repo copy is `docs/launch/LAUNCH_COMMANDS.md`. Keep the two identical.
 
 **SQL Editor:** https://supabase.com/dashboard/project/zwksnayknzggdcenqqxy/sql/new
 Run each block, then paste the result back in the thread.
+
+---
+
+## Step 0. Vercel environment variables (exact, 2026-11-21)
+
+Where: Vercel → project `avatar-g-frontend-v3` → Settings → Environment Variables → **Production**.
+
+**Two rules that catch people out**
+
+1. **Every change needs a redeploy.** Vercel applies an environment change only to deployments made after it, on the server as well as in the browser. `NEXT_PUBLIC_` names are also baked into the page bundle. To redeploy: Deployments → the current Production deployment → ⋯ → **Redeploy** (keep the same commit). Never run `vercel --prod` from a laptop folder: that would deploy the laptop's files.
+2. **Each flag has its own vocabulary.** A value outside the list below leaves the feature **off with no error**. `admin` and `admins` are not the same. Copy the value from this table, with no spaces or quotes. The full generated list is `docs/launch/ENV_REGISTRY.md` (#396).
+
+**0a. Before GREEN and during the merges: change nothing.** Every launch switch stays unset. A merge never needs an environment change.
+
+**0b. Two read-only checks (BOG and OAuth callbacks are built from these).** Open each and confirm the value. Do not edit.
+
+| Name | Must be exactly |
+|---|---|
+| `NEXT_PUBLIC_APP_URL` | `https://myavatar.ge` (no slash at the end) |
+| `NEXT_PUBLIC_SITE_URL` | `https://myavatar.ge`, or not set |
+
+**0c. After #396 is merged:** open `https://myavatar.ge/api/admin/launch-flags` while signed in as an admin. `warnings` must be `[]`. A warning names the switch and says what is wrong (an ignored value, a misspelt name, a missing `NEXT_PUBLIC_` twin). The same warnings appear once per cold start in the Vercel logs as `[launch-flags]`.
+
+**0d. Turning a feature on later (one decision card each, GG's account first).** Set every name in the row, redeploy, then check 0c.
+
+| Feature (PRs) | Set these | For GG and admins | For everyone | Also needed first |
+|---|---|---|---|---|
+| 3D Studio (#366, #367, #369, #397) | `STUDIO_3D_V2` and `NEXT_PUBLIC_STUDIO_3D_V2` | `admin` | `everyone` | `STUDIO_3D_JOB`, `STUDIO_3D_REGION=europe-west4`, the GPU job and the `20261115a` SQL (item 18) |
+| Smart Editor (#365, #368, #370) | `MONTAGE_SMART_EDITOR` and `NEXT_PUBLIC_MONTAGE_SMART_EDITOR` | `admin` | `everyone` | |
+| Director's Workflow (#349 to #355) | `DIRECTORS_WORKFLOW` | `admin` | `everyone` | a paid-check budget from GG |
+| Art Director image (#356 to #358) | `IMAGE_ART_DIRECTOR` and `NEXT_PUBLIC_IMAGE_ART_DIRECTOR` | `admin` | `everyone` | |
+| Music Producer (#359 to #361) | `MUSIC_PRODUCER_V2` and `NEXT_PUBLIC_MUSIC_PRODUCER_V2` | `admin` | `everyone` | |
+| Virtual Studio avatar (#362 to #364) | `AVATAR_STUDIO_V2` and `NEXT_PUBLIC_AVATAR_STUDIO_V2` | `admin` | `everyone` | |
+| Reel Task (#393) | `AGENT_REEL_TASK` | `admins` (with the s) | `everyone` | a Reel budget from GG |
+| Agent G plugins (#392) | `AGENT_PLUGINS` and `NEXT_PUBLIC_AGENT_PLUGINS` | `admin` and `1` | `all` and `1` | migrations 20261120a/b (Step 3b) |
+| Notion (#392) | `CONNECTORS_NOTION` | `admin` | `all` | `NOTION_OAUTH_CLIENT_ID`, `NOTION_OAUTH_CLIENT_SECRET`, `CONNECTOR_TOKEN_KEY`; redirect URL in Notion: `https://myavatar.ge/api/connectors/notion/callback` |
+| GitHub (#392) | `CONNECTORS_GITHUB` | `admin` | `all` | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `CONNECTOR_TOKEN_KEY`; callback URL in GitHub: `https://myavatar.ge/api/connectors/github/callback` |
+| Google Drive | `CONNECTORS_DRIVE` | `admin` (today) | `all` (not `admins`) | Google verification for everyone |
+| Browser login (#346) | `AGENT_BROWSER_LOGIN` | `1` (admins only by design) | none | `AGENT_BROWSER_VAULT_KEY` (already set) |
+| Video advanced, last frame (#320, #323) | `CLIP_ADVANCED`, `NEXT_PUBLIC_CLIP_ADVANCED`, `CLIP_LAST_FRAME`, `NEXT_PUBLIC_CLIP_LAST_FRAME` | none (site-wide) | `1` | |
+| Music and Interior UX v2 (#329, #330) | `NEXT_PUBLIC_MUSIC_UX_V2`, `NEXT_PUBLIC_INTERIOR_UX_V2` | none (site-wide) | `1` | |
+| Chat media renew (#331) | `CHAT_MEDIA_RENEW` | none (site-wide) | `1` | |
+| Read-aloud voice v2 (#322) | `READ_ALOUD_VOICE_V2` | none (site-wide) | `1` | |
+| Local JWT check (#339) | `AUTH_LOCAL_CLAIMS` | none (site-wide) | `1` | only if Step 1c shows an ES256 or RS256 key |
+| Task relay ticket (#340) | `TASK_RELAY_TICKET` | none (site-wide) | `1` | |
+| Safety identifier (#371) | `SAFETY_IDENTIFIER_SALT`, then `SAFETY_IDENTIFIER` | none (site-wide) | salt: a random string of 16+ characters, never changed; flag: `1` | |
+| Pricing v8, founder finance (#343 to #354) | `NEXT_PUBLIC_PRICING_V8`, `ADMIN_FINANCE_DASHBOARD` | | | the pricing thread's checklist (billing, not here) |
+
+Live voice and the talking avatar are already on for everyone (`LIVE_AUDIENCE=everyone`, `LIVE_AVATAR_AUDIENCE=everyone`). Leave them.
+
+**0e. Not now.** `OPENAI_API_KEY`, `NANOBANANA_API_KEY` and `REPLICATE_API_TOKEN` are still in Production and are still read by the status, diagnostics and video-assemble code. Remove them only after #332 is merged and a fresh search of main shows no reader. That is a post-launch clean-up.
 
 ---
 
@@ -276,6 +327,11 @@ The order:
       - If **#346** merges first, #390 conflicts in `components/studio/ConnectorsButton.tsx`. Keep both sides. The tested result is in `/mnt/project-files/launch-green/resolutions/ConnectorsButton.tsx`.
       - If **#325** merges first, #392 conflicts in `components/agent/AgentTerminal.tsx`. Keep #325's `agentTerminalCopy` import and add #392's `NotionDraftCard` import.
     - **#393** (Reel Task) is now stacked on **#310** (`claude/engine-media`), so it goes after #308 → #309 → #310. Its flag `AGENT_REEL_TASK` stays off. The Reel paid E2E needs a budget from GG.
+23. *(new, 2026-11-21, Phase 8.14 pre-flight)*
+    - **#396** (launch flag registry, `/api/admin/launch-flags`, `[feature-error]` log, Library cold start): based on main, any order. **Merge it early**, so that from then on every flag you set can be checked at `https://myavatar.ge/api/admin/launch-flags`. Set flag values only from `docs/launch/ENV_REGISTRY.md`.
+    - **#397** (3D per-user limits, failure log): stacked on #369, so merge it right after #366 → #367 → #369.
+    - After each feature draft lands, wrap its POST route with `withFeatureLog` (one line each). Claude does this during the merge sequence.
+24. *(new, 2026-11-21, Phase 8.15 polish)* **#398** (Georgian screen-reader names, ka/en/ru crash screen, 44 px touch areas, browser logs off in production, README): based on main, no flags, any order. Its CI must be green on current main before its card.
 
 **If a merge goes wrong:** in Vercel, promote the previous production deployment. This is instant and needs no rebuild. Then revert the merge commit. No step here runs SQL inside a merge, so a rollback never needs a database change.
 
