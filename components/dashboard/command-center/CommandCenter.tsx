@@ -51,6 +51,7 @@ import InviteReferralBanner from '@/components/dashboard/InviteReferralBanner';
 import { useRateLimit } from '@/hooks/useRateLimit';
 import { analytics } from '@/components/analytics/PostHogProvider';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
+import { userFacingMessage } from '@/components/studio/ui/serviceError';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -908,7 +909,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         setCredits(c => c - cost);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : copy.errorGeneric;
+      const msg = userFacingMessage(err, localeCode, copy.errorGeneric);
       setMessages(m => m.map(msg2 => msg2.id === pendingMsg.id ? { ...msg2, pending: false, content: `⚠️ ${msg}` } : msg2));
       showToast(msg, 'error');
       analytics.generationFailed(service, msg);

@@ -7,6 +7,7 @@ import { getOwnerId } from '@/lib/auth/identity';
 import { SERVICE_CONTRACTS, SERVICE_PRESETS as CATALOG_PRESETS } from '@/lib/services/catalog';
 import AgentBadge from '@/components/agents/AgentBadge';
 import { extractMediaArtifact, mediaKindForService } from '@/lib/media/extractArtifact';
+import { userFacingMessage } from '@/components/studio/ui/serviceError';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1966,7 +1967,7 @@ export default function UnifiedServiceLayout({
       setMessages(prev => [...prev, {
         id: `msg_${Date.now()}_err`,
         role: 'assistant',
-        content: `Error: ${errorText}`,
+        content: `⚠️ ${userFacingMessage(err, locale, locale === 'en' ? 'Something went wrong. Try again.' : locale === 'ru' ? 'Что-то пошло не так. Попробуйте снова.' : 'რაღაც ვერ გამოვიდა. სცადე ხელახლა.')}`,
         timestamp: new Date(),
       }]);
     } finally {

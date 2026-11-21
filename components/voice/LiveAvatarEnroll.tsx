@@ -16,6 +16,7 @@
  */
 import { Camera, Check, Loader2, Mic, RotateCcw, Smartphone, SwitchCamera, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { userFacingMessage } from '@/components/studio/ui/serviceError';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -203,10 +204,10 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
       // eslint-disable-next-line no-console
       console.error('[LiveAvatarEnroll] save failed:', msg);
       const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
-      setErr(timedOut ? (t.saveErr ?? 'Timed out — try again.') : (msg && msg !== 'Failed to fetch' ? msg : (t.saveErr ?? 'Could not save — try again.')));
+      setErr(timedOut ? (t.saveErr ?? 'Timed out — try again.') : userFacingMessage(e, locale, t.saveErr ?? 'Could not save — try again.'));
       setSaving(false);
     }
-  }, [selfie, saving, voiceSample, handoffToken, onEnrolled, onClose, t.saveErr]);
+  }, [selfie, saving, voiceSample, handoffToken, onEnrolled, onClose, t.saveErr, locale]);
 
   // ── Desktop → phone handoff ──────────────────────────────────────────────────
   const baselineRef = useRef<string | null>(null); // avatar_updated_at captured when the QR opens
