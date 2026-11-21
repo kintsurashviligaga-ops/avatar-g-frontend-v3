@@ -3,7 +3,13 @@ jest.mock('server-only', () => ({}));
 const getUser = jest.fn();
 jest.mock('../../../lib/supabase/server', () => ({ authedClientFromRequest: async () => ({ supabase: {}, user: getUser() }) }));
 jest.mock('../../../lib/admin/guard', () => ({ isAdminUserAsync: async (u: { admin?: boolean } | null) => !!u?.admin }));
-jest.mock('../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: {}, TASKS: {}, WRITE: {} }, checkRateLimit: async () => null }));
+const checkRateLimit = jest.fn(async (..._a: unknown[]): Promise<Response | null> => null);
+const checkRateLimitByKey = jest.fn(async (..._a: unknown[]): Promise<Response | null> => null);
+jest.mock('../../../lib/api/rate-limit', () => ({
+  RATE_LIMITS: { EXPENSIVE: { keyPrefix: 'rl:exp' }, TASKS: {}, WRITE: {} },
+  checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
+  checkRateLimitByKey: (...a: unknown[]) => checkRateLimitByKey(...a),
+}));
 const createJob = jest.fn(async () => ({ ok: true, id: 'j', step: 'queued', quote: [] }));
 const pollJob = jest.fn(async () => ({ ok: true, id: 'j', step: 'shape', quote: [] }));
 jest.mock('../../../lib/studio3d/server/service', () => ({ createJob: (...a: unknown[]) => (createJob as jest.Mock)(...a), pollJob: (...a: unknown[]) => (pollJob as jest.Mock)(...a), actOnJob: jest.fn() }));
@@ -51,5 +57,17 @@ describe('/api/studio3d behind STUDIO_3D_V2', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(pollJob).toHaveBeenCalledWith({}, 'u2', 'j');
+  });
+
+  it('Phase 8.14: the burst limit is keyed on the user and a per-user daily cap is checked before any work', async () => {
+    process.env.STUDIO_3D_V2 = 'everyone';
+    getUser.mockReturnValue({ id: 'u3' });
+    expect((await POST(post())).status).toBe(201);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), { keyPrefix: 'rl:exp' }, 'u3');
+    expect(checkRateLimitByKey).toHaveBeenCalledWith('u3', expect.objectContaining({ keyPrefix: 'rl:3d:user', maxRequests: 20 }));
+    createJob.mockClear();
+    checkRateLimitByKey.mockResolvedValueOnce(new Response('{}', { status: 429 }));
+    expect((await POST(post())).status).toBe(429);
+    expect(createJob).not.toHaveBeenCalled();
   });
 });

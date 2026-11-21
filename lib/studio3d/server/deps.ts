@@ -20,6 +20,14 @@ import { BUCKET, type JobRow, type Studio3dDeps } from './service';
 
 const ACTIVE = ['queued', 'starting', 'shape', 'texture', 'export'];
 const RUNNING = ['starting', 'shape', 'texture', 'export'];
+/**
+ * Phase 8.14: a job still before the GPU (safety check, the reference picture being drawn, or waiting for the user's
+ * approve) also keeps the user busy, for PRE_GPU_HOLD_MS. Before, only queued..export counted, so a loop of text
+ * requests could draw one Gemini reference picture after another. After the hold an abandoned draft stops blocking;
+ * Cancel frees it at once.
+ */
+const PRE_GPU = ['check', 'reference', 'awaiting_approval'];
+export const PRE_GPU_HOLD_MS = 30 * 60_000;
 
 type Row = { id: string; user_id: string; request: Studio3dRequest & { referencePath?: string }; state: Studio3dJob; created_at: string };
 
@@ -63,14 +71,24 @@ export function studio3dDeps(): Studio3dDeps {
         const { error } = await table().update(fromRow(row)).eq('id', row.id);
         return !error;
       },
-      async counts(userId) {
-        const [running, queued, today, mine] = await Promise.all([
+      async counts(userId, exceptId) {
+        const holdSince = new Date(Date.now() - PRE_GPU_HOLD_MS).toISOString();
+        const [running, queued, today, mine, drafting] = await Promise.all([
           table().select('id', { count: 'exact', head: true }).in('step', RUNNING),
           table().select('id', { count: 'exact', head: true }).eq('step', 'queued'),
           table().select('id', { count: 'exact', head: true }).gte('created_at', midnight()),
           table().select('id', { count: 'exact', head: true }).eq('user_id', userId).in('step', ACTIVE),
+          (() => {
+            const q = table().select('id', { count: 'exact', head: true }).eq('user_id', userId).in('step', PRE_GPU).gte('created_at', holdSince);
+            return exceptId ? q.neq('id', exceptId) : q;
+          })(),
         ]);
-        return { running: running.count ?? 0, queued: queued.count ?? 0, todayTotal: today.count ?? 0, userActive: mine.count ?? 0 };
+        return {
+          running: running.count ?? 0,
+          queued: queued.count ?? 0,
+          todayTotal: today.count ?? 0,
+          userActive: (mine.count ?? 0) + (drafting.count ?? 0),
+        };
       },
       async oldestQueuedId() {
         const { data } = await table().select('id').eq('step', 'queued').order('created_at', { ascending: true }).limit(1).maybeSingle();
