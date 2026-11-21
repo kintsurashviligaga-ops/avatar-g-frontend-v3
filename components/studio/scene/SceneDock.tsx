@@ -42,6 +42,7 @@ import { CHIP_BASE, CHIP_OFF, CHIP_ON, ICON_BTN } from '../ui/tokens';
 import { EmptyState, focusComposer } from '../ui/EmptyState';
 import { useSceneStore } from './sceneStore';
 import type { SceneCanvasProps } from './SceneCanvas';
+import { devWarn } from '@/lib/observability/devLog';
 
 const SceneCanvas = dynamic<SceneCanvasProps>(() => import('./SceneCanvas'), {
   ssr: false,
@@ -345,12 +346,12 @@ export function SceneDock({ locale = 'ka' }: SceneDockProps) {
       if (e.defaultPrevented) return; // another mounted scene already took it — never apply one action twice
       const v = validateSceneAction((e as CustomEvent<unknown>).detail);
       if (!v.ok) {
-        console.warn(`[scene] ${SCENE_ACTION_EVENT} ignored: ${v.reason}`);
+        devWarn(`[scene] ${SCENE_ACTION_EVENT} ignored: ${v.reason}`);
         return;
       }
       const r = useSceneStore.getState().apply(v.action);
       if (!r.ok) {
-        console.warn(`[scene] ${SCENE_ACTION_EVENT} refused: ${r.reason}`);
+        devWarn(`[scene] ${SCENE_ACTION_EVENT} refused: ${r.reason}`);
         return;
       }
       // ⚠️ preventDefault() IS THE RECEIPT, given only once the scene took the action — never for a refusal.

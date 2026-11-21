@@ -215,7 +215,7 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
             <p className="mt-1 text-[12.5px] leading-snug text-app-muted">{t.subtitle}</p>
           </div>
           <button type="button" onClick={onClose} aria-label={t.cancel}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text ag-hit">
             <X size={16} />
           </button>
         </div>
@@ -259,7 +259,7 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
                   {selectedId === p.id && <Check size={16} className="shrink-0 text-app-accent" />}
                 </button>
                 <button type="button" onClick={() => remove(p.id)} aria-label={`${t.delete} ${personaName(p, lang)}`}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-rose-400">
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-rose-400 ag-hit">
                   <Trash2 size={15} />
                 </button>
               </div>

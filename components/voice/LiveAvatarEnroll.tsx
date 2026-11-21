@@ -16,6 +16,7 @@
  */
 import { Camera, Check, Loader2, Mic, RotateCcw, Smartphone, SwitchCamera, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { a11y } from '@/lib/i18n/a11yLabels';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -251,7 +252,7 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
     <div className="fixed inset-0 z-[300] flex flex-col bg-app-bg/97 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
       <div className="flex items-center justify-between px-5 pt-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}>
         <span className="text-[15px] font-semibold text-app-text">{t.title}</span>
-        <button type="button" onClick={onClose} aria-label="close" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14]"><X size={18} /></button>
+        <button type="button" onClick={onClose} aria-label={a11y('close', locale)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14] ag-hit"><X size={18} /></button>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6">

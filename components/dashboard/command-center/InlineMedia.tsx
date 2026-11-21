@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX, Maximize2, X, Code2, Eye } from 'lucide-react';
 import MediaActions from './MediaActions';
+import { a11y, docLang } from '@/lib/i18n/a11yLabels';
 
 // Truthful per-asset render metadata (mirrors ChatMessage media.meta).
 export interface RenderMetaLite {
@@ -118,7 +119,7 @@ function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
       />
       <button
         type="button"
-        aria-label="Close"
+        aria-label={a11y('close', docLang())}
         onClick={onClose}
         style={{
           position: 'absolute', top: 18, right: 18, width: 40, height: 40,
@@ -169,7 +170,7 @@ function ImageBlock({ url }: { url: string }) {
         {loaded && (
           <button
             type="button"
-            aria-label="Expand"
+            aria-label={a11y('expand', docLang())}
             className="inline-media-expand"
             onClick={e => { e.stopPropagation(); setLightbox(true); }}
           >
@@ -424,7 +425,7 @@ function CodeBlock({ html, language }: { html: string; language?: string }) {
       <div className="inline-media-code-body">
         {view === 'preview' ? (
           <iframe
-            title="HTML preview"
+            title={a11y('pagePreview', docLang())}
             srcDoc={iframeSrcDoc}
             sandbox="allow-scripts allow-same-origin"
             style={{ width: '100%', height: 320, border: 'none', background: '#fff', display: 'block' }}

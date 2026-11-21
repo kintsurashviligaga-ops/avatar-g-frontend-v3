@@ -10,6 +10,7 @@
 import { memo } from 'react';
 import { Info } from 'lucide-react';
 import { MusicPreviewPlayer } from '@/components/studio/music/MusicPreviewPlayer';
+import { a11y } from '@/lib/i18n/a11yLabels';
 
 export interface TrackPlayerProps {
   url: string;
@@ -30,11 +31,11 @@ export const TrackPlayer = memo(function TrackPlayer({
           accessible without cluttering the player's minimal default layout. */}
       {(engine || note) && (
         <details className="group mt-1 text-right">
-          <summary className="ml-auto inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-app-muted/70 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" aria-label="Track information">
+          <summary className="ml-auto inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full text-app-muted/70 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" aria-label={a11y('trackInfo', locale)}>
             <Info className="h-4 w-4" aria-hidden />
           </summary>
           <div className="rounded-xl bg-app-elevated/70 px-3 py-2 text-left text-[11px] leading-5 text-app-muted">
-            {engine && <p>Generated with {engine}</p>}
+            {engine && <p>{(locale === 'en' ? 'Generated with ' : locale === 'ru' ? 'Создано с помощью ' : 'შექმნილია: ') + engine}</p>}
             {note && <p data-track-note>{note}</p>}
           </div>
         </details>
