@@ -28,6 +28,7 @@ import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
 import { parsePhotoEditSliders } from '@/lib/ai/photoEditSliders';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { saveMedia } from '@/lib/media/saveMedia';
+import { a11y } from '@/lib/i18n/a11yLabels';
 
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -1226,7 +1227,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                     <div className="text-[10.5px] tabular-nums text-app-muted">{fmt(audioCur)} / {fmt(audioDur)}</div>
                   </div>
                 </div>
-                <div role="button" tabIndex={0} aria-label="seek"
+                <div role="button" tabIndex={0} aria-label={a11y('seek', locale)}
                   onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seekAudio((e.clientX - r.left) / r.width); }}
                   onKeyDown={(e) => { if (e.key === 'ArrowRight') seekAudio(Math.min(1, audioProgress + 0.05)); if (e.key === 'ArrowLeft') seekAudio(Math.max(0, audioProgress - 0.05)); }}
                   className="flex h-24 cursor-pointer items-center gap-[2px]">

@@ -41,6 +41,7 @@ import {
   shouldAutoStop,
 } from './captureMath';
 import { twinCopy, type TwinCopy, type TwinLocale } from './copy';
+import { a11y } from '@/lib/i18n/a11yLabels';
 
 type Step = 'consent' | TwinPhotoSlot | 'voice' | 'review' | 'done';
 type CamState = 'off' | 'starting' | 'ready' | 'denied' | 'unavailable';
@@ -773,7 +774,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
             <span data-testid="twin-timer" className="font-semibold text-app-text">{formatClock(elapsed)}</span>
             <span className="text-app-muted">{formatClock(TWIN_LIMITS.voiceMaxSec * 1000)}</span>
           </div>
-          <div role="meter" aria-label="level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)} className="h-2 w-full overflow-hidden rounded-full bg-app-surface">
+          <div role="meter" aria-label={a11y('micLevel', locale)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)} className="h-2 w-full overflow-hidden rounded-full bg-app-surface">
             <div className="h-full rounded-full bg-app-accent transition-[width] duration-100 motion-reduce:transition-none" style={{ width: `${Math.round(level * 100)}%` }} />
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-surface" aria-hidden="true">

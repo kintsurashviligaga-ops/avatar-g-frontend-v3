@@ -342,7 +342,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                     {!demo && (
                       <button type="button" onClick={() => void toggleFav(it)} aria-label={t.tabs.favorites} aria-pressed={it.favorite === true}
                         data-testid="library-star"
-                        className={`absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 backdrop-blur transition ${it.favorite ? 'text-yellow-400' : 'text-white/80 hover:text-white'}`}>
+                        className={`absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 backdrop-blur transition ${it.favorite ? 'text-yellow-400' : 'text-white/80 hover:text-white'} ag-hit`}>
                         <Star size={15} fill={it.favorite ? 'currentColor' : 'none'} />
                       </button>
                     )}
@@ -367,7 +367,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                       </button>
                       {editKindFor(it.kind, it.url) && !failed.has(it.id) && (
                         <button type="button" onClick={() => edit(it)} aria-label={t.edit} title={t.edit} data-testid="library-edit"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text">
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text ag-hit">
                           <Scissors size={15} />
                         </button>
                       )}

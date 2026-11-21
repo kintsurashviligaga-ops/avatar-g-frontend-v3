@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Brain, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { a11y } from '@/lib/i18n/a11yLabels';
 
 interface MemoryRow {
   id: string;
@@ -50,6 +51,16 @@ const T: Record<string, Record<Lang, string>> = {
   deleted: { en: 'Everything was deleted.', ka: 'ყველაფერი წაიშალა.', ru: 'Всё удалено.' },
   failed: { en: 'That did not work. Try again.', ka: 'ვერ მოხერხდა. სცადე თავიდან.', ru: 'Не получилось. Попробуйте ещё раз.' },
 };
+/** The page header and the empty state (Phase 8.15: they were English only). */
+const HEAD = {
+  title: { en: 'Memory', ka: 'მეხსიერება', ru: 'Память' },
+  subtitle: { en: 'What Agent G remembers about you.', ka: 'რა ახსოვს Agent G-ს შენზე.', ru: 'Что Agent G помнит о вас.' },
+  empty: {
+    en: 'No memories yet. Add one above and Agent G will remember it.',
+    ka: 'ჯერ არაფერია დამახსოვრებული. დაამატე ზემოთ და Agent G დაიმახსოვრებს.',
+    ru: 'Пока ничего нет. Добавьте запись выше, и Agent G её запомнит.',
+  },
+} as const satisfies Record<string, Record<Lang, string>>;
 const KEY_LABEL: Record<string, Record<Lang, string>> = {
   name: { en: 'Name', ka: 'სახელი', ru: 'Имя' },
   age: { en: 'Age', ka: 'ასაკი', ru: 'Возраст' },
@@ -266,11 +277,10 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white sm:text-xl">
-                Memory <span className="text-white/50">/</span>{' '}
-                <span className="text-white/80">მეხსიერება</span>
+                {HEAD.title[lang]}
               </h1>
               <p className="text-xs text-white/50">
-                What Agent G remembers about you.
+                {HEAD.subtitle[lang]}
               </p>
             </div>
           </div>
@@ -342,7 +352,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
             </div>
           ) : memories.length === 0 ? (
             <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-3 py-8 text-center text-sm text-white/40">
-              No memories yet. Add one above and Agent G will remember it.
+              {HEAD.empty[lang]}
             </div>
           ) : (
             memories.map((m) => {
@@ -403,7 +413,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
                         <button
                           type="button"
                           onClick={() => beginEdit(m)}
-                          aria-label="Edit memory"
+                          aria-label={a11y('editMemory', lang)}
                           className="rounded-md p-1.5 text-white/40 transition-colors hover:bg-white/5 hover:text-white"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -411,7 +421,7 @@ export default function MemoryPanel({ locale }: { locale?: string } = {}) {
                         <button
                           type="button"
                           onClick={() => handleDelete(m.id)}
-                          aria-label="Delete memory"
+                          aria-label={a11y('deleteMemory', lang)}
                           className="rounded-md p-1.5 text-white/40 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
                         >
                           <Trash2 className="h-3.5 w-3.5" />

@@ -1,340 +1,92 @@
-# Avatar G - Premium AI Platform
+# MyAvatar.ge
 
-**Production-ready Next.js 14 SaaS platform** with 13 AI services, premium subscription billing, and enterprise-grade security.
+MyAvatar.ge is a Georgian-first AI creative studio. Everything starts from one chat composer: Agent G answers, plans and
+runs tasks, and the same composer makes pictures, video clips, music, read-aloud audio and live voice calls with a
+talking avatar. Results land in the Library. The site speaks Georgian (default), English and Russian.
 
-🚀 **Launch Status**: 95% Ready | ✅ All Services Live | ✅ Production Hardened
+Live at **https://myavatar.ge**.
 
-## 🎯 Platform Overview
+> The full state of the project (what is live, what waits in draft PRs, the launch order) is in
+> `MASTER_PROJECT_SUMMARY.md` and `docs/launch/LAUNCH_COMMANDS.md` (draft PR #373). The exact name and accepted values of
+> every launch switch are in `docs/launch/ENV_REGISTRY.md` (draft PR #396). This README is the short version.
 
-### 13 AI Services
-1. **Avatar Builder** - Custom 3D avatar creation engine
-2. **Video Studio** - AI video generation (Runway/Sora)
-3. **Music Studio** - AI music generation (Suno)
-4. **Voice Lab** - Voice cloning & TTS (ElevenLabs)
-5. **Media Production** - Professional video editing & compositing
-6. **Business Agent** - Strategic analytics & insights
-7. **AI Chat** - OpenAI-powered conversational agent
-8. **Game Creator** - Interactive game development *(coming soon)*
-9. **Image Creator** - DALL-E/Midjourney integration *(coming soon)*
-10. **Social Media** - Content generation & scheduling *(coming soon)*
-11. **Online Shop** - E-commerce automation *(coming soon)*
-12. **Prompt Builder** - Prompt engineering toolkit *(coming soon)*
-13. **Avatar G Agent** - Premium multi-agent orchestration *(Premium tier)*
+## What runs where
 
-### Pricing Plans (Canonical)
-- **FREE**: $0/mo
-- **BASIC**: $39/mo
-- **PREMIUM**: $150/mo
-- **AGENT_G_FULL**: $500/mo
+| Part | Where | Notes |
+|---|---|---|
+| Web app and API routes | Vercel, project `avatar-g-frontend-v3` | Next.js 14 App Router, TypeScript, Tailwind |
+| Database, auth, storage | Supabase project `zwksnayknzggdcenqqxy` | Postgres with RLS, private buckets |
+| AI models | Google Cloud Vertex AI only | Gemini (chat, Live, TTS, STT), Veo and Omni (video), Lyria (music), Gemini image |
+| Live voice relay | Cloud Run (`services/live-relay`) | WebSocket relay for Gemini Live, EU region |
+| 3D worker (draft, off) | Cloud Run GPU job | TRELLIS.2, PRs #366, #367, #369 |
+| Code run and browser agent | Vercel Sandbox | Admins only, behind flags |
+| Payments | Bank of Georgia (BOG) | Credits wallet. The old Stripe billing page is retired in draft #338 |
 
-### SaaS Features
-- ✅ Stripe subscription billing with webhooks
-- ✅ Credit system with atomic operations
-- ✅ Admin analytics dashboard
-- ✅ AI orchestration layer with retry logic
-- ✅ Supabase RLS security policies
-- ✅ Legal pages (Terms, Privacy, Refund)
+There are no OpenAI, ElevenLabs, Replicate, Runway, Suno or HeyGen calls in the app. Generation that cannot be priced
+or paid for is refused before any provider call (billing fails closed).
 
-## 🛠️ Tech Stack
+## Services in the composer
 
-- **Framework**: Next.js 14 (App Router) + TypeScript
-- **3D/Animation**: React Three Fiber (R3F) + Framer Motion
-- **Database**: Supabase (PostgreSQL + Auth + Storage)
-- **Payments**: Stripe API (v2024-12-18)
-- **UI**: shadcn/ui + Tailwind CSS (glassmorphism)
-- **AI Providers**: OpenAI, Suno, Runway, ElevenLabs, DALL-E
+- **Agent G**: chat, planning, research, tasks with a live step timeline, Google Drive (picked files only).
+- **Image**: Gemini image generation and edits.
+- **Video**: one clip of 4 to 10 seconds. Veo by default; Omni when the clip has a Georgian spoken line.
+- **Music**: Lyria, with Georgian vocals.
+- **Read aloud**: Google Cloud TTS (Gemini TTS).
+- **Live**: a voice call with Agent G and an optional talking avatar.
+- **Library**: every result, searchable, with favorites.
 
+New services (Smart Editor, Art Director, Music Producer, Virtual Studio, Director's Workflow, 3D Studio, Agent G
+plugins, Notion and GitHub connectors) are in draft PRs and stay off until a flag is set. See `ENV_REGISTRY.md`.
 
-## 🚀 Quick Start
+## Run it locally
 
-### Windows repo location (important)
+Node 24 is required (`engines.node` in package.json).
 
-Do not use OneDrive paths for this project.
-
-- Forbidden: `C:\Users\admin\OneDrive\...`
-- Required local path: `C:\Projects\avatar-g-frontend-v3`
-
-Migration steps (one-time):
-
-```powershell
-mkdir C:\Projects -Force
-robocopy "C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3" "C:\Projects\avatar-g-frontend-v3" /MIR /XD node_modules .next .turbo /R:1 /W:1
-```
-
-Open the correct folder in VS Code (not OneDrive):
-
-```powershell
-code "C:\Projects\avatar-g-frontend-v3"
-```
-
-Verify current working directory:
-
-```powershell
-npm run check:cwd
-```
-
-Expected output:
-- `OK: Not running inside OneDrive path.`
-
-If you see a OneDrive warning, close the workspace and reopen `C:\Projects\avatar-g-frontend-v3`.
-
-After moving/opening, run:
-
-```powershell
+```bash
 npm ci
-npm run typecheck
-npm run build
+cp .env.example .env.local   # fill in the Supabase and Google Cloud values you have access to
+npm run dev                  # http://localhost:3000
 ```
 
-```powershell
-# 1. Install dependencies
-npm install
+A local run cannot reach Vertex (Workload Identity allows only the Preview and Production deployments), and Preview
+deployments block every paid generation because they share Production's database. Paid checks therefore run on
+Production, by the owner, within an approved budget.
 
-# 2. Set up environment variables
-cp .env.example .env.local
-# Fill in: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_KEY, STRIPE_SECRET_KEY, etc.
-
-# 3. Run database migrations
-supabase db push
-
-# 4. Start development server
-npm run dev
-
-# 5. Open browser
-# Open the exact "Local" URL printed by Next.js in terminal
-# (default: http://localhost:3000)
-```
-
-### Stable local ports (Windows)
-
-Use a fixed dev port so localhost does not jump between ports:
-
-```powershell
-# Default fixed port
-npm run dev
-
-# Alternative fixed port for parallel sessions
-npm run dev:3003
-```
-
-If a port is busy:
-
-```powershell
-netstat -ano | findstr :3003
-taskkill /PID <pid> /F
-```
-
-### Environment Variables Required
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-key
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_SETUP_SECRET=...
-SITE_URL=https://www.myavatar.ge
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_PRO=price_... # Basic $30
-STRIPE_PRICE_PREMIUM=price_... # Premium $150
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-## 📁 Project Structure
-
-```
-/app
-  /services/*           - 13 service pages (video-studio, voice-lab, etc.)
-  /pricing              - Subscription pricing page ($0/$30/$150)
-  /admin/analytics      - Admin dashboard (metrics, charts)
-  /api
-    /agents/execute     - AI job orchestration endpoint
-    /billing/*          - Stripe webhook + subscription management
-    /admin/analytics    - Analytics API (users, revenue, credits)
-/components
-  /landing              - CinematicScene (3D hero), OrbitingServices
-  /ui                   - shadcn/ui components (Button, Card, Badge)
-/lib
-  /agents               - Agent registry + 13 agent definitions
-  /orchestration        - Unified AI orchestration layer (retry/timeout)
-  /billing              - Plans config, Stripe integration, credit enforcement
-  /auth                 - Server-side auth utilities
-```
-
-## 🔧 Production Verification
-
-```powershell
-# 1. Lint check
-npm run lint
-
-# 2. Type check
-npx tsc --noEmit
-
-# 3. Production build
-npm run build
-
-# 4. Start production server
-npm run start
-
-# 5. Enterprise verification suite
-npm run test:enterprise
-npm run verify:production
-```
-
-Verification report output:
-- `artifacts/verification-report.json`
-
-Load test hook:
-
-```powershell
-npm run load:test -- --baseUrl=http://localhost:3000 --endpoint=/api/observability/latency --requests=120 --concurrency=20
-```
-
-## 🧪 New Runtime APIs
-
-- Billing + metering:
-  - `GET /api/billing/plan`
-  - `GET /api/billing/usage?range=day|week|month`
-  - `GET /api/billing/usage/export?range=day|week|month`
-- Admin billing:
-  - `GET /api/admin/billing/plans`
-  - `GET /api/admin/billing/users/:id`
-- Tenant branding:
-  - `GET /api/org/branding`
-- AI routing:
-  - `POST /api/agent-g/router/execute`
-- Observability:
-  - `GET /api/observability/latency`
-- Investor metrics:
-  - `GET /api/metrics/kpis?range=month`
-  - `GET /api/metrics/revenue`
-  - `GET /api/metrics/conversion`
-- Growth automation:
-  - `POST /api/growth/referrals/code`
-  - `POST /api/growth/referrals/track`
-  - `POST /api/growth/events/process`
-  - `POST /api/growth/churn-risk/scan`
-
-### Key Routes to Test
-- `/` - Landing page (3D hero + orbiting services)
-- `/pricing` - Pricing page ($0/$30/$150)
-- `/services/video-studio` - Video generation UI
-- `/services/voice-lab` - Voice cloning UI
-- `/chat` - AI chat interface
-- `/agent` - Premium Avatar G Agent (requires $150/mo)
-- `/admin/analytics` - Admin dashboard (TODO: add role check)
-
-## 📚 Documentation
-
-- [PRODUCTION_AUDIT_REPORT.md](docs/PRODUCTION_AUDIT_REPORT.md) - Comprehensive audit (1500+ lines)
-- [PRODUCTION_LAUNCH_SUMMARY.md](docs/PRODUCTION_LAUNCH_SUMMARY.md) - Quick reference guide
-- [FINAL_VERIFICATION_COMMANDS.md](docs/FINAL_VERIFICATION_COMMANDS.md) - Step-by-step commands
-- [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Deployment guide
-- [SAAS_IMPLEMENTATION.md](docs/SAAS_IMPLEMENTATION.md) - Implementation details
-
-## 🛡️ Security & Compliance
-
-- ✅ Supabase Row Level Security (RLS) policies enforced
-- ✅ Atomic credit operations via PostgreSQL RPC
-- ✅ Stripe webhook signature verification
-- ✅ Server-side session validation on all API routes
-- ✅ Legal pages: Terms of Service, Privacy Policy, Refund Policy
-- ⚠️ TODO: Add admin role check to `/api/admin/analytics`
-
-## 🎨 Features Highlight
-
-### Cinematic 3D Hero
-- React Three Fiber WebGL scene with custom 3D avatar
-- User avatar auto-loads after Avatar Builder completion
-- 13 orbiting service icons with smooth animations
-- Responsive camera controls with OrbitControls
-
-### AI Orchestration
-- Unified job lifecycle: create → execute → complete/fail
-- Automatic retry with exponential backoff (configurable per provider)
-- Timeout protection (2-minute default)
-- Provider registry maps agent actions to API configurations
-
-### Credits System
-- PostgreSQL functions: `deduct_credits()`, `add_credits()`
-- Atomic transactions prevent double-spending
-- Monthly reset cron job (TODO: implement)
-- Real-time balance tracking in UI
-
-### Admin Dashboard
-- Total users, DAU, MRR metrics
-- Users by plan distribution chart
-- Revenue breakdown by subscription tier
-- Top 5 services by job count
-- Credit usage analytics
-
-## 🚢 Deployment (Vercel)
+## Checks
 
 ```bash
-# 1. Connect GitHub repo to Vercel
-vercel link
-
-# 2. Set environment variables in Vercel dashboard
-# (all vars from .env.local)
-
-# 3. Deploy
-git add .
-git commit -m "Production audit complete"
-git push origin main
-# Auto-deploys via Vercel GitHub integration
-
-# 4. Configure Stripe webhook
-# URL: https://yourdomain.com/api/billing/webhook
-# Events: checkout.session.completed, customer.subscription.*, invoice.*
+npm run typecheck            # tsc --noEmit
+npm run lint                 # next lint
+npx jest                     # unit and route tests (about 18,000)
+npm run test:e2e:preview     # the Playwright set that CI runs against a Preview
 ```
 
-## 📊 Success Metrics
+About 20 Jest suites that call ffmpeg fail inside some cloud containers because the ffmpeg-static binary is not
+downloaded there (`spawn ENOENT`). That is the container, not the code; CI downloads the binary and runs them.
 
-- **Code Quality**: ✅ 0 lint errors, ✅ 0 TypeScript errors
-- **Build Status**: ✅ Production build compiling
-- **Services**: ✅ 13/13 routes live (4 coming soon pages)
-- **Pricing**: ✅ Updated to $0/$30/$150
-- **Documentation**: ✅ 3 comprehensive guides (2000+ lines)
-- **Launch Readiness**: 95%
+GitHub CI (`.github/workflows/ci.yml`, `e2e.yml` and others) runs for pull requests into `main`. A PR stacked on another
+PR's branch gets only the Vercel check; see Step 8 of `LAUNCH_COMMANDS.md`.
 
-## 📝 License
+## Repository map
 
-Proprietary - Avatar G Platform
+| Folder | What is in it |
+|---|---|
+| `app/` | Pages (`app/[locale]/…`) and API routes (`app/api/…`) |
+| `components/` | UI; `components/studio/OmniStudio.tsx` is the chat composer |
+| `lib/` | Server and shared logic: billing, credits, Vertex clients, Agent G, voice, video, music |
+| `services/` | Separately deployed services (Live relay, call bridge) |
+| `supabase/`, `migrations/` | SQL migrations |
+| `docs/` | Design, audits, phase reports, runbooks |
+| `tests/`, `e2e/` | Playwright specs |
+| `pilots/adk/` | Google ADK read-only pilot (own lockfile and CI, no route) |
+| `_graveyard/` | Retired code kept for reference; nothing imports it |
 
----
+## Rules for changes
 
-**Built with** Next.js 14 · TypeScript · React Three Fiber · Supabase · Stripe
-
-**Status**: Ready for production deployment 🚀
-Deployment
-Deploy to Vercel:
-�
-Load image
-Push to GitHub
-Import in Vercel
-Deploy automatically
-License
-Proprietary - Avatar G Platform
----
-
-## **Deployment Checklist**
-
-```bash
-# 1. Verify all files are present
-ls -la app/page.tsx
-ls -la app/api/chat/route.ts
-ls -la components/workspace/ChatPanel.tsx
-
-# 2. Install dependencies
-npm install
-
-# 3. Test build locally
-npm run build
-
-# 4. If successful, commit and push
-git add .
-git commit -m "feat: complete Avatar G neural ecosystem with all 8 services"
-git push origin main
-
-# 5. Vercel will auto-deploy
-# Visit your deployment URL
-All files are now complete and production-ready. The 404 error should be resolved once you deploy these files, particularly the app/page.tsx which was missing before.
+- Google Vertex only. A new model or region needs a verified capability row before it can be called.
+- Never touch the BOG payment code or the wallet ledger without the owner's written approval.
+- New features ship behind a flag that defaults to off. Flag values differ per feature; a wrong value leaves the feature
+  off with no error, so copy the value from `ENV_REGISTRY.md`.
+- `NEXT_PUBLIC_` variables are built into the client: changing one needs a redeploy.
+- Visible text and screen-reader names come in ka, en and ru (`lib/i18n/a11yLabels.ts` for aria-labels).
+- Merges to `main` happen one PR at a time, with the owner's OK for each.

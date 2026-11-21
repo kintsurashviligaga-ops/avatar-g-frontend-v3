@@ -42,6 +42,7 @@ import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes, Move3d,
 } from 'lucide-react';
+import { a11y } from '@/lib/i18n/a11yLabels';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -296,7 +297,7 @@ const LibraryCard = memo(function LibraryCard({
               <button
                 type="button"
                 onClick={togglePlay}
-                aria-label="Play"
+                aria-label={a11y('play', locale)}
                 className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/10"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 ring-1 ring-app-border/20 backdrop-blur-sm">
@@ -377,7 +378,7 @@ const LibraryCard = memo(function LibraryCard({
               onClick={() => setConfirming(true)}
               title={t.deleteAsset}
               aria-label={t.deleteAsset}
-              className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-red-500/30 hover:text-red-300"
+              className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-red-500/30 hover:text-red-300 ag-hit"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
