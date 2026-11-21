@@ -33,8 +33,12 @@ export interface Studio3dDeps {
     get(id: string): Promise<JobRow | null>;
     insert(row: JobRow): Promise<boolean>;
     update(row: JobRow): Promise<boolean>;
-    /** running = starting..export, queued = queued; today = jobs created since UTC midnight; user = user's active jobs. */
-    counts(userId: string): Promise<{ running: number; queued: number; todayTotal: number; userActive: number }>;
+    /**
+     * running = starting..export, queued = queued; today = jobs created since UTC midnight; user = user's active jobs
+     * (queued..export, plus a job still before the GPU for 30 min). `exceptId` leaves one job out of userActive: the
+     * job being approved must not count as the job that keeps its owner busy.
+     */
+    counts(userId: string, exceptId?: string): Promise<{ running: number; queued: number; todayTotal: number; userActive: number }>;
     oldestQueuedId(): Promise<string | null>;
   };
   ledger: {
@@ -103,6 +107,7 @@ const err = (status: number, code: string, message?: string): ServiceError => ({
 async function step(deps: Studio3dDeps, row: JobRow, ev: Studio3dEvent): Promise<JobRow> {
   const r = advance(row.state, ev);
   if (!r.applied) return row;
+  if (r.job.step === 'failed' && row.state.step !== 'failed') logJobFailure(row, r.job.error);
   let cur: JobRow = { ...row, state: r.job };
   const follow: Studio3dEvent[] = [];
   for (const e of r.effects) {
@@ -113,6 +118,22 @@ async function step(deps: Studio3dDeps, row: JobRow, ev: Studio3dEvent): Promise
   await deps.store.update(cur);
   for (const f of follow) cur = await step(deps, cur, f);
   return cur;
+}
+
+/**
+ * Phase 8.14 Day-1 log: one `[feature-error]` line per failed job (also the GPU worker's failures, which no route
+ * answer carries) with the user, the job and the step it failed at. The same shape lib/observability/featureLog
+ * writes for route answers. Never the prompt or a link.
+ */
+function logJobFailure(row: JobRow, error: string | undefined): void {
+  try {
+    console.warn(
+      '[feature-error]',
+      JSON.stringify({ feature: 'studio3d', userId: row.userId, taskId: row.id, code: (error ?? 'failed').slice(0, 60), step: row.state.step, mode: row.request.mode }),
+    );
+  } catch {
+    /* logging never breaks a job */
+  }
 }
 
 async function runEffect(deps: Studio3dDeps, row: JobRow, e: Effect): Promise<{ event?: Studio3dEvent; row?: JobRow }> {
@@ -248,7 +269,7 @@ export async function actOnJob(deps: Studio3dDeps, userId: string, id: string, a
   let row = r;
   if (action === 'approve') {
     if (row.state.step !== 'awaiting_approval') return err(409, 'not_awaiting_approval');
-    const c = await deps.store.counts(userId);
+    const c = await deps.store.counts(userId, row.id);
     const a = admit({ ...c, dailyCap: deps.dailyCap });
     if (!a.ok) return err(429, a.reason);
     row = await step(deps, row, { type: 'approve' });

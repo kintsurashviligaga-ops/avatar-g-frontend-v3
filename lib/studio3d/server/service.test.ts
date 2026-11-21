@@ -236,3 +236,35 @@ describe('3D Studio service (mocked deps)', () => {
     });
   });
 });
+
+describe('Phase 8.14 pre-flight', () => {
+  it('approve leaves the job being approved out of its owner\'s busy count', async () => {
+    const m = mockDeps();
+    const created = await createJob(m.deps, UID, { mode: 'text', prompt: 'a chair' });
+    const id = (created as any).id;
+    const seen: (string | undefined)[] = [];
+    const counts = m.deps.store.counts;
+    m.deps.store.counts = async (u, exceptId) => (seen.push(exceptId), counts(u, exceptId));
+    expect(await actOnJob(m.deps, UID, id, 'approve')).toMatchObject({ ok: true });
+    expect(seen[0]).toBe(id);
+  });
+
+  it('a user with a draft still before the GPU is busy: no second reference picture', async () => {
+    const m = mockDeps({ active: 1 });
+    expect(await createJob(m.deps, UID, { mode: 'text', prompt: 'a chair' })).toMatchObject({ ok: false, status: 429, code: 'user_busy' });
+    expect(m.ledger).toEqual([]);
+  });
+
+  it('a failed job writes one [feature-error] line with user, job and code (no prompt)', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const m = mockDeps({ noEngine: true });
+      const r = await createJob(m.deps, UID, { mode: 'image', imageUrl: IMG });
+      const lines = warn.mock.calls.filter((c) => c[0] === '[feature-error]').map((c) => JSON.parse(c[1] as string));
+      expect(lines).toEqual([expect.objectContaining({ feature: 'studio3d', userId: UID, taskId: (r as any).id, code: 'worker_not_configured' })]);
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(IMG);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
