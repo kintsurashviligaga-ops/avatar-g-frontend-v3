@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminContext, isUuid } from '@/lib/admin/routeContext';
-import { SWITCHABLE_TOOLS, disabledServices, isSwitchableTool, setServiceEnabled } from '@/lib/server/serviceSwitches';
+import { AGENT_SWITCH_LABEL, disabledServices, isOpenSwitch, isSwitchableTool, openSwitches, setServiceEnabled } from '@/lib/server/serviceSwitches';
 import { TOOL_META } from '@/lib/studio/tools';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +16,12 @@ export async function GET() {
   if (!gate.ok) return gate.response;
   const off = new Set(await disabledServices());
   return NextResponse.json({
-    services: SWITCHABLE_TOOLS.map((tool) => ({
+    // The Agent G step switches appear only while AGENT_VALIDATE is on (lib/server/serviceSwitches openSwitches).
+    services: openSwitches().map((tool) => ({
       tool,
-      label: { ka: TOOL_META[tool]?.name.ka ?? tool, en: TOOL_META[tool]?.name.en ?? tool },
+      label: tool in AGENT_SWITCH_LABEL
+        ? AGENT_SWITCH_LABEL[tool as keyof typeof AGENT_SWITCH_LABEL]
+        : { ka: TOOL_META[tool as keyof typeof TOOL_META]?.name.ka ?? tool, en: TOOL_META[tool as keyof typeof TOOL_META]?.name.en ?? tool },
       enabled: !off.has(tool),
     })),
   });
@@ -29,6 +32,8 @@ export async function POST(req: NextRequest) {
   if (!gate.ok) return gate.response;
   const body = (await req.json().catch(() => ({}))) as { tool?: unknown; enabled?: unknown };
   if (!isSwitchableTool(body.tool)) return NextResponse.json({ error: 'unknown_tool' }, { status: 400 });
+  // A known Agent G step switch while AGENT_VALIDATE is off: the feature is not there yet (Phase 8.18).
+  if (!isOpenSwitch(body.tool)) return NextResponse.json({ error: 'feature_disabled' }, { status: 404 });
   if (typeof body.enabled !== 'boolean') return NextResponse.json({ error: 'invalid_enabled' }, { status: 400 });
   const result = await setServiceEnabled(body.tool, body.enabled, isUuid(gate.actorId) ? gate.actorId : null);
   if (!result.ok) return NextResponse.json({ error: result.error ?? 'write_failed' }, { status: 500 });

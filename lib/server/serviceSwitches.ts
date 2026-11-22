@@ -16,13 +16,34 @@ import { NextResponse } from 'next/server';
 import { getFeatureFlag, invalidateFlagCache, readDbOverrides } from '@/lib/server/feature-flags';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import type { ToolId } from '@/lib/studio/tools';
+import { agentValidateOn } from '@/lib/agent/run/engineFlags';
 
 /** Tools an admin can switch. Chat (the window itself) and the on-device photo sorter are not switchable. */
-export const SWITCHABLE_TOOLS = [
+const STUDIO_SWITCHES = [
   'video', 'product', 'vfx', 'image', 'photoshoot', 'interior', 'music', 'avatar',
   'montage', 'model3d', 'dubbing', 'presentation', 'swap', 'motion', 'remix',
 ] as const satisfies readonly ToolId[];
+/**
+ * Agent G run steps that are not studio tools (GG 2026-11-13: every run tool behind an admin switch until the E2E flow
+ * is proven). Read by VALIDATE (lib/agent/engine/context TOOL_SWITCH), so they act only while AGENT_VALIDATE is on.
+ */
+export const AGENT_SWITCHES = ['media-edit', 'audio-extract'] as const;
+export const AGENT_SWITCH_LABEL: Readonly<Record<(typeof AGENT_SWITCHES)[number], { ka: string; en: string }>> = {
+  'media-edit': { ka: 'Agent G · ვიდეოს რედაქტირება', en: 'Agent G · video edit' },
+  'audio-extract': { ka: 'Agent G · MP3', en: 'Agent G · MP3' },
+};
+export const SWITCHABLE_TOOLS = [...STUDIO_SWITCHES, ...AGENT_SWITCHES] as const;
 export type SwitchableTool = (typeof SWITCHABLE_TOOLS)[number];
+
+/**
+ * The switches the admin panel shows and accepts right now (Phase 8.18 flag isolation): the Agent G run-step switches
+ * only while AGENT_VALIDATE is on, since nothing else reads them. Off, the panel and its POST are exactly as on main.
+ */
+export function openSwitches(env: NodeJS.ProcessEnv = process.env): readonly SwitchableTool[] {
+  return agentValidateOn(env) ? SWITCHABLE_TOOLS : STUDIO_SWITCHES;
+}
+export const isOpenSwitch = (v: unknown, env: NodeJS.ProcessEnv = process.env): v is SwitchableTool =>
+  typeof v === 'string' && (openSwitches(env) as readonly string[]).includes(v);
 
 export const isSwitchableTool = (v: unknown): v is SwitchableTool =>
   typeof v === 'string' && (SWITCHABLE_TOOLS as readonly string[]).includes(v);

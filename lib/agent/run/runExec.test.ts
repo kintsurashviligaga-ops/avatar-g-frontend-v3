@@ -20,9 +20,10 @@ import { RUN_TRANSITIONS, type RunStatus } from '../contracts';
 import { RUN_KIND, TICK_LEASE_MS, stepOf, type RunState } from './runEngine';
 import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
 import {
-  approveStep, cancelRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
+  approveStep, cancelRun, pauseRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
 } from './runExec';
 import type { RunSpec } from './runSpec';
+import { checkRunSpec } from './runValidate';
 import { sweepDeliveries, type OutboxDeps, type Outlet } from '@/lib/notifications/outbox';
 import { outboxOverLease } from '@/lib/notifications/testing/memoryOutboxStore';
 import { DEFAULT_PREFS, normalizePrefs } from '@/lib/notifications/preferences';
@@ -82,6 +83,8 @@ function world(opts: { render?: Parameters<typeof fake>[0]['render']; adapters?:
     key: () => 'k',
     now: () => m.clock.now,
     newId: () => `run-${(rid += 1)}`,
+    // runExec.v2.test.ts runs this whole file again with every run on the Phase 3 engine (_run.v=2, engineBridge).
+    ...(process.env.RUN_EXEC_SUITE_V2 === '1' ? { engineFor: async () => true } : {}),
   };
   return { deps, m, a, e, store: m.store, clock: m.clock, audits, workers };
 }
@@ -124,6 +127,19 @@ async function drive(w: World, id: string, rounds = 6): Promise<RunState> {
 }
 
 describe('plan and start: only a tapped, signed plan creates a run, once', () => {
+  test('the run is of the version this suite runs (v1 here, v2 in runExec.v2.test.ts)', async () => {
+    const w = world();
+    const id = await started(w);
+    const run = runAt(w, id);
+    if (process.env.RUN_EXEC_SUITE_V2 === '1') {
+      expect(run.v).toBe(2);
+      expect(run.engine?.steps.map((s) => s.id)).toEqual(run.steps.map((s) => s.id));
+    } else {
+      expect(run.v).toBe(1);
+      expect(run.engine).toBeUndefined();
+    }
+  });
+
   test('plan → start → the same tap again replays the same run; nothing runs before the first tick', async () => {
     const w = world();
     const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
@@ -161,6 +177,60 @@ describe('plan and start: only a tapped, signed plan creates a run, once', () =>
     if (!p.ok) throw new Error(p.error);
     const dearer = { ...w.deps, adapters: { ...w.deps.adapters, montage: { ...w.deps.adapters.montage, listPrice: 5 } } };
     expect(await startRun(dearer, { userId: USER, spec: CHAIN, token: p.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+  });
+});
+
+describe('VALIDATE (Phase 3.5a): with the check on, a refused plan is never signed, started or resumed', () => {
+  const NOW = new Date('2026-11-13T08:00:00Z');
+  /** The live check over chosen facts: the real registry, the montage switch on or off. */
+  const validateWith = (switchedOff: string[]) => async (_u: string, spec: RunSpec) =>
+    checkRunSpec(spec, { now: NOW, isAdmin: false, switchedOff: new Set(switchedOff), priceBook: { montage: 0, audio_extract: 0, edit: 0 }, runCeilingCredits: 100 }, () => 0);
+
+  test('the check off (no validate dep) changes nothing: the existing path is the one tested above', async () => {
+    const w = world();
+    expect(w.deps.validate).toBeUndefined();
+    expect((await planRun(w.deps, { userId: USER, spec: CHAIN })).ok).toBe(true);
+  });
+
+  test('every media step passes on the real registry: the ffmpeg tools call no model', async () => {
+    const w = world();
+    w.deps.validate = validateWith([]);
+    const id = await started(w);
+    expect(runAt(w, id).status).toBe('queued');
+  });
+
+  test('a switched-off montage refuses the plan by its step: nothing signed, nothing written, the refusal audited', async () => {
+    const w = world();
+    w.deps.validate = validateWith(['montage']);
+    expect(await planRun(w.deps, { userId: USER, spec: CHAIN })).toEqual({ ok: false, error: 'capability_unavailable', message: 'montage is switched off', step: 'clip' });
+    expect(w.store.rows.size).toBe(0);
+    expect(w.audits.map((a) => `${a.phase}:${a.outcome}:${a.detail}`)).toEqual(['quote:refused:validate_capability_unavailable:clip']);
+  });
+
+  test('a switch turned off between the plan and the tap stops the start; no run row is created', async () => {
+    const w = world();
+    w.deps.validate = validateWith([]);
+    const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
+    if (!p.ok) throw new Error(p.error);
+    w.deps.validate = validateWith(['montage']);
+    expect(await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token })).toMatchObject({ ok: false, error: 'capability_unavailable', step: 'clip' });
+    expect(jobsOf(w, RUN_KIND)).toHaveLength(0);
+  });
+
+  test('a check that throws fails closed: nothing is quoted', async () => {
+    const w = world();
+    w.deps.validate = async () => { throw new Error('profile read failed'); };
+    expect(await planRun(w.deps, { userId: USER, spec: CHAIN })).toMatchObject({ ok: false, error: 'capability_unavailable' });
+  });
+
+  test('a resume is checked too: a stopped run is not carried on while its montage is switched off', async () => {
+    const w = world();
+    const id = await started(w);
+    expect((await cancelRun(w.deps, { userId: USER, id })).ok).toBe(true);
+    await tick(w, id);
+    w.deps.validate = validateWith(['montage']);
+    expect(await resumeRun(w.deps, { userId: USER, id })).toMatchObject({ ok: false, error: 'capability_unavailable', step: 'clip' });
+    expect(w.store.rows.has(resumeIdOf(id))).toBe(false);
   });
 });
 
@@ -524,6 +594,32 @@ describe('races', () => {
     expect(now.steps[0]!.taskId).not.toBe(old.taskId);
     expect(jobsOf(w, AUDIO_KIND).map((r) => r.id)).toEqual([now.steps[0]!.taskId]);
     expectLegal(now);
+  });
+});
+
+describe('pause (v2 runs only)', () => {
+  test('a v1 run cannot be paused; a v2 run finishes what runs, starts nothing new until un-paused', async () => {
+    const w = world();
+    const id = await started(w);
+    await tick(w, id);
+    if (process.env.RUN_EXEC_SUITE_V2 !== '1') {
+      expect(await pauseRun(w.deps, { userId: USER, id, paused: true, startWorkers: true })).toMatchObject({ ok: false, error: 'not_pausable' });
+      return;
+    }
+    expect(await pauseRun(w.deps, { userId: 'someone-else', id, paused: true, startWorkers: true })).toMatchObject({ ok: false, error: 'not_found' });
+    expect(await pauseRun(w.deps, { userId: USER, id, paused: true, startWorkers: true })).toEqual({ ok: true });
+    await work(w);
+    await tick(w, id);
+    await tick(w, id);
+    let run = runAt(w, id);
+    expect(run).toMatchObject({ status: 'running', paused: true, steps: [{ status: 'completed' }, { status: 'planned' }] });
+    expect(jobsOf(w, MONTAGE_KIND)).toHaveLength(0);
+    expect(await pauseRun(w.deps, { userId: USER, id, paused: false, startWorkers: true })).toEqual({ ok: true });
+    expect(jobsOf(w, MONTAGE_KIND)).toHaveLength(1);
+    run = await drive(w, id);
+    expect(run.status).toBe('completed');
+    expect(run.events.map((e) => e.type)).toEqual(expect.arrayContaining(['run.paused', 'run.unpaused']));
+    expectLegal(run);
   });
 });
 
