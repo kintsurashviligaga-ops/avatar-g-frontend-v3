@@ -44,7 +44,10 @@ function localHandle(dir: string): DriverHandle {
     exec(cmd, args, signal) {
       return new Promise((resolve) => {
         const child = execFile(cmd === 'node' ? process.execPath : cmd, args, {
-          cwd: dir, timeout: 120_000, env: { ...process.env, PW_CORE: require.resolve('playwright-core'), PW_EXECUTABLE: exe },
+          cwd: dir, timeout: 120_000, env: { ...process.env, PW_CORE: require.resolve('playwright-core'), PW_EXECUTABLE: exe,
+            // The offline test has no internet: 127.0.0.1 plays a public website for the network guard, and one name has
+            // a private IPv6 answer (Phase 8.18).
+            PW_TEST_NET: JSON.stringify({ public: ['127.0.0.1'], anyPort: true, dns: { 'good.example.com': '127.0.0.1', 'aaaa.example.com': 'fd00::1' } }) },
         }, (err, stdout, stderr) => resolve({ exitCode: err ? 1 : 0, stdout, stderr }));
         signal.addEventListener('abort', () => child.kill(), { once: true });
       });
@@ -154,6 +157,25 @@ maybe('Browser Agent driver on a real Chromium', () => {
       const miss = await session.act({ op: 'click', selector: '#nope' }, signal);
       expect(miss.ok).toBe(false);
       expect(miss.error).toBeTruthy();
+      expect((await session.observe(signal)).title).toBe('რეგისტრაცია');
+    } finally {
+      await session.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
+  it('refuses a name whose IPv6 answer is private, and an IPv6 or mapped literal, then still opens a public name (Phase 8.18)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'aga-'));
+    const session = new SandboxBrowserSession(localHandle(dir), { pollMs: 50 });
+    const signal = new AbortController().signal;
+    const port = new URL(base).port;
+    try {
+      await session.start(signal);
+      for (const url of [`http://aaaa.example.com:${port}/`, `http://[::1]:${port}/`, `http://[::ffff:127.0.0.2]:${port}/`]) {
+        const r = await session.act({ op: 'goto', url }, signal);
+        expect(r.ok).toBe(false);
+      }
+      const ok = await session.act({ op: 'goto', url: `http://good.example.com:${port}/` }, signal);
+      expect(ok.ok).toBe(true);
       expect((await session.observe(signal)).title).toBe('რეგისტრაცია');
     } finally {
       await session.close();

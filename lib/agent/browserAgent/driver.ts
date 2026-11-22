@@ -19,10 +19,15 @@
  * Its own rules, as the one-shot driver's: only http(s)/data/blob requests; a popup is closed (one page, one task);
  * typing into a password / card / one-time-code field is refused (also when the field only has the focus); downloads
  * refused, service workers blocked; each command has its own timeout; it exits on `close`, after `idleMs` with no
- * command, or at `wallMs`.
+ * command, or at `wallMs`. Every connection goes through lib/agent/browser/netGuard, which refuses any non-public IPv4
+ * or IPv6 address after resolving the name itself (Phase 8.18); if it cannot start, the session does not start.
  *
  * PW_CORE and PW_EXECUTABLE exist only for the offline test (./driver.test), which runs this exact text on this machine.
  */
+import { NET_GUARD_JS, netGuardChromiumArgs } from '@/lib/agent/browser/netGuard';
+
+const GUARD_ARGS = JSON.stringify(netGuardChromiumArgs(0)).replace('127.0.0.1:0', '127.0.0.1:" + __guardPort + "');
+
 export const BROWSER_AGENT_DRIVER = String.raw`
 import { createRequire } from 'node:module';
 import { readFile, rename, writeFile, access } from 'node:fs/promises';
@@ -157,7 +162,8 @@ async function act(s) {
     await page.waitForLoadState('domcontentloaded', { timeout: L.stepMs }).catch(() => {});
   };
   if (s.op === 'goto') {
-    await page.goto(s.url, { waitUntil: 'domcontentloaded' });
+    const resp = await page.goto(s.url, { waitUntil: 'domcontentloaded' });
+    if (resp && resp.headers()['x-agent-g-guard'] === 'blocked') throw new Error('blocked: that address is not a public website');
   } else if (s.op === 'click') {
     const el = page.locator(s.selector).first();
     const c = await centerOf(el);
@@ -231,11 +237,15 @@ async function act(s) {
   return r;
 }
 
+${NET_GUARD_JS}
+const blocked = [];
 try {
+  const __guardPort = await startNetGuard((what, why) => { if (blocked.length < 20) blocked.push(what + ' (' + why + ')'); });
   browser = await chromium.launch({
     headless: true,
     ...(process.env.PW_EXECUTABLE ? { executablePath: process.env.PW_EXECUTABLE } : {}),
-    args: ['--no-first-run', '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-default-apps'],
+    args: ['--no-first-run', '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-default-apps',
+      ...${GUARD_ARGS}],
   });
   const ctx = await browser.newContext({
     viewport: { width: L.width, height: L.height }, acceptDownloads: false, serviceWorkers: 'block', locale: L.locale, userAgent: L.userAgent,
@@ -276,6 +286,8 @@ try {
   await writeAtomic('fatal.json', JSON.stringify({ error: say(e) })).catch(() => {});
 } finally {
   if (browser) await browser.close().catch(() => {});
+  // The network guard's server and its tunnels would keep Node alive: the session is over, so end it.
+  process.exit(0);
 }
 `;
 
