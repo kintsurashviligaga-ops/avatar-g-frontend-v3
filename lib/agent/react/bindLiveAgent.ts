@@ -64,6 +64,7 @@ import type { EditQuoteResult } from '@/lib/agent/media/editExec';
 import type { CodeQuoteResult } from '@/lib/agent/sandbox/codeQuote';
 import type { BrowserQuoteResult } from '@/lib/agent/browser/quote';
 import type { DriveDeps } from '@/lib/connectors/google/drive';
+import { PLUGIN_NOTE, PLUGIN_TOOL_SPECS, calendarToolOn, githubToolOn, notionToolOn, type PluginToolContext } from '@/lib/agent/plugins/tools';
 import {
   ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
 } from '@/lib/agent/media/editPlan';
@@ -73,7 +74,8 @@ import {
 } from '@/lib/agent/media/layers';
 import { MAX_SPEED, MIN_SPEED } from '@/lib/video/editFilters';
 
-export interface AgentContext extends ImageToolContext {
+/** PluginToolContext: Notion / GitHub / Calendar plugins (lib/agent/plugins), all absent unless AGENT_PLUGINS opens them. */
+export interface AgentContext extends ImageToolContext, PluginToolContext {
   userId: string;
   /** The files the user attached to THIS request (their upload paths or our signed links), in their order. */
   files?: string[];
@@ -996,6 +998,8 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       return { ...r.analysis, lengthSec: r.source.durationSec, type: r.source.type };
     },
   }),
+  // Agent G plugins (lib/agent/plugins/tools): each offered only when its plugin is open to this request.
+  ...PLUGIN_TOOL_SPECS,
 ];
 
 /** The user's language for the analysis' words, from the script of their goal (ka · ru · en). */
@@ -1033,6 +1037,7 @@ export async function runLiveAgent(
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', driveToolOn(ctx) ? AGENT_DRIVE_NOTE : '',
     workspaceToolOn(ctx) ? AGENT_WORKSPACE_NOTE : '', browserToolOn(ctx) ? AGENT_BROWSER_NOTE : '',
+    notionToolOn(ctx) || githubToolOn(ctx) || calendarToolOn(ctx) ? PLUGIN_NOTE : '',
     opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
