@@ -23,14 +23,17 @@ describe('geminiLive — pure wire-format builders/parser', () => {
     expect(m.setup.generationConfig.responseModalities).toEqual(['TEXT']);
   });
 
-  it('buildSetupMessage disables thinking (thinkingBudget 0) for low-latency voice', () => {
-    const m = buildSetupMessage({}) as { setup: { generationConfig: { thinkingConfig?: { thinkingBudget?: number } } } };
+  it('buildSetupMessage disables thinking (thinkingBudget 0) on the 2.5 family only; the 3.8-live default gets none', () => {
+    const m = buildSetupMessage({ model: 'models/gemini-2.5-flash-native-audio-latest' }) as { setup: { generationConfig: { thinkingConfig?: { thinkingBudget?: number } } } };
     expect(m.setup.generationConfig.thinkingConfig?.thinkingBudget).toBe(0);
+    const d = buildSetupMessage({}) as { setup: { generationConfig: { thinkingConfig?: unknown } } };
+    expect(d.setup.generationConfig.thinkingConfig).toBeUndefined();
   });
 
   it('DEFAULT_LIVE_MODEL is a native-audio Live model (the retired 2.0-flash-live-001 must not return)', () => {
     // Guards the "retired model → handshake fails" regression: the model must be a currently-served one.
-    expect(DEFAULT_LIVE_MODEL).toBe('models/gemini-2.5-flash-native-audio-latest');
+    // v5.1 M-2: gemini-live-2.5-flash-native-audio retires on Vertex 2026-12-13, so the default is 3.8 Live.
+    expect(DEFAULT_LIVE_MODEL).toBe('models/gemini-3.8-live');
     expect(DEFAULT_LIVE_MODEL).not.toBe('models/gemini-2.0-flash-live-001');
   });
 
