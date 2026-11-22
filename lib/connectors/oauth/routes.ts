@@ -16,6 +16,7 @@ import type { User } from '@supabase/supabase-js';
 import { decryptToken, encryptToken, pkcePair, signState, verifyState, STATE_TTL_MS } from '@/lib/connectors/google/crypto';
 import type { TokenConnectorDeps, TokenConnectorSpec } from './types';
 import { tokenRedirectUri } from './token';
+import type { FlagAccess } from './access';
 
 export const NO_STORE = { 'Cache-Control': 'private, no-store' };
 const LOCALES = new Set(['ka', 'en', 'ru']);
@@ -27,6 +28,20 @@ export interface RouteEnv {
   /** Rate limit; a Response means "stop here". */
   limit(req: NextRequest, userId?: string): Promise<Response | null>;
   fetch?: typeof fetch;
+  /**
+   * Who the connector's flag opens it to (lib/connectors/oauth/access). `off` = every route is a plain 404 before
+   * anything else runs, signed in or not; `admin` = a signed-out caller gets the same 404 (Phase 8.18 flag isolation).
+   * Absent (unit tests) = decided by deps alone, as before.
+   */
+  access?(spec: TokenConnectorSpec): FlagAccess;
+}
+
+/** The 404 a closed connector answers, or null to go on. Called first, and again once the user is known. */
+export function closedGate(spec: TokenConnectorSpec, env: RouteEnv, user?: User | null): Response | null {
+  const a = env.access?.(spec);
+  if (a === 'off') return notFound();
+  if (a === 'admin' && user === null) return notFound();
+  return null;
 }
 
 const cookieName = (spec: Pick<TokenConnectorSpec, 'id'>) => `${spec.id}_oauth`;
@@ -44,11 +59,15 @@ export function backTo(spec: Pick<TokenConnectorSpec, 'id'>, origin: string, loc
 }
 
 export async function handleConnect(spec: TokenConnectorSpec, env: RouteEnv, req: NextRequest): Promise<Response> {
+  const shut = closedGate(spec, env);
+  if (shut) return shut;
   const limited = await env.limit(req);
   if (limited) return limited;
   const origin = req.nextUrl.origin;
   const locale = localeOf(req.nextUrl.searchParams.get('locale'));
   const user = await env.user(req);
+  const shutForUser = closedGate(spec, env, user);
+  if (shutForUser) return shutForUser;
   if (!user) return backTo(spec, origin, locale, 'error', 'not_signed_in');
   const deps = await env.deps(spec, user);
   if (!deps.cfg) return notFound();
@@ -64,11 +83,15 @@ export async function handleConnect(spec: TokenConnectorSpec, env: RouteEnv, req
 }
 
 export async function handleCallback(spec: TokenConnectorSpec, env: RouteEnv, req: NextRequest): Promise<Response> {
+  const shut = closedGate(spec, env);
+  if (shut) return shut;
   const limited = await env.limit(req);
   if (limited) return limited;
   const origin = req.nextUrl.origin;
   const [verifier = '', cookieState = '', locale = 'ka'] = (req.cookies.get(cookieName(spec))?.value ?? '').split('~');
   const user = await env.user(req);
+  const shutForUser = closedGate(spec, env, user);
+  if (shutForUser) return shutForUser;
   if (!user) return backTo(spec, origin, locale, 'error', 'not_signed_in');
   const deps = await env.deps(spec, user);
   if (!deps.cfg) return notFound();
@@ -90,7 +113,11 @@ export async function handleCallback(spec: TokenConnectorSpec, env: RouteEnv, re
 }
 
 export async function handleDisconnect(spec: TokenConnectorSpec, env: RouteEnv, req: NextRequest): Promise<Response> {
+  const shut = closedGate(spec, env);
+  if (shut) return shut;
   const user = await env.user(req);
+  const shutForUser = closedGate(spec, env, user);
+  if (shutForUser) return shutForUser;
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401, headers: NO_STORE });
   const limited = await env.limit(req, user.id);
   if (limited) return limited;
@@ -109,12 +136,14 @@ export async function handleDisconnect(spec: TokenConnectorSpec, env: RouteEnv, 
 
 /** The live RouteEnv: the Supabase session, the live deps, the READ rate limit. Loaded lazily so tests stay offline. */
 export async function liveRouteEnv(): Promise<RouteEnv> {
-  const [{ authedClientFromRequest }, { checkRateLimit, RATE_LIMITS }, { liveTokenDeps }] = await Promise.all([
+  const [{ authedClientFromRequest }, { checkRateLimit, RATE_LIMITS }, { liveTokenDeps }, { flagAccess }] = await Promise.all([
     import('@/lib/supabase/server'),
     import('@/lib/api/rate-limit'),
     import('./live'),
+    import('./access'),
   ]);
   return {
+    access: (spec) => flagAccess(spec.flag),
     user: async (req) => (await authedClientFromRequest(req)).user ?? null,
     deps: (spec, user) => liveTokenDeps(spec, user),
     limit: (req, userId) => checkRateLimit(req, RATE_LIMITS.READ, userId),

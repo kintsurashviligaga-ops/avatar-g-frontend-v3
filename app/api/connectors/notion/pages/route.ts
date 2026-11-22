@@ -5,7 +5,7 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { liveRouteEnv, NO_STORE } from '@/lib/connectors/oauth/routes';
+import { closedGate, liveRouteEnv, NO_STORE } from '@/lib/connectors/oauth/routes';
 import { linkedToken } from '@/lib/connectors/oauth/token';
 import { notionCreatePage, notionSpec } from '@/lib/connectors/notion';
 
@@ -20,7 +20,12 @@ const Body = z.object({
 
 export async function POST(req: NextRequest): Promise<Response> {
   const env = await liveRouteEnv();
+  // CONNECTORS_NOTION off = a plain 404 before anything else (Phase 8.18 flag isolation).
+  const shut = closedGate(notionSpec, env);
+  if (shut) return shut;
   const user = await env.user(req);
+  const shutForUser = closedGate(notionSpec, env, user);
+  if (shutForUser) return shutForUser;
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401, headers: NO_STORE });
   const limited = await env.limit(req, user.id);
   if (limited) return limited;
