@@ -2,7 +2,7 @@
 
 Prepared 2026-11-14. Updated 2026-11-19: Phases 8.4 to 8.9 added (Step 6 items 13 to 19, Step 7 paid checks), plus the plan for stacked PRs (Step 8). Use this the moment the production Supabase project (zwksnayknzggdcenqqxy) is active again.
 
-Updated 2026-11-20 (before GREEN): Step 1d live checks, Step 2d old CSP hosts, Step 3b migrations 20261120a/b, Step 4 deadline note, Step 6 item 22 (drafts #375, #376, #390, #391, #392, #393, #395). 2026-11-21: Step 6 item 23 (#396, #397, Phase 8.14 pre-flight); then Step 0 (Vercel environment variables, exact values) and Step 6 item 24 (#398, Phase 8.15 polish). The combined CI run of every launch PR is #374 (run 2, head d3a8b51e). Readiness report: `/mnt/project-files/launch-green/LAUNCH_READY_2026-11-20.md`.
+Updated 2026-11-20 (before GREEN): Step 1d live checks, Step 2d old CSP hosts, Step 3b migrations 20261120a/b, Step 4 deadline note, Step 6 item 22 (drafts #375, #376, #390, #391, #392, #393, #395). 2026-11-21: Step 6 item 23 (#396, #397, Phase 8.14 pre-flight); then Step 0 (Vercel environment variables, exact values) and Step 6 item 24 (#398, Phase 8.15 polish). The combined CI run of every launch PR is #374 (run 2, head d3a8b51e). Readiness report: `/mnt/project-files/launch-green/LAUNCH_READY_2026-11-20.md`. 2026-11-22 (Phase 8.18): Step 3c (every SQL change in one list), Step 6 item 25 (#399, #400, the flag fixes on #309, #310 and #392, and the combined run #401).
 
 The repo copy is `docs/launch/LAUNCH_COMMANDS.md`. Keep the two identical.
 
@@ -215,6 +215,25 @@ select provider, count(*) from public.connector_accounts group by 1;   -- Drive 
 
 The rollback is written at the top of each file.
 
+### 3c. Every SQL change after GREEN, in one list (Phase 8.18 audit, 2026-11-22)
+
+This is the complete list. It was checked against the files of all 99 open PRs on 2026-11-22. Nothing outside this table writes to the database. Run each file in the SQL Editor of `zwksnayknzggdcenqqxy` only, in this order:
+
+| # | When | File (branch) | PR | Needed before | Check |
+|---|---|---|---|---|---|
+| 1 | Right after Step 2 | `supabase/migrations/20261113a_embedding_model.sql` (`claude/memory-google-only`, 67 lines) | #306 | merging #306 (Step 3) | the checks in Step 3 |
+| 2 | Any time before the 3D flag goes on | `supabase/migrations/20261115a_studio3d_jobs.sql` (`claude/studio3d-routes`, 35 lines) | #367 | `STUDIO_3D_V2` = `admin` (Step 6 item 18 runs it before the 3D merges) | `select count(*) from public.studio3d_jobs;` gives 0, and `select id, public from storage.buckets where id = 'studio3d';` gives `studio3d`, `false` |
+| 3 | Any time before the plugin flags go on | `supabase/migrations/20261120a_connector_accounts_providers.sql` (`claude/agent-g-plugins`, 35 lines) | #392 | `CONNECTORS_NOTION` or `CONNECTORS_GITHUB` | Step 3b |
+| 4 | With row 3 | `supabase/migrations/20261120b_agent_reminders.sql` (`claude/agent-g-plugins`, 33 lines) | #392 | reminders | Step 3b |
+
+Every file is additive (`create … if not exists`), and its rollback is written at the top. Rows 2 to 4 are safe to merge before the SQL runs: with the flags off, the routes are 404, and the plugins say "needs setup".
+
+**Not needed at GREEN:**
+- **`run_steps`.** There is no migration for it in any PR. It is the planned Phase 3.5d table (docs/v5.1-phase3/01-wiring-plan.md, M-8). The engine PRs #308 to #311 keep a run's state in the job row's `params._run`, which needs no new table. Claude writes the migration only when 3.5d is built, and tests it on staging first.
+- **Billing and pricing SQL** (`docs/v5.1-phase5/migrations/20261114a_phase5_money.sql` on #313, and `docs/v8.1-finance/sql/*` on #351 and #353). Item 12 covers these, following the pricing thread's checklist. Phase 8.18 did not touch them, as the rule says.
+- **Read-only files** (Step 2a to 2d) change nothing. `docs/v5.1-phase6/sql/02_purge_inactive_chats_DRAFT.sql` (#319) is a draft and is **not** run.
+- Migrations already on main (up to `20261101a_connector_accounts.sql`) were applied before the outage. The production-truth check (#276) found only `research_context_files` missing, and no launch PR reads that table.
+
 ---
 
 ## Step 4. Paid Omni checks (#307), about $1, before 19 Nov ~21:16 UTC
@@ -332,6 +351,15 @@ The order:
     - **#397** (3D per-user limits, failure log): stacked on #369, so merge it right after #366 → #367 → #369.
     - After each feature draft lands, wrap its POST route with `withFeatureLog` (one line each). Claude does this during the merge sequence.
 24. *(new, 2026-11-21, Phase 8.15 polish)* **#398** (Georgian screen-reader names, ka/en/ru crash screen, 44 px touch areas, browser logs off in production, README): based on main, no flags, any order. Its CI must be green on current main before its card.
+25. *(new, 2026-11-22, Phase 8.18 audit blockers)*
+    - **#399** (the browser's network guard, IPv6 and DNS): based on main. Merge it **before** the browser is opened to anyone new. The browser is live for admins today, so after the merge, run one admin browser task on example.com (one sandbox run, a few cents). If it fails, revert #399.
+    - **#400** (the same guard for Browser Agent v2): stacked on #387, so it merges right after **#312 → #387**. `AGENT_BROWSER_AGENT` stays off.
+    - The flag-isolation fixes are commits on the PRs themselves, so the merge order does not change:
+      - **#309:** admin switches.
+      - **#310:** pause and unpause.
+      - **#392:** Notion and GitHub routes.
+      - **#311** and **#393** were brought up to date with #310.
+    - **#401** is the throwaway combined run (#312, #387, #400, #399, #308 to #311, #356, #365, #366 to #369, #390, #392). It is closed unmerged after CI.
 
 **If a merge goes wrong:** in Vercel, promote the previous production deployment. This is instant and needs no rebuild. Then revert the merge commit. No step here runs SQL inside a merge, so a rollback never needs a database change.
 
