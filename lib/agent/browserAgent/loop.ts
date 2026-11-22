@@ -21,7 +21,11 @@
  * The result is the full trail (every observation summary, decision and outcome), which is what the run card shows
  * and what is saved to the workspace, as browser/<task>/steps.json is today.
  */
-import { BROWSER_MAX_SHOTS, checkBrowserTask, isPublicHost, type BrowserStep, type BrowserStepResult } from '@/lib/agent/browser/policy';
+import { BROWSER_MAX_SHOTS, isPublicHost, type BrowserStepResult } from '@/lib/agent/browser/policy';
+import { checkAgentAction, touchesPage, writtenSelectors, type AgentAction } from './actions';
+
+/** Phase 8.11: the loop's actions are ./actions (the planned-task steps plus scroll, select, check, hover, click_at, …). */
+type BrowserStep = AgentAction;
 
 export const AGENT_MAX_ACTIONS = 25;
 export const AGENT_WALL_MS = 5 * 60_000;
@@ -37,6 +41,8 @@ export interface Observation {
   links: { text: string; href: string }[];
   /** CSS selectors of password / card-number / one-time-code fields on the page now. */
   secretFields: string[];
+  /** The page's visible controls with their boxes (./driver), when the session reports them: what a click_at lands on. */
+  elements?: Array<{ selector: string; label: string; type: string; tag: string; secret: boolean; x: number; y: number; w: number; h: number }>;
 }
 
 export type Decision =
@@ -52,7 +58,7 @@ export interface Decider {
 /** One live browser for the whole loop (unlike today's runner, which runs a plan and is destroyed). */
 export interface BrowserSession {
   observe(signal: AbortSignal): Promise<Observation>;
-  act(step: BrowserStep, signal: AbortSignal): Promise<BrowserStepResult>;
+  act(step: BrowserStep, signal: AbortSignal): Promise<Omit<BrowserStepResult, 'op'> & { op: string }>;
 }
 
 export type StopReason =
@@ -63,7 +69,7 @@ export interface TrailEntry {
   url: string;
   decision: Decision;
   /** Present when the action ran. */
-  result?: BrowserStepResult;
+  result?: Omit<BrowserStepResult, 'op'> & { op: string };
   /** Present when the loop refused or held the action. */
   held?: { reason: StopReason; detail: string };
 }
@@ -98,6 +104,7 @@ export function boundObservation(o: Observation): Observation {
     links: (Array.isArray(o.links) ? o.links : []).slice(0, OBS_LINKS_MAX).map((l) => ({ text: l.text.slice(0, 120), href: l.href.slice(0, 500) })),
     // Not a list → kept as unknown, so sensitiveReason fails closed.
     secretFields: Array.isArray(o.secretFields) ? o.secretFields.slice(0, 20) : (undefined as unknown as string[]),
+    ...(Array.isArray(o.elements) ? { elements: o.elements.slice(0, 80).map((e) => ({ ...e, label: String(e.label ?? '').slice(0, 120) })) } : {}),
   };
 }
 
@@ -113,9 +120,9 @@ const OPAQUE_SUBMIT = /(type\s*=\s*["']?submit|\bform\b[^,]*\bbutton\b)/i;
 export function sensitiveReason(step: BrowserStep, page: Observation): string | null {
   // An observation we cannot read is ambiguous: nothing that touches the page runs without the user.
   const secrets = Array.isArray(page.secretFields) ? page.secretFields : null;
-  const touches = step.op === 'click' || step.op === 'press' || step.op === 'type';
+  const touches = touchesPage(step);
   if (touches && secrets === null) return 'the page did not say which fields are secret';
-  if (step.op === 'type' && (secrets!.includes(step.selector) || SECRET_SELECTOR.test(step.selector))) return 'typing into a password or payment field';
+  if (writtenSelectors(step).some((sel) => secrets!.includes(sel) || SECRET_SELECTOR.test(sel))) return 'typing into a password or payment field';
   if (step.op === 'goto') {
     try {
       const u = new URL(step.url);
@@ -123,10 +130,22 @@ export function sensitiveReason(step: BrowserStep, page: Observation): string | 
     } catch { return 'an address that cannot be read'; }
   }
   if (touches && SENSITIVE_URL.test(page.url)) return 'acting on a sign-in or payment page';
-  // A form holding a secret field: a click or a key press could submit it, and we cannot tell which.
-  if ((step.op === 'click' || step.op === 'press') && secrets!.length > 0) return 'a page with a password or payment field';
+  // A form holding a secret field: a click, a key press or typing into whatever has the focus could submit it or put a
+  // secret in, and we cannot tell which.
+  if ((step.op === 'click' || step.op === 'press' || step.op === 'click_at' || step.op === 'type_focused') && secrets!.length > 0) {
+    return 'a page with a password or payment field';
+  }
   if (step.op === 'click' && COMMIT_CLICK.test(step.selector)) return 'a click that buys, sends or deletes something';
   if (step.op === 'click' && OPAQUE_SUBMIT.test(step.selector)) return 'a submit button that does not say what it does';
+  if (step.op === 'click_at') {
+    // A click on a point: what is under it decides. Nothing known there, or a control that commits → the user decides.
+    const hit = (page.elements ?? []).filter((e) => step.x >= e.x && step.x <= e.x + e.w && step.y >= e.y && step.y <= e.y + e.h);
+    if (hit.length === 0 && page.elements === undefined) return 'a click on a point the page did not describe';
+    if (hit.some((e) => e.secret)) return 'a password or payment field';
+    if (hit.some((e) => COMMIT_CLICK.test(e.label))) return 'a click that buys, sends or deletes something';
+    if (hit.some((e) => e.type === 'submit' && !e.label.trim())) return 'a submit button that does not say what it does';
+  }
+  if (step.op === 'check' && COMMIT_CLICK.test(step.selector)) return 'a box that agrees to buy, send or delete something';
   return null;
 }
 
@@ -179,15 +198,13 @@ export async function runBrowserAgent(deps: LoopDeps, input: { goal: string; sig
       if (decision.kind === 'done') return end('done', 'goal reached', { answer: decision.answer.slice(0, 4_000) });
       if (decision.kind === 'stuck') return end('stuck', decision.why.slice(0, 300));
 
-      // The same rules as a planned task, one action at a time.
-      // (checkBrowserTask wants a plan that opens a page first; a fixed public page stands in for "the page we are on".)
-      const check = checkBrowserTask({ steps: [{ op: 'goto', url: 'https://example.com/' }, decision.step] });
+      // The same rules as a planned task, one action at a time (./actions, which also checks the new actions).
+      const check = checkAgentAction(decision.step);
       if (!check.ok) {
-        const detail = check.error.replace(/^step 2: /, '');
-        entry.held = { reason: 'refused', detail };
-        return end('refused', detail);
+        entry.held = { reason: 'refused', detail: check.error };
+        return end('refused', check.error);
       }
-      const step = check.plan.steps[1]!;
+      const step = check.action;
       if (step.op === 'goto' && !isPublicHost(new URL(step.url).hostname)) {
         entry.held = { reason: 'refused', detail: 'not a public host' };
         return end('refused', 'not a public host');
