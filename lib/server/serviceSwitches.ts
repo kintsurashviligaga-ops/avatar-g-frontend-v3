@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { getFeatureFlag, invalidateFlagCache, readDbOverrides } from '@/lib/server/feature-flags';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import type { ToolId } from '@/lib/studio/tools';
+import { agentValidateOn } from '@/lib/agent/run/engineFlags';
 
 /** Tools an admin can switch. Chat (the window itself) and the on-device photo sorter are not switchable. */
 const STUDIO_SWITCHES = [
@@ -33,6 +34,16 @@ export const AGENT_SWITCH_LABEL: Readonly<Record<(typeof AGENT_SWITCHES)[number]
 };
 export const SWITCHABLE_TOOLS = [...STUDIO_SWITCHES, ...AGENT_SWITCHES] as const;
 export type SwitchableTool = (typeof SWITCHABLE_TOOLS)[number];
+
+/**
+ * The switches the admin panel shows and accepts right now (Phase 8.18 flag isolation): the Agent G run-step switches
+ * only while AGENT_VALIDATE is on, since nothing else reads them. Off, the panel and its POST are exactly as on main.
+ */
+export function openSwitches(env: NodeJS.ProcessEnv = process.env): readonly SwitchableTool[] {
+  return agentValidateOn(env) ? SWITCHABLE_TOOLS : STUDIO_SWITCHES;
+}
+export const isOpenSwitch = (v: unknown, env: NodeJS.ProcessEnv = process.env): v is SwitchableTool =>
+  typeof v === 'string' && (openSwitches(env) as readonly string[]).includes(v);
 
 export const isSwitchableTool = (v: unknown): v is SwitchableTool =>
   typeof v === 'string' && (SWITCHABLE_TOOLS as readonly string[]).includes(v);
