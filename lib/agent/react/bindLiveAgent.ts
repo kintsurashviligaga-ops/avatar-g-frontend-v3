@@ -64,6 +64,7 @@ import type { EditQuoteResult } from '@/lib/agent/media/editExec';
 import type { CodeQuoteResult } from '@/lib/agent/sandbox/codeQuote';
 import type { BrowserQuoteResult } from '@/lib/agent/browser/quote';
 import type { DriveDeps } from '@/lib/connectors/google/drive';
+import { PLUGIN_NOTE, PLUGIN_TOOL_SPECS, calendarToolOn, githubToolOn, notionToolOn, type PluginToolContext } from '@/lib/agent/plugins/tools';
 import {
   ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
 } from '@/lib/agent/media/editPlan';
@@ -73,7 +74,8 @@ import {
 } from '@/lib/agent/media/layers';
 import { MAX_SPEED, MIN_SPEED } from '@/lib/video/editFilters';
 
-export interface AgentContext extends ImageToolContext {
+/** PluginToolContext: Notion / GitHub / Calendar plugins (lib/agent/plugins), all absent unless AGENT_PLUGINS opens them. */
+export interface AgentContext extends ImageToolContext, PluginToolContext {
   userId: string;
   /** The files the user attached to THIS request (their upload paths or our signed links), in their order. */
   files?: string[];
@@ -214,6 +216,27 @@ export const codeToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true &
 export const MAX_CODE_QUOTES_PER_RUN = 2;
 /** The Drive tools need the connector configured and open to this user (the route hands the deps). */
 export const driveToolOn = (ctx: AgentContext): boolean => !!ctx.driveDeps?.cfg;
+
+/**
+ * What the Drive tools tell the model when they cannot answer, and what to do next. A grant that dies mid-task (the user
+ * removed MyAvatar at Google, the refresh token was revoked) reads as not_connected: the model must ask the user to
+ * reconnect, in the user's language, through the Connectors button beside „+", and must never guess what a file says.
+ */
+export const DRIVE_NEXT_RECONNECT =
+  'Tell the user, in their language, that Google Drive is not connected (or the connection expired) and that they can connect it with the Connectors button next to "+" → Google Drive → Connect. Do not guess what their files say.';
+export const DRIVE_NEXT_PICK =
+  'No Drive files are picked yet. Tell the user, in their language, to open the Connectors button next to "+" → Google Drive → Pick files, then ask again. Do not guess file contents.';
+export function driveToolMessage(reason: string): string {
+  if (reason === 'not_connected') return 'Google Drive is not connected, or the connection expired.';
+  if (reason === 'not_found') return 'That file was not picked or does not exist.';
+  if (reason === 'unavailable') return 'Google Drive is unavailable right now.';
+  return 'Google Drive did not answer.';
+}
+export function driveToolNext(reason: string): string {
+  if (reason === 'not_connected') return DRIVE_NEXT_RECONNECT;
+  if (reason === 'not_found') return 'Call drive_list_files and use an id from it. If the file is not listed, ask the user to pick it in Connectors → Google Drive → Pick files.';
+  return 'Say plainly that Google Drive did not answer and offer to try again later. Do not guess what the file says.';
+}
 /** Each read downloads one file (≤ 10 MB): four per request, one list. */
 export const MAX_DRIVE_READS_PER_RUN = 4;
 /** The browser tool: the sandbox gate, the browser switched on, and a route that hands the plan back. */
@@ -794,7 +817,8 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     run: async (_args, ctx) => {
       const { driveProvider } = await import('@/lib/connectors/google/drive');
       const r = await driveProvider(ctx.driveDeps!).listFiles(ctx.userId);
-      if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : 'Google Drive did not answer.' };
+      if (!r.ok) return { error: r.reason, message: driveToolMessage(r.reason), next: driveToolNext(r.reason) };
+      if (r.files.length === 0) return { files: [], next: DRIVE_NEXT_PICK };
       return { files: r.files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType })) };
     },
   }),
@@ -810,7 +834,7 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     run: async ({ id }, ctx) => {
       const { driveProvider } = await import('@/lib/connectors/google/drive');
       const r = await driveProvider(ctx.driveDeps!).read(ctx.userId, id);
-      if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : r.reason === 'not_found' ? 'That file was not picked or does not exist.' : 'The file could not be read.' };
+      if (!r.ok) return { error: r.reason, message: driveToolMessage(r.reason), next: driveToolNext(r.reason) };
       return { name: r.name, text: r.text };
     },
   }),
@@ -974,6 +998,8 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       return { ...r.analysis, lengthSec: r.source.durationSec, type: r.source.type };
     },
   }),
+  // Agent G plugins (lib/agent/plugins/tools): each offered only when its plugin is open to this request.
+  ...PLUGIN_TOOL_SPECS,
 ];
 
 /** The user's language for the analysis' words, from the script of their goal (ka · ru · en). */
@@ -1011,6 +1037,7 @@ export async function runLiveAgent(
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', driveToolOn(ctx) ? AGENT_DRIVE_NOTE : '',
     workspaceToolOn(ctx) ? AGENT_WORKSPACE_NOTE : '', browserToolOn(ctx) ? AGENT_BROWSER_NOTE : '',
+    notionToolOn(ctx) || githubToolOn(ctx) || calendarToolOn(ctx) ? PLUGIN_NOTE : '',
     opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
