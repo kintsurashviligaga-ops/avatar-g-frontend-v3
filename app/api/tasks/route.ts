@@ -29,8 +29,9 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { runAfterResponse } from '@/lib/platform/afterResponse';
 import { agentMediaOpenTo } from '@/lib/agent/media/access';
-import { approveStep, planRun, resumeRun, startRun, tickRun, type RunError } from '@/lib/agent/run/runExec';
+import { approveStep, pauseRun, planRun, resumeRun, startRun, tickRun, type RunError } from '@/lib/agent/run/runExec';
 import { liveRunDeps } from '@/lib/agent/run/runLive';
+import { agentEngineMedia } from '@/lib/agent/run/engineFlags';
 import { cancelTask, listTasks, MAX_LIST, readTask } from '@/lib/tasks/taskService';
 import { liveTaskDeps } from '@/lib/tasks/taskLive';
 import { parseTaskId } from '@/lib/tasks/taskView';
@@ -42,12 +43,16 @@ export const maxDuration = 600;
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' };
 const notFound = () => NextResponse.json({ ok: false, error: 'not_found', message: 'No such task.' }, { status: 404, headers: NO_STORE });
+/** A Phase 3.5b action while AGENT_ENGINE_MEDIA is off: the feature is not there (Phase 8.18 flag isolation). */
+const featureDisabled = () => NextResponse.json({ ok: false, error: 'feature_disabled' }, { status: 404, headers: NO_STORE });
 
 const RUN_STATUS: Record<RunError['error'], number> = {
   bad_spec: 400, not_configured: 503, quote_invalid: 409, quote_changed: 409, quote_expired: 409, jobs_unavailable: 503,
   not_found: 404, not_running: 409, not_waiting: 409, not_final: 409, nothing_to_resume: 409,
   // VALIDATE (Phase 3.5a, only while AGENT_VALIDATE is on): a retired model or a switched-off tool; a step not open to this account.
   capability_unavailable: 503, policy_denied: 403,
+  // Phase 3.5b: only a v2 (engine) run can be paused.
+  not_pausable: 409,
 };
 const runError = (e: RunError) => NextResponse.json(e, { status: RUN_STATUS[e.error], headers: NO_STORE });
 
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(r, { status: r.error === 'busy' ? 503 : 409, headers: NO_STORE });
   }
 
-  if (action !== 'plan' && action !== 'run' && action !== 'approve' && action !== 'resume') {
+  if (action !== 'plan' && action !== 'run' && action !== 'approve' && action !== 'resume' && action !== 'pause' && action !== 'unpause') {
     return NextResponse.json({ ok: false, error: 'bad_action' }, { status: 400 });
   }
   // Starting work: only while Agent G's media execution is open to this user.
@@ -115,6 +120,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (action === 'plan') {
     const r = await planRun(deps, { userId: user.id, spec: body?.spec });
     return r.ok ? NextResponse.json(r, { headers: NO_STORE }) : runError(r);
+  }
+
+  // Phase 3.5b: pause / un-pause a run on the engine (v2). `resume` stays what it is: carry a FINISHED run on.
+  // Off (AGENT_ENGINE_MEDIA unset, the default): `pause` is a 404, and `unpause` is one too unless a v2 run is already
+  // paused from a time the flag was on (so switching it off never strands a paused run).
+  if (action === 'pause' || action === 'unpause') {
+    const engineOn = agentEngineMedia() !== 'off';
+    if (!engineOn && action === 'pause') return featureDisabled();
+    const id = parseTaskId(body?.id);
+    if (!id) return notFound();
+    const r = await pauseRun(deps, { userId: user.id, id, paused: action === 'pause', startWorkers: true });
+    if (!r.ok) return !engineOn && r.error === 'not_pausable' ? featureDisabled() : runError(r);
+    const task = await readTask(liveTaskDeps(), { userId: user.id, id, workersOpen: false });
+    return NextResponse.json({ ok: true, task }, { headers: NO_STORE });
   }
 
   if (action === 'approve') {
