@@ -46,7 +46,9 @@ export function PricingSection() {
   const labels = LABELS[locale]
 
   return (
-    <section id="pricing" className="relative isolate py-24 px-4 sm:px-6" style={{ borderTop: '1px solid var(--color-border)' }}>
+    // The whole /pricing page: on a phone the old py-24 under the page's own pt-8 plus a top rule put the plans
+    // ~280 px below the header (an empty band and a stray line). Tighter on phones, unchanged from sm up.
+    <section id="pricing" className="relative isolate px-4 pb-16 pt-6 sm:px-6 sm:py-24">
       {/* ⚠️ A CONTAINER, NOT THE VIEWPORT. This page renders inside the studio shell, whose sidebar takes ~220 px:
           at a 1024-px window the old `lg:grid-cols-4` packed four cards into ~800 px — 154 px each — and Georgian /
           Russian words broke mid-syllable („საბაზის/ო", „Бесплат/но"). The grid now reads ITS OWN width (CSS container
@@ -54,11 +56,12 @@ export function PricingSection() {
           1040 px, where every card keeps ≥ 245 px. The 2-column rule is a RANGE: two overlapping variants of the same
           property resolve by stylesheet order, not width, and the 2-column one won at every size. */}
       <div className="relative mx-auto max-w-6xl [container-type:inline-size]">
-        <div className="text-center mb-16">
-          <h2 className="break-words text-3xl font-black leading-[1.05] tracking-[-0.03em] md:text-[40px]" style={{ color: 'var(--color-text)' }}>
+        <div className="mb-10 text-center sm:mb-16">
+          {/* The page's one h1 (the pricing page had none: a search landing page without a top heading). */}
+          <h1 className="break-words text-3xl font-black leading-[1.05] tracking-[-0.03em] md:text-[40px]" style={{ color: 'var(--color-text)' }}>
             {t('pricing.title')}{' '}
             <span style={{ color: 'var(--color-text)' }}>{t('pricing.titleAccent')}</span>
-          </h2>
+          </h1>
           <p className="mt-4 text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
             {labels.focus}
           </p>
