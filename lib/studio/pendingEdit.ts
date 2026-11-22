@@ -20,6 +20,8 @@ export interface PendingEdit {
 }
 
 const KEY = 'myavatar:pending-edit';
+/** Fired after a stash when the studio is ALREADY open (the 3D Studio's "Use in Video"): it takes the file at once. */
+export const PENDING_EDIT_EVENT = 'myavatar:pending-edit';
 export const PENDING_EDIT_MAX_AGE_MS = 30 * 60_000;
 
 /** Which editor a Library file opens in, from its `service_type` (GET /api/studio/library). A 3D model (.glb, filed as

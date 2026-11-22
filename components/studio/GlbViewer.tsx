@@ -27,11 +27,11 @@
  * `FramedGlb` (the loader + the framing) is exported for the 3D scene (components/studio/scene/SceneCanvas), so the
  * two never drift into two ways of loading a model.
  */
-import { Suspense, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { Box3 } from 'three';
+import { Box3, Mesh, type Material } from 'three';
 import { fitToBox, type FitAnchor } from '@/lib/studio/scene3d';
 import { GLB_VIEWER_FRAME } from './glbFrame';
 
@@ -40,7 +40,15 @@ import { GLB_VIEWER_FRAME } from './glbFrame';
  * it instead). Suspends while loading and THROWS when the file cannot be loaded (an expired signed URL, a truncated
  * file): the caller owns the Suspense and the ErrorBoundary.
  */
-export function FramedGlb({ url, size = 2, anchor = 'center' }: { url: string; size?: number; anchor?: FitAnchor }) {
+export function FramedGlb({ url, size = 2, anchor = 'center', wireframe, onStats }: {
+  url: string;
+  size?: number;
+  anchor?: FitAnchor;
+  /** 3D Studio viewer only. Defined ⇒ this view gets its OWN material copies (the loader cache shares them across viewers). */
+  wireframe?: boolean;
+  /** 3D Studio viewer only: triangle and vertex counts once loaded. */
+  onStats?: (s: { triangles: number; vertices: number }) => void;
+}) {
   // useLoader suspends and caches by url; the caller's Suspense boundary holds until the mesh is ready.
   const gltf = useLoader(GLTFLoader, url);
 
@@ -60,6 +68,41 @@ export function FramedGlb({ url, size = 2, anchor = 'center' }: { url: string; s
       fit: box.isEmpty() ? null : fitToBox([box.min.x, box.min.y, box.min.z], [box.max.x, box.max.y, box.max.z], size, anchor),
     };
   }, [gltf, size, anchor]);
+
+  // Own material copies, made once per clone, only for a view that toggles wireframe.
+  const ownMaterials = useMemo(() => {
+    if (wireframe === undefined) return null;
+    const list: Material[] = [];
+    scene.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      o.material = Array.isArray(o.material) ? o.material.map((m: Material) => m.clone()) : (o.material as Material).clone();
+      list.push(...(Array.isArray(o.material) ? o.material : [o.material]));
+    });
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per clone; toggling must not re-clone
+  }, [scene]);
+
+  useEffect(() => {
+    if (!ownMaterials) return;
+    for (const m of ownMaterials) {
+      (m as Material & { wireframe?: boolean }).wireframe = !!wireframe;
+      m.needsUpdate = true;
+    }
+  }, [ownMaterials, wireframe]);
+
+  useEffect(() => {
+    if (!onStats) return;
+    let triangles = 0;
+    let vertices = 0;
+    scene.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      const g = o.geometry;
+      const v = g.attributes?.position?.count ?? 0;
+      vertices += v;
+      triangles += Math.floor((g.index ? g.index.count : v) / 3);
+    });
+    onStats({ triangles, vertices });
+  }, [scene, onStats]);
 
   return (
     <group scale={fit?.scale ?? 1} position={fit?.offset ?? [0, 0, 0]}>

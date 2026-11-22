@@ -219,6 +219,7 @@
       "stripe_events",
       "stripe_invoices",
       "stripe_payments",
+      "studio3d_jobs",
       "supplier_products",
       "suppliers",
       "support_tickets",

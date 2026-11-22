@@ -235,7 +235,7 @@ import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
 import { stashComposerHandoff, takeComposerHandoff, type ComposerHandoff } from '@/lib/studio/composerHandoff';
-import { takePendingEdit } from '@/lib/studio/pendingEdit';
+import { takePendingEdit, PENDING_EDIT_EVENT } from '@/lib/studio/pendingEdit';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -8801,17 +8801,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // here in Montage, once, on mount — a film or a picture on the timeline, a song as the music (GG's card, 2026-10-18:
   // every Library file goes to Montage; a picture used to open the photo editor, a song the audio editor, and GG took
   // that for the file not having come over). Nothing is generated or charged.
+  // The same hand-over while the studio is already open: the 3D Studio's "Use in Video" stashes its turntable clip and
+  // fires PENDING_EDIT_EVENT (lib/studio/pendingEdit).
   useEffect(() => {
-    const p = takePendingEdit();
-    if (!p) return;
-    if (p.kind === 'audio') {
-      setMontageSeed(null); setMontageMusicSeed({ url: p.url }); // Montage names it „Music" in the person's language
-    } else {
-      setMontageSeed([{ url: p.url, kind: p.kind }]); setMontageMusicSeed(null);
-    }
-    setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
-    setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+    const open = () => {
+      const p = takePendingEdit();
+      if (!p) return;
+      if (p.kind === 'audio') {
+        setMontageSeed(null); setMontageMusicSeed({ url: p.url }); // Montage names it „Music" in the person's language
+      } else {
+        setMontageSeed([{ url: p.url, kind: p.kind }]); setMontageMusicSeed(null);
+      }
+      setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
+      setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+    };
+    open();
+    window.addEventListener(PENDING_EDIT_EVENT, open);
+    return () => window.removeEventListener(PENDING_EDIT_EVENT, open);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount (setters are stable)
   }, []);
   // Reverse context pipeline (V4): the editor hands its current (edited) asset back → seed it as a chat attachment so
   // the user can keep conversing / prompting Agent G about the freshly-edited file. Fetch → dataURL (the attachment
