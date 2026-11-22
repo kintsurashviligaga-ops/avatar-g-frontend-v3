@@ -56,6 +56,7 @@ const mockRun = {
   approveStep: jest.fn(async () => ({ ok: true })),
   resumeRun: jest.fn(async () => ({ ok: true, runId: 'run-2', replay: false })),
   tickRun: jest.fn(async () => null),
+  pauseRun: jest.fn(async (): Promise<{ ok: true } | { ok: false; error: string; message: string }> => ({ ok: true })),
 };
 jest.mock('../../../lib/agent/run/runExec', () => ({
   planRun: (...a: unknown[]) => (mockRun.planRun as jest.Mock)(...a),
@@ -63,6 +64,7 @@ jest.mock('../../../lib/agent/run/runExec', () => ({
   approveStep: (...a: unknown[]) => (mockRun.approveStep as jest.Mock)(...a),
   resumeRun: (...a: unknown[]) => (mockRun.resumeRun as jest.Mock)(...a),
   tickRun: (...a: unknown[]) => (mockRun.tickRun as jest.Mock)(...a),
+  pauseRun: (...a: unknown[]) => (mockRun.pauseRun as jest.Mock)(...a),
 }));
 jest.mock('../../../lib/agent/run/runLive', () => ({ liveRunDeps: () => ({ live: true }) }));
 const mockAfter: string[] = [];
@@ -269,5 +271,35 @@ describe('multi-step runs (PART 2): plan, run, approve, resume', () => {
       await get(`?id=job-m&after=${bad}`);
       expect(mockKind.status).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'job-m' }), 'user-1', { workersOpen: false });
     }
+  });
+});
+
+describe('pause / unpause (Phase 3.5b) stay behind AGENT_ENGINE_MEDIA (Phase 8.18 flag isolation)', () => {
+  beforeEach(() => { process.env.AGENT_G_MEDIA_EXEC = '1'; delete process.env.AGENT_ENGINE_MEDIA; });
+
+  test('flag off: pause is a 404 feature_disabled and never touches a run', async () => {
+    const r = await post({ action: 'pause', id: 'job-m' });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ ok: false, error: 'feature_disabled' });
+    expect(mockRun.pauseRun).not.toHaveBeenCalled();
+  });
+
+  test('flag off: unpause of a run that is not a paused v2 run is the same 404', async () => {
+    mockRun.pauseRun.mockResolvedValueOnce({ ok: false, error: 'not_pausable', message: 'x' });
+    const r = await post({ action: 'unpause', id: 'job-m' });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ ok: false, error: 'feature_disabled' });
+  });
+
+  test('flag off: a v2 run paused while the flag was on can still be continued', async () => {
+    expect((await post({ action: 'unpause', id: 'job-m' })).status).toBe(200);
+    expect(mockRun.pauseRun).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: 'job-m', paused: false }));
+  });
+
+  test('flag on (admins): pause reaches the engine, and not_pausable is the usual 409', async () => {
+    process.env.AGENT_ENGINE_MEDIA = 'admins';
+    expect((await post({ action: 'pause', id: 'job-m' })).status).toBe(200);
+    mockRun.pauseRun.mockResolvedValueOnce({ ok: false, error: 'not_pausable', message: 'x' });
+    expect((await post({ action: 'pause', id: 'job-m' })).status).toBe(409);
   });
 });
