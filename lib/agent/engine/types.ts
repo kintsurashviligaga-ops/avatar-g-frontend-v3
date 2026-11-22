@@ -23,6 +23,9 @@ export const ENGINE_TOOLS = [
   'speech',     // read-aloud (gemini-3.8-flash-tts)
   'write',      // text by the chat model (summary, script, caption)
   'export',     // file a workspace file in the Library
+  'audio_extract', // media run: the sound out of a video or link, as an MP3 (ffmpeg, lib/agent/media/audioExtract)
+  'montage',    // media run: clips cut to a track (ffmpeg, lib/agent/media/montageExec)
+  'edit',       // media run: the user's video edited (ffmpeg, lib/agent/media/editExec)
 ] as const;
 export type EngineTool = (typeof ENGINE_TOOLS)[number];
 
@@ -44,8 +47,8 @@ export const DEFAULT_RUN_DEADLINE_MS = 10 * 60_000;
  * minutes per step, so 10 would end good runs early. GG chose this 2026-11-13 (Phase 3.5 decision 1).
  */
 export const MEDIA_RUN_DEADLINE_MS = 30 * 60_000;
-/** Tools whose steps make the run a media run (3.5a adds montage, edit and audio_extract when media runs move over). */
-export const MEDIA_TOOLS: ReadonlySet<EngineTool> = new Set(['video', 'music']);
+/** Tools whose steps make a clip or a song, so the run gets MEDIA_RUN_DEADLINE_MS (an MP3 extraction alone does not). */
+export const MEDIA_TOOLS: ReadonlySet<EngineTool> = new Set(['video', 'music', 'montage', 'edit']);
 /** A retried attempt waits this long first: an instant retry of a rate limit or a busy model usually fails again. */
 export const RETRY_BACKOFF_MS = 5_000;
 /**
