@@ -1,0 +1,6 @@
+pillow==11.0.0
+numpy==1.26.4
+trimesh==4.5.3
+pyrender==0.1.45
+PyOpenGL==3.1.7
+huggingface_hub==0.26.2
