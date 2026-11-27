@@ -19,6 +19,7 @@ import type { MusicDuration } from '@/lib/studio/musicQuote';
 import { musicCreateCopy, type MusicTempo } from './musicCreateCopy';
 import { PillSegmented } from './PillSegmented';
 import { InfoButton, PanelCard, cx, useInfoTip } from './primitives';
+import { musicUxV2Copy, slidersMoved } from './musicUxV2';
 
 /** ref2's order — Auto first, then the two solo voices, then the duet. */
 const VOCAL_ORDER: readonly VocalGender[] = ['auto', 'male', 'female', 'duet'];
@@ -41,6 +42,8 @@ export interface MoreOptionsProps {
   tempo: MusicTempo;
   onTempo: (t: MusicTempo) => void;
   templates: { items: readonly TemplateCardItem[]; activeId: string | null; onPick: (id: string) => void };
+  /** Phase 7.6 M4 (NEXT_PUBLIC_MUSIC_UX_V2): the two approximate sliders sit under an "Advanced" fold, with a dot when moved. */
+  foldSliders?: boolean;
 }
 
 export function MoreOptions(p: MoreOptionsProps) {
@@ -50,6 +53,10 @@ export function MoreOptions(p: MoreOptionsProps) {
   const weirdTip = useInfoTip();
   const influenceTip = useInfoTip();
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [slidersOpen, setSlidersOpen] = useState(false);
+  const v2c = musicUxV2Copy(p.locale);
+  const moved = slidersMoved(p.sliders);
+  const showSliders = !p.foldSliders || slidersOpen;
 
   const tip = (t: ReturnType<typeof useInfoTip>, text: string) =>
     t.open ? <p id={t.id} role="note" className="mt-1 text-[12px] leading-snug text-app-muted">{text}</p> : null;
@@ -77,8 +84,23 @@ export function MoreOptions(p: MoreOptionsProps) {
           {p.instrumental && <p className="mt-1 text-[11.5px] text-app-muted">{cc.vocalOff}</p>}
         </div>
 
+        {p.foldSliders && (
+          <button
+            type="button"
+            data-testid="music-sliders-toggle"
+            aria-expanded={slidersOpen}
+            onClick={() => setSlidersOpen((v) => !v)}
+            className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl text-left text-[14px] font-medium text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+          >
+            <span className="flex min-w-0 items-center gap-2 truncate">
+              {v2c.advanced}
+              {moved && <span data-testid="music-sliders-moved" className="h-2 w-2 shrink-0 rounded-full bg-app-accent" aria-label={v2c.moved} role="img" />}
+            </span>
+            <ChevronDown size={16} aria-hidden="true" className={cx('shrink-0 text-app-muted transition-transform', slidersOpen && 'rotate-180')} />
+          </button>
+        )}
         {/* Weirdness */}
-        <div data-testid="music-sliders" className="space-y-1">
+        {showSliders && <div data-testid="music-sliders" className="space-y-1">
           <Slider
             stacked ticks={10} accentThumb
             label={mc.weirdness}
@@ -101,7 +123,7 @@ export function MoreOptions(p: MoreOptionsProps) {
           <p data-testid="music-sliders-hint" data-mode={p.controlsMode} className="text-[11px] leading-snug text-app-muted">
             {p.controlsMode === 'native' ? cc.native : mc.approximate}
           </p>
-        </div>
+        </div>}
 
         {/* Length and tempo are NOT repeated here: they are the two tiles beside Create, on screen in both modes (they were also
             chips in this card — the same two choices twice on one screen). */}
