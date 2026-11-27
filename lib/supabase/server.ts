@@ -1,4 +1,5 @@
 import 'server-only';
+import { localClaimsEnabled, verifiedClaimsUser } from './localClaims';
 
 import { cookies } from 'next/headers';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
@@ -141,8 +142,12 @@ export async function authedClientFromRequest(req: Request): Promise<{
 }> {
 	// 1. Cookie path
 	const cookieClient = createServerClient() as unknown as AnySupabase;
+	// AUTH_LOCAL_CLAIMS (lib/supabase/localClaims): verify the JWT here instead of a round trip to Supabase Auth.
+	const local = localClaimsEnabled();
 	{
-		const { data: { user } } = await cookieClient.auth.getUser();
+		const user = local
+			? await verifiedClaimsUser(cookieClient.auth)
+			: (await cookieClient.auth.getUser()).data.user;
 		if (user) return { supabase: cookieClient, user };
 	}
 
@@ -158,6 +163,8 @@ export async function authedClientFromRequest(req: Request): Promise<{
 		auth: { autoRefreshToken: false, persistSession: false },
 		global: { headers: { Authorization: `Bearer ${bearer}` } },
 	}) as unknown as AnySupabase;
-	const { data: { user } } = await bearerClient.auth.getUser();
+	const user = local
+		? await verifiedClaimsUser(bearerClient.auth, bearer)
+		: (await bearerClient.auth.getUser()).data.user;
 	return { supabase: bearerClient, user };
 }

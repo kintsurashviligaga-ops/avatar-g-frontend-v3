@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       id: user.id,
       email: user.email ?? null,
       name: meta.name ?? null,
-      createdAt: user.created_at ?? null,
+      createdAt: user.created_at || null, // '' for a claims-only user (lib/supabase/localClaims): unknown, not invented
       metadata: user.user_metadata ?? {},
     },
   };

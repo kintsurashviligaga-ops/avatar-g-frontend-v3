@@ -5,7 +5,8 @@
  * Uses environment variable ADMIN_EMAILS for allowlist
  */
 
-import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { isClaimsOnly } from '@/lib/supabase/localClaims';
 
 /**
  * Built-in founder admin(s). Merged with the ADMIN_EMAILS env allowlist so admin
@@ -117,10 +118,29 @@ export function verifiedEmail(user: AdminCandidate | null | undefined): string |
 export async function isAdminIdentity(user: AdminCandidate | null | undefined): Promise<boolean> {
   if (!user) return false;
   if (hasAdminRoleClaim(user)) return true;
+  // A user read from JWT claims (AUTH_LOCAL_CLAIMS, lib/supabase/localClaims) has no `email_confirmed_at`. Its email
+  // counts only after Auth confirms it — asked only when that email is on a list, so other users cost nothing extra.
+  if (isClaimsOnly(user)) {
+    const email = user.email?.trim().toLowerCase();
+    if (!email) return false;
+    const listed = adminAllowlist().includes(email) || (await adminEmailsFromDb()).includes(email);
+    return listed && (await emailConfirmedByAuth(user.id, email));
+  }
   const email = verifiedEmail(user);
   if (!email) return false;
   if (adminAllowlist().includes(email)) return true;
   return (await adminEmailsFromDb()).includes(email);
+}
+
+/** Does Supabase Auth hold this user with this email, confirmed? Fails closed. */
+async function emailConfirmedByAuth(userId: string, email: string): Promise<boolean> {
+  try {
+    const { data, error } = await createServiceRoleClient().auth.admin.getUserById(userId);
+    const u = data?.user;
+    return !error && !!u && u.email?.trim().toLowerCase() === email && !!u.email_confirmed_at;
+  } catch {
+    return false;
+  }
 }
 
 export async function isAdmin(): Promise<boolean> {
