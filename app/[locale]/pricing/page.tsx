@@ -4,6 +4,8 @@ import { JsonLd } from '@/components/seo/JsonLd';
 import { productSchemas } from '@/lib/seo/schema';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 import { pageMetadata, seoLang } from '@/lib/seo/metadata';
+import { PricingV8 } from '@/components/pricing/PricingV8';
+import { pricingV8On } from '@/lib/billing/margin/flags';
 
 // A primary conversion and search-landing page: its own localized title and description, the self-canonical /pricing
 // hreflang cluster and its own share card. (The metadata used to be split between this page and pricing/layout.tsx —
@@ -24,6 +26,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 // client child, so PricingSection is untouched.
 export default async function PricingPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
+  // Phase 8.1: the proposed v8 plans and per-action prices, only while NEXT_PUBLIC_PRICING_V8 is on (off by default).
+  if (pricingV8On()) return <PricingV8 locale={locale} />;
   return (
     <div className="bg-transparent" style={{ color: 'var(--color-text)' }}>
       <JsonLd data={productSchemas(PRICING_TIERS, locale)} />
