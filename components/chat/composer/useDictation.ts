@@ -115,6 +115,7 @@ import {
   type SpeechLang,
   type SttRequestLang,
 } from '@/lib/voice/speechLang';
+import { devWarn } from '@/lib/observability/devLog';
 
 // ─── Web Speech shapes (not in the TS DOM lib) ───────────────────────────────────────────────────────────
 
@@ -1369,8 +1370,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         if (code === 'language-not-supported' || code === 'service-not-allowed') {
           // Permanent for this language: go straight to the recorder for the rest of the session.
           unsupportedLangsRef.current.add(lang);
-          // eslint-disable-next-line no-console
-          console.warn(`[stt] Web Speech rejected lang=${lang} (${code}) — using the recorder for this session`);
+          devWarn(`[stt] Web Speech rejected lang=${lang} (${code}) — using the recorder for this session`);
         }
         if (fellBack || runRef.current !== run) return;
         if (!gotResult && !micStopRequestedRef.current && !sttDiscardRef.current) { toRecorder(); return; }

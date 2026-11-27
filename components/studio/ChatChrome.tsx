@@ -86,6 +86,8 @@ import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/
 import { ResearchHost } from '@/components/studio/research';
 import { DriveSettingsButton } from '@/components/studio/research/DriveSettingsButton';
 import { dedupeConversations } from '@/lib/chat/conversationSync';
+import { a11y } from '@/lib/i18n/a11yLabels';
+import { devWarn } from '@/lib/observability/devLog';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -205,7 +207,7 @@ function LanguageSwitcher({ locale, up = false }: { locale: string; up?: boolean
   };
   return (
     <div className="relative" ref={wrapRef}>
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Language" aria-haspopup="menu" aria-expanded={open}
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-label={a11y('language', locale)} aria-haspopup="menu" aria-expanded={open}
         className="flex min-h-[44px] items-center gap-0.5 rounded-full px-1.5 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0 sm:gap-1 sm:px-2">
         <span className="text-[13px] font-semibold leading-none tracking-wide">{current.label}</span>
         <ChevronDown size={13} className={`text-app-muted transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -873,8 +875,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       window.dispatchEvent(new CustomEvent('myavatar:delete-conversation', { detail: { id } }));
       window.setTimeout(() => {
         if (purgeLocally()) {
-          // eslint-disable-next-line no-console
-          console.warn('[chrome] delete fell back to a local purge — the studio was not listening');
+          devWarn('[chrome] delete fell back to a local purge — the studio was not listening');
           window.dispatchEvent(new Event('myavatar:conversations-updated'));
         }
       }, 0);
@@ -1148,7 +1149,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               type="button"
               onClick={() => { if (searchOpen) setConvQuery(''); setSearchOpen((v) => !v); }}
               aria-label={tSearchRow}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15 ag-hit"
             >
               <Search className="h-[18px] w-[18px]" />
             </button>
@@ -1156,7 +1157,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               type="button"
               onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
               aria-label={tCollapse}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15 ag-hit"
             >
               <X className="h-[18px] w-[18px]" />
             </button>
@@ -1359,7 +1360,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {showBack && (
                 isCloseControl ? (
                   <button type="button" onClick={goBack} aria-label={closeLabel}
-                    className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
+                    className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation ag-hit">
                     <X className="h-[18px] w-[18px]" />
                   </button>
                 ) : (
@@ -1372,7 +1373,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 )
               )}
               {/* Mobile: open the sidebar drawer. */}
-              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-white transition-colors hover:bg-white/[0.14] touch-manipulation md:hidden">
+              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-white transition-colors hover:bg-white/[0.14] touch-manipulation md:hidden ag-hit">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <line x1="5" y1="9" x2="19" y2="9" />
                   <line x1="5" y1="15" x2="19" y2="15" />
@@ -1403,7 +1404,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
               {onStudioHome && (
                 <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white/90 transition-colors hover:bg-white/[0.14] touch-manipulation mr-1">
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white/90 transition-colors hover:bg-white/[0.14] touch-manipulation mr-1 ag-hit">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="9" strokeDasharray="3 3" />
                     <path d="M14.5 9.5L9.5 14.5M14.5 9.5L16 8C16.5 7.5 17.5 7.5 18 8C18.5 8.5 18.5 9.5 18 10L16.5 11.5M14.5 9.5L16.5 11.5M9.5 14.5L8 16L9.5 14.5Z" />
@@ -1548,11 +1549,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <div ref={profileDialogRef} role="dialog" aria-modal="true" aria-label={locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
-              <button type="button" onClick={() => setProfileOpen(false)} aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'} className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setProfileOpen(false)} aria-label={a11y('close', locale)} className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8 ag-hit"><X className="h-4 w-4" /></button>
             </div>
             {/* Profile photo (FIX 2) — click to upload; service-role route stores it. */}
             <div className="mb-4 flex flex-col items-center gap-2">
-              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label={locale === 'en' ? 'Change photo' : locale === 'ru' ? 'Сменить фото' : 'ფოტოს შეცვლა'}
+              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label={a11y('changePhoto', locale)}
                 className="group relative h-20 w-20 overflow-hidden rounded-full bg-app-accent/15 ring-2 ring-app-border/15 transition hover:ring-app-accent/40">
                 {avatarUrl && !avatarBroken ? (
                   // eslint-disable-next-line @next/next/no-img-element

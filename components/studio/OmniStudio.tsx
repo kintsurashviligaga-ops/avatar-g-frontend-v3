@@ -301,6 +301,8 @@ import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { IMG_ASPECTS, IMG_STYLES, imageAspectsOffered, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { saveMedia } from '@/lib/media/saveMedia';
+import { a11y } from '@/lib/i18n/a11yLabels';
+import { devInfo, devWarn } from '@/lib/observability/devLog';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -1709,19 +1711,19 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
                 if (cardRef.current) { try { e.dataTransfer.setDragImage(cardRef.current, 24, 24); } catch { /* noop */ } }
                 onDragStartScene(s.ordinal);
               } : undefined}
-              className={`flex h-7 w-8 shrink-0 select-none items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 ${dragEnabled ? 'cursor-grab hover:bg-app-accent/15 hover:text-app-accent active:cursor-grabbing' : 'cursor-default opacity-40'}`}>
+              className={`flex h-7 w-8 shrink-0 select-none items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 ${dragEnabled ? 'cursor-grab hover:bg-app-accent/15 hover:text-app-accent active:cursor-grabbing' : 'cursor-default opacity-40'} ag-hit`}>
               <GripVertical size={14} />
             </span>
             <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label={t.sbMoveEarlier} title={t.sbMoveEarlier}
-              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation">
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation ag-hit">
               <ChevronLeft size={14} />
             </button>
             <button type="button" onClick={() => onMove(s.ordinal, 1)} disabled={busy || index === total - 1} aria-label={t.sbMoveLater} title={t.sbMoveLater}
-              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation">
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation ag-hit">
               <ChevronRight size={14} />
             </button>
             <button type="button" onClick={() => onDelete(s.ordinal)} disabled={busy || total <= 2} aria-label={t.sbDeleteScene} title={t.sbDeleteScene}
-              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-red-500/15 hover:text-red-400 active:scale-95 disabled:opacity-30 touch-manipulation">
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-red-500/15 hover:text-red-400 active:scale-95 disabled:opacity-30 touch-manipulation ag-hit">
               <Trash2 size={13} />
             </button>
           </div>
@@ -4043,7 +4045,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // "lips don't track the vocal" into a visible, actionable cause.
       const patchLipsyncCard = (st: FilmAgentStatus, note?: string) => {
         lipStage.current = st;
-        if (note) { try { console.info('[lipsync]', st, '—', note); } catch { /* ignore */ } }
+        if (note) devInfo('[lipsync]', st, '—', note);
         patchFilmBubbleBy(
           (m) => !!m && m.role === 'assistant' && !!m.filmRoster,
           (m) => ({ ...m, filmRoster: (m.filmRoster ?? []).map((a) => (a.id === 'lipsync' ? { ...a, status: st, pct: st === 'completed' || st === 'skipped' ? 100 : st === 'processing' ? 50 : 0, ...(note ? { note } : { note: undefined }) } : a)) }),
@@ -4349,8 +4351,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // release this clip so the batch proceeds with whatever landed.
         onClipSettle(false);
         if (!signal.aborted) {
-          // eslint-disable-next-line no-console
-          console.warn(`[product] clip ${sceneIndex} released after ${CLIP_TIMEOUT_MS}ms (timeout/error) — batch continues`);
+          devWarn(`[product] clip ${sceneIndex} released after ${CLIP_TIMEOUT_MS}ms (timeout/error) — batch continues`);
         }
         return null;
       } finally {
@@ -9995,7 +9996,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       isImage(md.mimeType) ? (
                         <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label={t.a11yFullscreen}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
+                          <img src={md.dataUrl} alt={a11y('attachment', locale)} loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
                         </button>
                       ) : isVideo(md.mimeType) ? (
                         <ChatVideoPlayer key={mi} src={md.dataUrl} variant="attachment" locale={locale} {...(md.name ? { label: md.name } : {})} {...(md.poster ? { poster: md.poster } : {})} />
@@ -10463,7 +10464,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                             <button type="button" onClick={() => startEdit(i)}
                               aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
                               title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
-                              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text">
+                              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text ag-hit">
                               <Pencil size={16} aria-hidden="true" />
                             </button>
                           </div>
@@ -10523,7 +10524,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                             className="block max-h-[60vh] w-full max-w-[min(82vw,420px)] cursor-zoom-in bg-black/40 object-contain" />
                           <div className="mt-1.5 flex items-center gap-1.5">
                             <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.png`)} title={t.imgDownload} aria-label={t.imgDownload}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90"><Download size={15} /></button>
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 ag-hit"><Download size={15} /></button>
                             {editButton(url, 'image')}
                           </div>
                         </div>
@@ -10544,9 +10545,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           <TrackPlayer url={url} label={t.modeMusic} locale={locale} />
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                             <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.mp3`)} title={t.imgDownload} aria-label={t.imgDownload}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90"><Download size={15} /></button>
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 ag-hit"><Download size={15} /></button>
                             <button type="button" onClick={() => void share(url, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent"><Share2 size={15} /></button>
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent ag-hit"><Share2 size={15} /></button>
                             {editButton(url, 'audio')}
                           </div>
                         </div>
@@ -11366,7 +11367,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 <label className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed p-5 text-center transition ${productImage ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/40'}`}>
                   {productImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={productImage} alt="product" loading="lazy" decoding="async" className="max-h-32 rounded-lg object-contain" />
+                    <img src={productImage} alt={a11y('product', locale)} loading="lazy" decoding="async" className="max-h-32 rounded-lg object-contain" />
                   ) : (
                     <>
                       <Package size={24} aria-hidden="true" className="text-app-muted" />
@@ -11385,7 +11386,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={productImage} alt="shot 1" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                      <img src={productImage} alt={a11y('firstShot', locale)} className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       {productImages.map((src, i) => (
                         <div key={i} className="relative h-12 w-12 overflow-hidden rounded-lg ring-1 ring-app-border/20">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -12595,7 +12596,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 <button type="button" onClick={() => selectPersona('')}
                   aria-label={locale === 'en' ? 'Stop using this persona' : locale === 'ru' ? 'Отключить персону' : 'პერსონის გამორთვა'}
                   title={locale === 'en' ? 'Stop using this persona' : locale === 'ru' ? 'Отключить персону' : 'პერსონის გამორთვა'}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-accent/15 [@media(pointer:fine)]:h-7 [@media(pointer:fine)]:w-7">
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-accent/15 [@media(pointer:fine)]:h-7 [@media(pointer:fine)]:w-7 ag-hit">
                   <X size={14} aria-hidden="true" />
                 </button>
               </span>
@@ -12822,7 +12823,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={lightbox}
-            alt="fullscreen"
+            alt={a11y('fullscreenImage', locale)}
             onClick={(e) => e.stopPropagation()}
             className="max-h-[88vh] max-w-[96vw] rounded-lg object-contain"
           />

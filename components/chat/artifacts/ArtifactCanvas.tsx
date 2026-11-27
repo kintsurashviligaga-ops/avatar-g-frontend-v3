@@ -32,6 +32,7 @@ import { ARTIFACT_LANGUAGES, artifactFileName, isPreviewable } from './artifactS
 import { selectCurrentVersions, useArtifactStore, type Artifact, type ArtifactTab } from './artifactStore';
 import { OPEN_ARTIFACT_EVENT, validateOpenArtifactDetail } from './openArtifactEvent';
 import { PREVIEW_SANDBOX, buildPreviewDocument } from './previewDocument';
+import { devWarn } from '@/lib/observability/devLog';
 
 type CanvasLocale = 'ka' | 'en' | 'ru';
 
@@ -322,7 +323,7 @@ export function ArtifactCanvas({ locale = 'ka' }: ArtifactCanvasProps) {
     const onOpen = (e: Event) => {
       const artifact = validateOpenArtifactDetail((e as CustomEvent<unknown>).detail);
       if (!artifact) {
-        console.warn(`[artifacts] ${OPEN_ARTIFACT_EVENT} ignored: invalid detail (language off the allowlist, empty code or over 200 KB)`);
+        devWarn(`[artifacts] ${OPEN_ARTIFACT_EVENT} ignored: invalid detail (language off the allowlist, empty code or over 200 KB)`);
         return;
       }
       // ⚠️ preventDefault() IS THE RECEIPT: a Live show_code tells the model the code is saved in the canvas only when

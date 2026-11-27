@@ -101,7 +101,7 @@ export default function WelcomeOnboarding({ locale, balanceGel, onComplete }: {
         className="relative w-full max-w-[440px] overflow-hidden rounded-3xl border border-app-border/15 bg-app-surface shadow-[0_30px_90px_-20px_rgba(0,0,0,0.85)]">
         {/* Skip / close */}
         <button type="button" onClick={() => finish(null)} aria-label={t.skip}
-          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-app-muted transition hover:bg-app-elevated hover:text-app-text">
+          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-app-muted transition hover:bg-app-elevated hover:text-app-text ag-hit">
           <X size={17} />
         </button>
 

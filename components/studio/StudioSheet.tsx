@@ -17,6 +17,7 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { a11y, docLang } from '@/lib/i18n/a11yLabels';
 
 interface StudioSheetProps {
   open: boolean;
@@ -64,7 +65,7 @@ export function StudioSheet({ open, title, onClose, children, flush }: StudioShe
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close"
+                aria-label={a11y('close', docLang())}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <X size={18} />

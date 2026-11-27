@@ -1041,7 +1041,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
                     <span className="min-w-0">{restoredNote.dropped > 0 ? `${t.restoredDropped} ${restoredNote.dropped}` : t.restored}</span>
                     <span className="flex shrink-0 items-center gap-1">
                       <button type="button" onClick={startOver} data-testid="montage-start-over" className="min-h-[36px] rounded-lg px-2.5 font-medium text-app-accent hover:bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">{t.startOver}</button>
-                      <button type="button" onClick={() => setRestoredNote(null)} aria-label={t.close} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-app-muted hover:bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"><X size={15} aria-hidden="true" /></button>
+                      <button type="button" onClick={() => setRestoredNote(null)} aria-label={t.close} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-app-muted hover:bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ag-hit"><X size={15} aria-hidden="true" /></button>
                     </span>
                   </div>
                 )}

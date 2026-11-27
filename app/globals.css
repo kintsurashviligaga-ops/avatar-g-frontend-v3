@@ -4342,3 +4342,20 @@ html:has(.app-native-shell), body:has(.app-native-shell) {
    moves left to make room while the panel is open. */
 :root { --agent-screen-w: min(42vw, 600px); }
 html.agent-screen-open body { padding-right: var(--agent-screen-w); }
+
+/* ── 44 px touch targets (Phase 8.15) ─────────────────────────────────────────────────────────────────
+   Small icon buttons (28–40 px drawn) keep their look but get a 44×44 hit area on touch screens. The
+   invisible ::after is centred on the button and is part of it, so a tap on it is a tap on the button.
+   Positioned buttons (absolute/fixed/sticky) already anchor the ::after; the rest become relative. */
+@media (pointer: coarse) {
+  .ag-hit:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
+  .ag-hit::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}

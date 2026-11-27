@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { a11y, docLang } from '@/lib/i18n/a11yLabels';
 
 interface Toast {
   id: string;
@@ -61,7 +62,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               {toast.type === "info" && <Info className="w-5 h-5" />}
               <span className="text-sm font-medium">{toast.message}</span>
               <button
+                type="button"
                 onClick={() => removeToast(toast.id)}
+                aria-label={a11y('closeNotice', docLang())}
                 className="ml-2 hover:opacity-70"
               >
                 <X className="w-4 h-4" />
