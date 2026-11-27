@@ -287,7 +287,18 @@ import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 // Phase 8.6 Virtual Studio in the chat (Agent G: "make a presentation from this script: …"). Its own chunk, loaded only
 // when such a card is shown.
-const VirtualStudio = dynamic(() => import('./virtualStudio/VirtualStudio').then((m) => m.VirtualStudio), { ssr: false, loading: () => <div className="h-24" /> });
+// While the chunk loads: a pulse block of the same height, announced to screen readers in the page language
+// (Phase 8.20; was a blank h-24 box).
+const VirtualStudioLoading = () => {
+  const lang = typeof document !== 'undefined' ? document.documentElement.lang : '';
+  const word = lang.startsWith('ka') ? 'იტვირთება…' : lang.startsWith('ru') ? 'Загрузка…' : 'Loading…';
+  return (
+    <div role="status" aria-busy="true" className="h-24 animate-pulse rounded-2xl bg-white/[0.04]">
+      <span className="sr-only">{word}</span>
+    </div>
+  );
+};
+const VirtualStudio = dynamic(() => import('./virtualStudio/VirtualStudio').then((m) => m.VirtualStudio), { ssr: false, loading: VirtualStudioLoading });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
 // The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
 const InteriorCreatePanel = dynamic(() => import('@/components/studio/create/InteriorCreatePanel').then((m) => m.InteriorCreatePanel), { ssr: false, loading: () => <div className="h-24" /> });
