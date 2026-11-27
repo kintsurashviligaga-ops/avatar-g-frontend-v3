@@ -580,7 +580,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
     description:
       'Hand a research or multi-step web task to Agent G, MyAvatar\'s main agent: it searches the web and reads pages, then '
       + 'returns a written answer with its sources. Use it when one Google search or one page is not enough (several '
-      + 'searches, comparing sources, a short report). It can take up to about a minute, so tell the user you are on it. '
+      + 'searches, comparing sources, a short report). Also for ANY question about the user\'s Google Drive („რა წერია ჩემ '
+      + 'დრაივზე?", "what is in my Drive / that PDF"): only Agent G can list and read the files they picked there — never '
+      + 'answer that you cannot see their Drive. It can take up to about a minute, so tell the user you are on it. '
       + 'When the user wants a site opened and something done ON it (click, search there, type, a screenshot) — or says '
       + '"you open it", "you click" — hand that here too: Agent G plans the steps in its own cloud browser and a Start card '
       + 'appears in the chat. It cannot render media, spend credits, sign in or buy.',
@@ -711,6 +713,8 @@ export const LIVE_ACTIONS_RULE = [
   'When one search or one page is not enough, call ask_agent_g with the whole task: Agent G searches and reads pages and',
   'returns a written answer with sources. Tell the user you are on it first (it can take up to a minute), then give the',
   'answer briefly in their language.',
+  'Questions about the user\'s Google Drive or a file in it go to ask_agent_g too (it reads only the files they picked);',
+  'never say you cannot see their Drive.',
   'When the user wants the sound or an MP3 out of a video or audio link or file, call extract_audio with action "plan";',
   'say what the plan card says (and, for unverified rights, that starting confirms the file is theirs or licensed), and',
   'start it (agent_task start) on their clear yes. It is free. A video platform link is refused: offer the',
