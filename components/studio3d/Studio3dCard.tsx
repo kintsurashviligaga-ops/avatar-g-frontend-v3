@@ -59,6 +59,12 @@ const ERRORS: Record<string, Record<Lang, string>> = {
   insufficient_credits: { ka: 'კრედიტი არ გყოფნის', en: 'Not enough credits', ru: 'Недостаточно кредитов' },
 };
 const chip = 'inline-flex h-9 items-center rounded-full bg-app-bg/70 px-3 text-[13px]';
+const BUSY = {
+  sending: { ka: 'იგზავნება…', en: 'Sending…', ru: 'Отправляем…' },
+  approving: { ka: 'ბალანსი მოწმდება…', en: 'Checking your balance…', ru: 'Проверяем баланс…' },
+  hint: { ka: 'მაგ.: ხის სკამი მრგვალი ზურგით', en: 'e.g. a wooden chair with a round back', ru: 'напр.: деревянный стул с круглой спинкой' },
+} as const;
+const spinner = <span aria-hidden className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white align-[-2px]" />;
 const errorText = (code: string, l: Lang) => ERRORS[code]?.[l] ?? stepLabel('failed', l);
 
 export function priceLine(mode: Mode, high: boolean, l: Lang): string {
@@ -78,7 +84,7 @@ export interface Studio3dCardProps {
 
 export default function Studio3dCard({ locale, initial, job: initialJob, fetchImpl }: Studio3dCardProps) {
   const l = toLang(locale);
-  const { state, create, approve, cancel } = useStudio3dJob(initialJob, fetchImpl);
+  const { state, acting, create, approve, cancel } = useStudio3dJob(initialJob, fetchImpl);
   const [mode, setMode] = useState<Mode>(initial?.mode ?? (initial?.imageUrl ? 'image' : 'text'));
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [high, setHigh] = useState(!!initial?.high);
@@ -97,11 +103,11 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
   if (!job) {
     const modes: Mode[] = initial?.meshUrl ? ['text', 'image', 'retexture'] : ['text', 'image'];
     return (
-      <section aria-label={t('title', l)} data-studio3d-card="compose" className="space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/30 p-3">
+      <section aria-label={t('title', l)} data-studio3d-card="compose" data-ui-surface className="space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/30 p-3">
         <div role="tablist" className="flex gap-1.5">
           {modes.map((m) => (
             <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => setMode(m)}
-              className="h-9 rounded-full px-3 text-[13px] aria-selected:bg-app-accent aria-selected:text-white">
+              className="h-9 rounded-full px-3 text-[13px] transition-colors hover:bg-app-text/10 aria-selected:bg-app-accent aria-selected:text-white">
               {t(m === 'text' ? 'fromText' : m === 'image' ? 'fromImage' : 'retexture', l)}
             </button>
           ))}
@@ -119,18 +125,19 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
           </label>
         )}
         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={600} rows={2}
-          aria-label={t('title', l)} className="w-full resize-none rounded-xl bg-app-bg/60 p-2 text-[14px]" />
+          aria-label={t('title', l)} placeholder={mode === 'text' ? BUSY.hint[l] : undefined}
+          className="w-full resize-none rounded-xl border border-transparent bg-app-bg/60 p-2 text-[14px] placeholder:text-app-muted focus:border-app-accent/60 focus:outline-none" />
         {mode !== 'retexture' && (
           <label className="flex items-center gap-2 text-[13px]">
             <input type="checkbox" checked={high} onChange={(e) => setHigh(e.target.checked)} /> {t('high', l)}
           </label>
         )}
         <p data-studio3d-price="" className="text-[12px] text-app-text/70">{priceLine(mode, high && mode !== 'retexture', l)}</p>
-        {state.status === 'error' && <p role="alert" className="text-[13px] text-red-500">{errorText(state.code, l)}</p>}
+        {state.status === 'error' && <p role="alert" className="text-[13px] text-app-danger">{errorText(state.code, l)}</p>}
         <button type="button" disabled={!canSend} aria-busy={state.status === 'sending'}
           onClick={() => create({ mode, prompt, ...(initial?.imageUrl ? { imageUrl: initial.imageUrl } : {}), ...(initial?.meshUrl ? { meshUrl: initial.meshUrl } : {}), detail: high ? 'high' : 'standard', ...(mode === 'image' && selfie ? { selfie: true } : {}) })}
           className="h-11 w-full rounded-full bg-app-accent text-[14px] font-medium text-white disabled:opacity-50">
-          {t('title', l)}
+          {state.status === 'sending' ? <span className="inline-flex items-center gap-2">{spinner}{BUSY.sending[l]}</span> : t('title', l)}
         </button>
       </section>
     );
@@ -139,20 +146,22 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
   const flow = FLOW[job.mode];
   const at = job.step === 'starting' ? flow.indexOf('queued') + 0.5 : flow.indexOf(job.step);
   return (
-    <section aria-label={t('title', l)} data-studio3d-card="job" data-step={job.step} className="space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/30 p-3">
+    <section aria-label={t('title', l)} data-studio3d-card="job" data-step={job.step} data-ui-surface className="space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/30 p-3">
       <ol className="space-y-1 text-[13px]" aria-live="polite">
         {flow.filter((s) => s !== 'done').map((s, i) => {
           const state = job.step === 'failed' ? (i < Math.max(0, at) ? 'done' : 'off') : i < at || job.step === 'done' ? 'done' : i === Math.floor(at) ? 'now' : 'next';
           return (
             <li key={s} data-state={state} className="flex items-center gap-2">
-              <span aria-hidden="true">{state === 'done' ? '✓' : state === 'now' ? '◌' : '○'}</span>
+              {state === 'now'
+                ? <span aria-hidden="true" className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-app-accent/30 border-t-app-accent" />
+                : <span aria-hidden="true" className="inline-block w-3.5 text-center">{state === 'done' ? '✓' : '○'}</span>}
               {stepLabel(s, l)}
             </li>
           );
         })}
       </ol>
 
-      {job.step === 'failed' && <p role="alert" className="text-[13px] text-red-500">{errorText(job.error ?? '', l)} · {stepLabel('failed', l)}</p>}
+      {job.step === 'failed' && <p role="alert" className="text-[13px] text-app-danger">{errorText(job.error ?? '', l)} · {stepLabel('failed', l)}</p>}
 
       {job.referenceUrl && job.step !== 'done' && (
         // eslint-disable-next-line @next/next/no-img-element -- signed storage link
@@ -161,10 +170,12 @@ export default function Studio3dCard({ locale, initial, job: initialJob, fetchIm
 
       {job.step === 'awaiting_approval' && (
         <div className="flex gap-2">
-          <button type="button" onClick={() => approve(job.id)} className="h-11 flex-1 rounded-full bg-app-accent text-[14px] font-medium text-white">
-            {t('approve', l)} · ✦{job.quote[job.quote.length - 1]?.credits}
+          <button type="button" data-studio3d-approve="" disabled={!!acting} aria-busy={acting === 'approve'} onClick={() => approve(job.id)}
+            className="h-11 flex-1 rounded-full bg-app-accent text-[14px] font-medium text-white disabled:opacity-60">
+            {acting === 'approve' ? <span className="inline-flex items-center gap-2">{spinner}{BUSY.approving[l]}</span> : <>{t('approve', l)} · ✦{job.quote[job.quote.length - 1]?.credits}</>}
           </button>
-          <button type="button" onClick={() => cancel(job.id)} className="h-11 rounded-full px-4 text-[14px]">✕</button>
+          <button type="button" disabled={!!acting} onClick={() => cancel(job.id)} aria-label={l === 'ka' ? 'გაუქმება' : l === 'ru' ? 'Отменить' : 'Cancel'}
+            className="h-11 w-11 rounded-full text-[14px] hover:bg-app-text/10 disabled:opacity-40">✕</button>
         </div>
       )}
 

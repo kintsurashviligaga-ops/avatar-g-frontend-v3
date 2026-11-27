@@ -33,20 +33,35 @@ export function useStudio3dJob(initialJob?: JobView, fetchImpl: F = (...a) => fe
     else setState({ status: 'job', job: body });
   }, []);
 
+  // One request at a time (Phase 8.24): a double tap on Create or Approve must not send two paid calls, and a second
+  // approve answered 409 would replace the running job with an error card.
+  const inFlight = useRef(false);
+  const [acting, setActing] = useState<null | 'approve' | 'cancel'>(null);
+
   const create = useCallback(async (request: Record<string, unknown>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setState({ status: 'sending' });
     try {
       await handle(await fetchImpl('/api/studio3d', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request) }));
     } catch {
       setState({ status: 'error', code: 'network' });
+    } finally {
+      inFlight.current = false;
     }
   }, [fetchImpl, handle]);
 
   const act = useCallback(async (id: string, action: 'approve' | 'cancel') => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setActing(action);
     try {
       await handle(await fetchImpl(`/api/studio3d/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }) }));
     } catch {
       setState({ status: 'error', code: 'network' });
+    } finally {
+      inFlight.current = false;
+      if (alive.current) setActing(null);
     }
   }, [fetchImpl, handle]);
 
@@ -70,5 +85,5 @@ export function useStudio3dJob(initialJob?: JobView, fetchImpl: F = (...a) => fe
     };
   }, [job, fetchImpl, handle, pollMs]);
 
-  return { state, create, approve: (id: string) => act(id, 'approve'), cancel: (id: string) => act(id, 'cancel') };
+  return { state, acting, create, approve: (id: string) => act(id, 'approve'), cancel: (id: string) => act(id, 'cancel') };
 }
