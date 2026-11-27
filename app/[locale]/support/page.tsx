@@ -76,9 +76,9 @@ const copy: Record<Lang, {
     issues: {
       title: 'უცებ რას ვცადო, თუ რამე არ მუშაობს',
       items: [
-        'გაატარეთ გვერდი (hard reload): Cmd+Shift+R (Mac), Ctrl+F5 (PC).',
-        'შეცვალეთ ბრაუზერი ან გათიშეთ ad-blocker.',
-        'შეამოწმეთ კრედიტი — Billing panel-ში.',
+        'გადატვირთეთ გვერდი ქეშის გარეშე: Cmd+Shift+R (Mac), Ctrl+F5 (PC).',
+        'სცადეთ სხვა ბრაუზერი ან გათიშეთ რეკლამის ბლოკერი.',
+        'შეამოწმეთ კრედიტის ბალანსი — ჩატის ზედა ზოლში.',
         'სცადეთ ფანჯრის გადატვირთვა და ხელახლა გაგზავნა.',
         'თუ ბაგი მუდმივია — გვწერეთ ეკრანის სურათით.',
       ],
@@ -138,7 +138,7 @@ const copy: Record<Lang, {
       items: [
         'Hard reload the page: Cmd+Shift+R (Mac), Ctrl+F5 (PC).',
         'Try a different browser or disable your ad-blocker.',
-        'Check your credits in the Billing panel.',
+        'Check your credit balance in the chat\'s top bar.',
         'Reload the window and resend.',
         'If the bug persists — email us with a screenshot.',
       ],
@@ -198,7 +198,7 @@ const copy: Record<Lang, {
       items: [
         'Принудительная перезагрузка: Cmd+Shift+R (Mac), Ctrl+F5 (PC).',
         'Попробуйте другой браузер или отключите ad-blocker.',
-        'Проверьте кредиты в панели Billing.',
+        'Проверьте баланс кредитов в верхней панели чата.',
         'Перезагрузите окно и отправьте запрос ещё раз.',
         'Если ошибка повторяется — напишите нам со скриншотом.',
       ],
