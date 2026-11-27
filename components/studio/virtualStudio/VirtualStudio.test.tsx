@@ -12,6 +12,8 @@ import { L10N } from './labels';
 import { buildStudioPlan } from '@/lib/avatar/studio/plan';
 import { sceneToMake } from '@/lib/avatar/studio/sceneRun';
 import { OMNI_PRESENTERS } from '@/lib/avatar/studio/catalog';
+import { parseStudioAsk } from '@/lib/avatar/studio/agent';
+import { resetStudioClips, studioClips } from '@/lib/avatar/studio/videoHandoff';
 
 const SCRIPT = 'Welcome to our studio. Today we show how one script becomes a short presentation with a presenter.';
 
@@ -160,5 +162,69 @@ describe('VirtualStudio panel', () => {
     render(<VirtualStudio lang="en" book="today" api={api} pollMs={0} initialScript={SCRIPT} />);
     await act(async () => { fireEvent.click(screen.getByTestId('vs-make-0')); });
     await waitFor(() => expect(screen.getByTestId('vs-error-0').textContent).toBe(L10N.refunded.en));
+  });
+});
+
+describe('PR C: Studio voice, Use in Video, Agent G card', () => {
+  beforeEach(() => resetStudioClips());
+
+  it('a Cinematic presenter can take a named Studio voice, with exact speed/pitch sliders only then', async () => {
+    const omni = OMNI_PRESENTERS[0]!;
+    const { api, calls } = mockApi({ scene: () => ({ status: 200, data: { ok: true, job: job({ engine: 'omni', state: 'ready', presenterId: omni.id, voiceId: 'Algieba', dub: true }) } }) });
+    render(<VirtualStudio lang="en" book="today" api={api} pollMs={0} initialScript={SCRIPT} />);
+    expect(screen.queryByTestId('vs-dub-sliders')).toBeNull();
+    fireEvent.click(screen.getByTestId(`vs-presenter-${omni.id}`));
+    expect(screen.queryByTestId('vs-dub-sliders')).toBeNull();
+    fireEvent.change(screen.getByTestId('vs-omni-voice'), { target: { value: 'Algieba' } });
+    fireEvent.change(screen.getByTestId('vs-voice-speed'), { target: { value: '1.1' } });
+    fireEvent.change(screen.getByTestId('vs-voice-pitch'), { target: { value: '-1.5' } });
+    await act(async () => { fireEvent.click(screen.getByTestId('vs-make-0')); });
+    expect(calls[0]!.body.request).toMatchObject({ presenterId: omni.id, voiceId: 'Algieba', voiceSpeed: 1.1, voicePitch: -1.5 });
+    expect(await screen.findByTestId('vs-dub-label')).toBeTruthy();
+    expect(screen.getByTestId('vs-change-voice')).toBeTruthy();
+  });
+
+  it('Use in Video opens Montage with the scene, or offers it to the Director\'s Workflow (free)', async () => {
+    const onOpenMontage = jest.fn();
+    const { api } = mockApi({ scene: () => ({ status: 200, data: { ok: true, job: job() } }) });
+    render(<VirtualStudio lang="en" book="today" api={api} pollMs={0} initialScript={SCRIPT} onOpenMontage={onOpenMontage} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('vs-make-0')); });
+    fireEvent.click(screen.getByTestId('vs-use-in-video'));
+    fireEvent.click(screen.getByTestId('vs-use-director'));
+    expect(screen.getByTestId('vs-use-offered')).toBeTruthy();
+    expect(studioClips()[0]).toMatchObject({ url: 'https://storage.example/scene.mp4', durationSec: 6.5, title: 'Scene 1', format: '9:16' });
+    fireEvent.click(screen.getByTestId('vs-use-montage'));
+    expect(onOpenMontage).toHaveBeenCalledWith('https://storage.example/scene.mp4');
+    expect(screen.queryByTestId('vs-use-sheet')).toBeNull();
+  });
+
+  it('the joined presentation says it is in the Library and can go to video too', async () => {
+    const { api } = mockApi({
+      scene: () => ({ status: 200, data: { ok: true, job: job() } }),
+      stitch: () => ({ status: 200, data: { ok: true, url: 'https://storage.example/p.mp4', srt: '', durationSec: 6.5, savedToLibrary: true } }),
+    });
+    render(<VirtualStudio lang="en" book="today" api={api} pollMs={0} initialScript={SCRIPT} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('vs-make-0')); });
+    await act(async () => { fireEvent.click(screen.getByTestId('vs-join')); });
+    expect(screen.getByTestId('vs-in-library').textContent).toBe(L10N.library.en);
+    fireEvent.click(screen.getByTestId('vs-final-use'));
+    fireEvent.click(screen.getByTestId('vs-use-director'));
+    expect(studioClips()[0]!.key).toMatch(/:all$/);
+  });
+
+  it('Agent G\'s card starts from the request read in the chat', () => {
+    const ask = parseStudioAsk(`Make a presentation from this script with a male presenter: ${SCRIPT}`)!;
+    const { api } = mockApi({});
+    render(<VirtualStudio lang="en" book="today" api={api} compact initialRequest={ask.request} />);
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect((screen.getByTestId('vs-script') as HTMLTextAreaElement).value).toBe(SCRIPT);
+    expect(screen.getByTestId('vs-presenter-live-ben').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('vs-make-0')).toBeTruthy();
+  });
+
+  it('an ask without a script says to paste it', () => {
+    const ask = parseStudioAsk('make a presentation from my script')!;
+    render(<VirtualStudio lang="en" book="today" api={mockApi({}).api} compact initialRequest={ask.request} />);
+    expect(screen.getByTestId('vs-no-script').textContent).toBe(L10N.noScript.en);
   });
 });

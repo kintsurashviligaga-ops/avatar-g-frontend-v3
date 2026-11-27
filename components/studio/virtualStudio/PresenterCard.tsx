@@ -20,6 +20,8 @@ export interface PresenterCardScene {
   durationSec: number | null;
   engine: 'live' | 'omni';
   voiceId: string | null;
+  /** A Cinematic scene in the Studio voice (lips approximate). */
+  dub?: boolean;
 }
 
 export function KaraokeTranscript({ timings, text, time, onSeek }: { timings: WordTiming[] | null; text: string; time: number; onSeek?: (sec: number) => void }) {
@@ -99,6 +101,8 @@ export function PresenterCard({ scene, lang, busy, gender, onRegenerate, onChang
           <KaraokeTranscript timings={scene.timings} text={scene.text} time={time} onSeek={seek} />
         )}
         {scene.warnings.includes('not_verbatim') && <p data-testid="vs-warn-verbatim" className="text-[12px] text-amber-300">{t('notVerbatim', lang)}</p>}
+        {scene.dub && <p data-testid="vs-dub-label" className="text-[12px] text-app-muted">{t('dubLabel', lang)}</p>}
+        {scene.warnings.includes('dub_failed') && <p data-testid="vs-warn-dub" className="text-[12px] text-amber-300">{t('dubFailed', lang)}</p>}
         {(scene.timingSource === 'estimated' || scene.warnings.includes('timing_estimated')) && <p data-testid="vs-warn-timing" className="text-[12px] text-app-muted">{t('timingEstimated', lang)}</p>}
         {picking && onChangeVoice && (
           <div data-testid="vs-voices" className="flex flex-wrap gap-1.5">
@@ -113,7 +117,7 @@ export function PresenterCard({ scene, lang, busy, gender, onRegenerate, onChang
         )}
         <div className="flex flex-wrap gap-2">
           <button type="button" data-testid="vs-regenerate" disabled={busy} onClick={onRegenerate} className="rounded-full border border-app-border px-3 py-1.5 text-[13px] text-app-text disabled:opacity-40">{t('regenerate', lang)}</button>
-          {onChangeVoice && scene.engine === 'live' && (
+          {onChangeVoice && (scene.engine === 'live' || scene.dub) && (
             <button type="button" data-testid="vs-change-voice" disabled={busy} onClick={() => setPicking((p) => !p)} className="rounded-full border border-app-border px-3 py-1.5 text-[13px] text-app-text disabled:opacity-40">{t('changeVoice', lang)}</button>
           )}
           <button type="button" data-testid="vs-edit-script" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-app-border px-3 py-1.5 text-[13px] text-app-text disabled:opacity-40">{t('editScript', lang)}</button>

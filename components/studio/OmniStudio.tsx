@@ -272,8 +272,15 @@ import { producerChatClientOn, producerChatTakes } from '@/lib/music/producer/fl
 import { parseProducerAsk } from '@/lib/music/producer/intent';
 import { producerBook } from '@/lib/music/producer/book';
 import { filmTargets } from '@/lib/music/producer/videoTargets';
+import { studioChatClientOn } from '@/lib/avatar/studio/flag';
+import { parseStudioAsk } from '@/lib/avatar/studio/agent';
+import { studioBook } from '@/lib/avatar/studio/book';
+import type { StudioRequest } from '@/lib/avatar/studio/plan';
 import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
+// Phase 8.6 Virtual Studio in the chat (Agent G: "make a presentation from this script: …"). Its own chunk, loaded only
+// when such a card is shown.
+const VirtualStudio = dynamic(() => import('./virtualStudio/VirtualStudio').then((m) => m.VirtualStudio), { ssr: false, loading: () => <div className="h-24" /> });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
 // The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
 const InteriorCreatePanel = dynamic(() => import('@/components/studio/create/InteriorCreatePanel').then((m) => m.InteriorCreatePanel), { ssr: false, loading: () => <div className="h-24" /> });
@@ -891,6 +898,10 @@ const ART_CHAT = artChatClientOn(process.env.NEXT_PUBLIC_IMAGE_ART_DIRECTOR);
 // of my video") anywhere, gets Agent G's plan card (one price, Start). OFF unless NEXT_PUBLIC_MUSIC_PRODUCER_V2 is 'admin'
 // or 'everyone'; the server's MUSIC_PRODUCER_V2 still decides per user.
 const MUSIC_PRODUCER_CHAT = producerChatClientOn(process.env.NEXT_PUBLIC_MUSIC_PRODUCER_V2);
+// Phase 8.6 Virtual Studio: a presentation asked in the chat gets Agent G's storyboard card (every scene's price, nothing
+// charged until Make). OFF unless NEXT_PUBLIC_AVATAR_STUDIO_V2 is 'admin' or 'everyone'; the server's AVATAR_STUDIO_V2
+// still decides per user (its routes answer 404).
+const AVATAR_STUDIO_CHAT = studioChatClientOn(process.env.NEXT_PUBLIC_AVATAR_STUDIO_V2);
 /**
  * A film that already wrote its own failure on its bubble. The queued job must still settle as failed, so renderFilm
  * throws — and its catch used to paint the generic "the service may be busy" line over the real reason. In Production
@@ -1000,7 +1011,9 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
    *  (leanMessages) and the chat model is told what was made (lib/chat/historySerializer). */
   glbUrl?: string;
   /** Agent G's Music Producer plan card for this line (Phase 8.5). Never persisted. */
-  musicPlan?: { text: string } }
+  musicPlan?: { text: string };
+  /** Agent G's Virtual Studio card for this line (Phase 8.6). Never persisted. */
+  studioPlan?: { request: StudioRequest } }
 
 /** The jobs an Agent G card narrates itself (its run's own and each run step's): the tray leaves them to the card. */
 function cardJobsOf(m: Msg): string[] {
@@ -6975,6 +6988,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       stopDictationEcho();
       return;
     }
+    // Phase 8.6 — Agent G's Virtual Studio card (script → scenes → presenter videos). Nothing is charged until Make.
+    const studioAsk = AVATAR_STUDIO_CHAT && text && attachments.length === 0 ? parseStudioAsk(text) : null;
+    if (studioAsk) {
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '', studioPlan: { request: studioAsk.request } }]);
+      setInput('');
+      stopDictationEcho();
+      return;
+    }
     if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       closeSettingsLayer();
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
@@ -10032,6 +10053,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <MusicPlanCard text={m.musicPlan.text} film={filmTargets()[0] ?? null} book={producerBook()}
                     lang={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}
                     onCharged={(credits) => notifyCredit('music', { credits })} />
+                )}
+                {m.studioPlan && (
+                  <VirtualStudio compact book={studioBook()} initialRequest={m.studioPlan.request}
+                    lang={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}
+                    onCharged={(credits) => notifyCredit('avatar', { credits })}
+                    onOpenMontage={(url) => {
+                      setMontageSeed([{ url, kind: 'video' }]); setMontageMusicSeed(null); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
+                      setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+                    }} />
                 )}
                 {m.batch && (
                   <div className="space-y-2">

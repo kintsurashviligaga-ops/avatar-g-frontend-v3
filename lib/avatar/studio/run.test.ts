@@ -5,6 +5,7 @@ import { parseSceneStart, parseStudioRequest } from './request';
 import { studioBook } from './book';
 import { presenterById, voiceById } from './catalog';
 import type { TakeResult } from './liveTake';
+import { clampVoiceAdjust, voiceAdjustFilter } from './voiceAdjust';
 
 const KA = 'გამარჯობა, მე ვარ თქვენი ვირტუალური წამყვანი. დღეს გაჩვენებთ, როგორ ქმნის მაიავატარი პრეზენტაციას რამდენიმე წუთში. ეს მარტივია და სწრაფი.';
 
@@ -33,6 +34,7 @@ function mockDeps(over: Partial<SceneDeps> = {}): SceneDeps & { calls: Record<st
     omniPoll: rec('omniPoll', async () => ({ state: 'ready' as const, url: 'https://storage.example/clip.mp4' })),
     fetchBytes: rec('fetchBytes', async () => Buffer.from('clip')),
     measure: rec('measure', async () => 10.2),
+    dub: rec('dub', async () => Buffer.from('dubbed')),
     words: rec('words', async () => ({ words: FULL.split(' ').map((w, i) => ({ word: w, start: i * 0.5, end: i * 0.5 + 0.4 })), heard: FULL })),
     save: rec('save', async (_u: string, path: string) => `https://storage.example/${path}`),
     saveJob: rec('saveJob', async (_u: string, j: SceneJob) => { jobs.set(j.id, JSON.parse(JSON.stringify(j))); }),
@@ -196,10 +198,45 @@ describe('scene run — Omni (mocked interactions)', () => {
     expect(deps.calls.omniSubmit).toHaveLength(1);
   });
 
-  it('a named voice on Omni (the dub) is refused before any charge in this PR', async () => {
+  it('a named voice on Omni is dubbed (Studio voice): the voice, speed and pitch go to the dub, words timed on the dub', async () => {
     const deps = mockDeps();
-    await expect(startScene(deps, 'u1', startInput(planFor(omni, { voiceId: 'Algieba' })))).rejects.toMatchObject({ code: 'not_configured' });
-    expect(deps.calls.charge).toBeUndefined();
+    const plan = planFor(omni, { voiceId: 'Algieba', voiceSpeed: 1.1, voicePitch: -2 });
+    expect(plan.dub).toBe(true);
+    expect(plan.warnings).toContain('studio_voice_lips_approximate');
+    let job = await startScene(deps, 'u1', startInput(plan));
+    expect(job).toMatchObject({ dub: true, voiceAdjust: { speed: 1.1, pitch: -2 } });
+    expect(job.dubCredits).toBeGreaterThanOrEqual(1);
+    for (let i = 0; i < job.turns.length; i++) job = await pollScene(deps, 'u1', job);
+    expect(job.state).toBe('ready');
+    const dubArgs = deps.calls.dub![0]![0] as { voiceId: string; adjust: unknown; text: string; durationSec: number };
+    expect(dubArgs).toMatchObject({ voiceId: 'Algieba', adjust: { speed: 1.1, pitch: -2 }, text: job.text, durationSec: 10.2 });
+    expect((deps.calls.words![0]![0] as Buffer).toString()).toBe('dubbed');
+    expect((deps.calls.save!.at(-1)![2] as Buffer).toString()).toBe('dubbed');
+    expect(publicJob(job).dub).toBe(true);
+    expect(deps.calls.refund).toBeUndefined();
+  });
+
+  it('a dub that misses keeps the picture in Omni\'s voice and refunds only the dub', async () => {
+    const deps = mockDeps({ dub: async () => null });
+    let job = await startScene(deps, 'u1', startInput(planFor(omni, { voiceId: 'Kore' })));
+    for (let i = 0; i < job.turns.length; i++) job = await pollScene(deps, 'u1', job);
+    expect(job.state).toBe('ready');
+    expect(job.warnings).toContain('dub_failed');
+    expect(job.voiceId).toBeNull();
+    expect(deps.calls.refund).toEqual([['u1', job.dubCredits, `${job.ref}:dub-refund`]]);
+  });
+
+  it('a dubbed scene is never retaken (the Studio voice reads every word)', async () => {
+    const deps = mockDeps({ words: async () => ({ words: [{ word: 'x', start: 0, end: 1 }], heard: 'something else entirely' }) });
+    let job = await startScene(deps, 'u1', startInput(planFor(omni, { voiceId: 'Kore' })));
+    for (let i = 0; i < job.turns.length; i++) job = await pollScene(deps, 'u1', job);
+    expect(job.state).toBe('ready');
+    expect(job.retaken).toBe(false);
+  });
+
+  it('speed and pitch are ignored without a dub (Live keeps its pace chips)', () => {
+    expect(planFor('live-kira', { voiceSpeed: 1.2, voicePitch: 3 }).voiceAdjust).toEqual({ speed: 1, pitch: 0 });
+    expect(planFor(omni, { voiceSpeed: 1.2 }).voiceAdjust).toEqual({ speed: 1, pitch: 0 });
   });
 });
 
@@ -211,5 +248,26 @@ describe('sceneToMake', () => {
     expect(same.ok && edited.ok && edited.credits < same.credits).toBe(true);
     expect(sceneToMake(plan, 0, 'v8', `${KA} `.repeat(8))).toMatchObject({ ok: false });
     expect(sceneToMake(plan, 9, 'v8')).toMatchObject({ ok: false, reason: 'scene_missing' });
+  });
+});
+
+describe('voice adjust (D6 sliders, Studio voice only)', () => {
+  it('clamps to the slider ranges and steps', () => {
+    expect(clampVoiceAdjust({ speed: 3, pitch: -9 })).toEqual({ speed: 1.25, pitch: -4 });
+    expect(clampVoiceAdjust({ speed: 1.033, pitch: 1.3 })).toEqual({ speed: 1.05, pitch: 1.5 });
+    expect(clampVoiceAdjust({ speed: 'x', pitch: NaN })).toEqual({ speed: 1, pitch: 0 });
+  });
+  it('builds no filter for the voice as read', () => {
+    expect(voiceAdjustFilter({ speed: 1, pitch: 0 })).toBeNull();
+  });
+  it('speed alone is one atempo', () => {
+    expect(voiceAdjustFilter({ speed: 0.9, pitch: 0 })).toBe('atempo=0.9');
+  });
+  it('pitch shifts by asetrate and keeps the length with atempo', () => {
+    const f = voiceAdjustFilter({ speed: 1, pitch: 12 / 3 })!; // +4 st
+    const r = 2 ** (4 / 12);
+    expect(f).toContain(`asetrate=${Math.round(24000 * r)}`);
+    expect(f).toContain(`atempo=${Number((1 / r).toFixed(4))}`);
+    expect(voiceAdjustFilter({ speed: 1.2, pitch: -2 })!.endsWith('atempo=1.2')).toBe(true);
   });
 });

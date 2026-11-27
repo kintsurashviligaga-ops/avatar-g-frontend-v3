@@ -13,3 +13,6 @@ export * from './request';
 export * from './liveTake';
 export * from './sceneRun';
 export * from './chirpWords';
+export * from './voiceAdjust';
+export * from './agent';
+export * from './videoHandoff';
