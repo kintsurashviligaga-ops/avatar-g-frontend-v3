@@ -1,18 +1,7 @@
 /**
- * Pass-through layout for /[locale]/dashboard.
- *
- * The root /dashboard page is now the One Window CommandCenter — a
- * full-screen chat surface that should NOT be wrapped in the legacy
- * DashboardShell sidebar. The shell still lives at
- * app/[locale]/dashboard/(legacy)/layout.tsx and wraps every legacy
- * sub-route (agent-g, analytics, avatar, music, video, workflows…)
- * so those keep their previous chrome.
- *
- * Route map:
- *   /[locale]/dashboard              → CommandCenter (no shell)
- *   /[locale]/dashboard/avatar       → DashboardShell + page (via (legacy))
- *   /[locale]/dashboard/music        → DashboardShell + page (via (legacy))
- *   …etc.
+ * Pass-through layout for /[locale]/dashboard: the studio (FilmStudioHome → ChatChrome + OmniStudio) is a full-screen
+ * surface with its own chrome, so nothing wraps it. The old CommandCenter and the legacy DashboardShell sub-routes
+ * are gone; /[locale]/dashboard is the only page here.
  */
 import './hyperframe.css';
 
