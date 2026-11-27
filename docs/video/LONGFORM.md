@@ -165,8 +165,8 @@ Fast/Lite · business 120 s · executive 240 s all tiers.
   first for both.
 - The concat demuxer reading Supabase signed https URLs, and `-sseof` on them (range requests) — verified with local
   files and https in argv shape only, not against Supabase.
-- The Gemini-API watermark crop (`stripBottomWatermark` in ServiceManager) is NOT applied to long-form clips (the
-  agent video queue does not apply it either).
+- No provider watermark is ever cropped or removed, here or anywhere else: the old Veo bottom-band crop
+  (`stripBottomWatermark`) was deleted for EU AI Act Article 50 (2026-11-27).
 
 ## 9. Deliberately left for later
 

@@ -587,9 +587,8 @@ export async function POST(req: NextRequest) {
 
       // ⚠️ FREE, LIKE stabilize — a local ffmpeg pass with no provider call, so it takes no billing guard
       // and returns through ok() without `charged`.
-      // ⚠️ AND IT BELONGS LAST IN A CHAIN. stripVeoWatermark crops the bottom of the frame; running that
-      // after this would cut off the mark just burnt in. Anything that crops, scales or concats must
-      // happen BEFORE the watermark, never after.
+      // ⚠️ AND IT BELONGS LAST IN A CHAIN. A crop or scale after it would cut off the mark just burnt in.
+      // Anything that crops, scales or concats must happen BEFORE the watermark, never after.
       case 'watermark': {
         const url = await addWatermark(videoUrl);
         return url ? ok(url) : fail('ვოთერმარკის დადება ვერ მოხერხდა.');

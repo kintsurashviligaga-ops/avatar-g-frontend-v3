@@ -458,51 +458,6 @@ export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1
 }
 
 /**
- * Crop a Gemini-API Veo clip's visible bottom watermark band (audio copied through). `videoUrl` is anything ffmpeg
- * reads — an https URL or a local file. `dest` hosts the result at a FIXED storage path instead of a fresh random
- * one, so a caller that may run twice for the same clip (the film poll re-polls finished clips every tick) lands on
- * the same object instead of minting a new copy each time.
- */
-export async function stripBottomWatermark(
-  videoUrl: string,
-  aspect: '9:16' | '16:9' | '1:1' = '16:9',
-  pct?: number,
-  dest?: { bucket: string; path: string },
-): Promise<string | null> {
-  if (!BIN || !videoUrl) return null;
-  const rawPct = Number.isFinite(pct) ? (pct as number) : Number(process.env.VEO_WATERMARK_CROP_PCT || 8);
-  const p = Math.min(20, Math.max(0, rawPct)) / 100; // clamp 0–20%; 0 → nothing to strip
-  if (p <= 0) return videoUrl;
-  const [w, h] = ASPECT_DIMS[aspect] ?? ASPECT_DIMS['16:9']!;
-  let dir: string | null = null;
-  try {
-    dir = await mkdtemp(join(tmpdir(), 'veo-wm-'));
-    const out = join(dir, 'out.mp4');
-    // Simple -vf graph (keeps ffmpeg's autorotation): crop off the bottom band (rounded to an even height),
-    // then cover-fit back to the aspect's WxH so the output size/aspect is unchanged. Audio copied through so
-    // a Veo clip's native speech/effects survive. Removes only a VISIBLE bottom mark — the invisible SynthID
-    // is forensic and deliberately untouched.
-    const vf =
-      `crop=iw:floor(ih*${(1 - p).toFixed(4)}/2)*2:0:0,` +
-      `scale=${w}:${h}:force_original_aspect_ratio=increase,` +
-      `crop=${w}:${h},format=yuv420p`;
-    await exec(BIN, [
-      '-y', '-i', videoUrl, '-vf', vf,
-      ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
-    ], { maxBuffer: 1 << 26, timeout: 180_000 });
-    const buf = await readFile(out);
-    if (dest) return buf.byteLength < 1_024 ? null : await uploadBufferAndSign(dest.bucket, dest.path, buf, 'video/mp4', 604_800);
-    return await hostMp4(buf, 'veo-clean');
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[remix.watermark] strip failed → keeping original:', err instanceof Error ? err.message : err);
-    return null;
-  } finally {
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
-/**
  * Change playback speed by `factor` (2 = 2× faster, 0.5 = half-speed). Video via
  * setpts; audio via atempo (chained so factors outside the 0.5–2.0 atempo window
  * still work). Clamped to a sane 0.25×–4× range.
@@ -634,10 +589,9 @@ export const WATERMARK_TEXT = 'MYAVATAR.GE';
  * a real production master: `buildOverlaySvg({ overlayText: 'MYAVATAR.GE' }, 720, 1136)` reproduces it
  * exactly — band top at y=1027 in both, accent bar 4px at x=36, cap height 22px.
  *
- * ⚠️ THE COUNTERPART TO stripVeoWatermark ABOVE, AND THEY MUST NOT FIGHT. That one crops the provider's
- * mark off the bottom of the frame; this one adds OURS afterwards. Run in the other order and the crop
- * removes the brand mark that was just applied — so watermarking belongs at the END of a pipeline, after
- * every crop, scale and concat has happened.
+ * ⚠️ IT BELONGS AT THE END OF A PIPELINE, after every crop, scale and concat: a crop or a concat after it would cut
+ * the band off or keep it on one segment only. We never remove a provider's mark (visible or SynthID): the code that
+ * cropped Veo's visible bottom band was deleted for EU AI Act Article 50 (GG 2026-11-27).
  *
  * ⚠️ WHO GETS MARKED IS NOT DECIDED HERE. Call `shouldWatermark(userId)` (lib/billing/entitlements) —
  * never a flag off a request body.
