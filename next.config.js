@@ -397,7 +397,10 @@ const nextConfig = {
       ['sell/:path*', home], ['tracking/:path*', home], ['tools/:path*', home],
       ['services/marketplace/:path*', home], ['services/online-shop/:path+', home],
       ['services/agent-g/calls', home], ['services/agent-g/settings', home],
-      ['account/business', '/:locale/account/billing'], ['account/returns', '/:locale/account/billing'],
+      ['account/business', '/:locale/settings'], ['account/returns', '/:locale/settings'],
+      // The Stripe billing page is retired (owner, 2026-11-14): payments are BOG only, so a Stripe subscription screen only
+      // confused. Balance, top-up and plans live in Settings and the studio's credits sheet; an old bookmark lands there.
+      ['account/billing', '/:locale/settings'], ['account/payments', '/:locale/settings'],
       // /hub and /workspace were two more app shells beside the studio (docs/handoffs/service-inventory.md §0): English-only
       // dashboards with hard-coded „12 Avatars Created · 98% Success Rate" stats, whose „Image Creator" answered with text
       // and charged for an image. Master Task §19 / §27: one primary workspace, no fake numbers — they land in the studio.
@@ -409,7 +412,7 @@ const nextConfig = {
       // invoice list (`invoices`, `shops`; its create and detail links were 404s) and the admin disputes view
       // (`disputes`, `orders`).
       ['services/workflow', '/:locale/dashboard'], ['services/workflow/:path*', '/:locale/dashboard'],
-      ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
+      ['account/invoices', '/:locale/settings'], ['account/invoices/:path*', '/:locale/settings'],
       ['admin/disputes', '/:locale/admin'],
       // /create and /app were never routes but are typed and linked from outside as "the studio" (final-release master
       // task §7.1: /ka/create answered 404). The one canonical runtime is /{lang} (ServiceHub → ChatChrome + OmniStudio).
