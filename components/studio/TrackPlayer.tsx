@@ -34,7 +34,8 @@ export const TrackPlayer = memo(function TrackPlayer({
   const copy = INFO_COPY[locale === 'en' || locale === 'ru' ? locale : 'ka'];
   return (
     <div className="w-full min-w-0" data-testid="music-primary-result-player">
-      <MusicPreviewPlayer src={url} coverUrl={coverUrl} title={label} locale={locale} />
+      {/* Every track this player shows is one we generated: it carries the visible AI label (EU AI Act Art. 50). */}
+      <MusicPreviewPlayer src={url} coverUrl={coverUrl} title={label} locale={locale} aiLabel="generated" />
       {/* Optional, collapsed disclosure keeps provenance and slider limitations
           accessible without cluttering the player's minimal default layout. */}
       {(engine || note) && (
