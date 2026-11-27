@@ -12,6 +12,8 @@
  *   - a page that opens another window gets it closed: one page, one task;
  *   - `type` into a password field is refused: no credentials ever go into this browser;
  *   - downloads are refused and service workers blocked;
+ *   - when the person saved a login for the task's first site, its cookies are loaded (task.useState); the agent still
+ *     never types a password;
  *   - each step has its own timeout, and text is cut to the server's limit.
  *
  * PW_CORE and PW_EXECUTABLE exist only for the offline test (./script.test), which runs this exact text on this machine.
@@ -44,6 +46,8 @@ try {
     serviceWorkers: 'block',
     locale: L.locale,
     userAgent: L.userAgent,
+    // The person's own saved login for this site (./login, sealed in ./sessionStore), written in by the runner.
+    ...(task.useState ? { storageState: 'state.json' } : {}),
   });
   await ctx.route('**/*', (route) => {
     let p = '';
