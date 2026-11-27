@@ -59,6 +59,11 @@ Where: Vercel → project `avatar-g-frontend-v3` → Settings → Environment Va
 | Task relay ticket (#340) | `TASK_RELAY_TICKET` | none (site-wide) | `1` | |
 | Safety identifier (#371) | `SAFETY_IDENTIFIER_SALT`, then `SAFETY_IDENTIFIER` | none (site-wide) | salt: a random string of 16+ characters, never changed; flag: `1` | |
 | Pricing v8, founder finance (#343 to #354) | `NEXT_PUBLIC_PRICING_V8`, `ADMIN_FINANCE_DASHBOARD` | | | the pricing thread's checklist (billing, not here) |
+| Image extras (#321) | `IMAGE_EXTRA_RATIOS`, `NEXT_PUBLIC_IMAGE_EXTRA_RATIOS`, `IMAGE_MULTI_REF`, `NEXT_PUBLIC_IMAGE_EDIT_MODE` | none (site-wide) | `1` | |
+| Agent G 8.10 (#381, #382, #384, #385, #386) | `NEXT_PUBLIC_AGENT_G_ROUTER_V2`, `NEXT_PUBLIC_AGENT_G_COMMANDS`, `AGENT_G_SHIELD`, `AGENT_G_CONTEXT_V2`, `NEXT_PUBLIC_CHAT_PIN_GOAL`, `LIVE_AGENT_PLANNER` | none (site-wide) | exactly `1`, one at a time | |
+| AI provenance metadata (#403) | `AI_PROVENANCE_META` | none (site-wide) | exactly `1` | invisible metadata only |
+| Visible AI badge / deepfake label (#404, #405) | `NEXT_PUBLIC_AI_LABELS` | | | **stays off** (GG 2026-11-27 08:09Z) |
+| Ledger fail-closed (#407) | `LEDGER_FAIL_CLOSED` | none (site-wide) | exactly `1` | billing: GG card; after Step 1 shows the ledger RPCs answer |
 
 Live voice and the talking avatar are already on for everyone (`LIVE_AUDIENCE=everyone`, `LIVE_AVATAR_AUDIENCE=everyone`). Leave them.
 
@@ -93,6 +98,9 @@ Claude does these right after Step 1 passes and reports each one. Nothing here s
 | Generations | Chat history with old images, clips and songs | Results show after a reopen. A **new** paid generation belongs to Step 7 |
 | Cron sweeps | Vercel runtime logs for `/api/cron/*`, 30 minutes after GREEN | The ENOTFOUND errors stop |
 | Agent G | Open Agent G, run one free web search | Answer with sources |
+| Ledger RPCs (8.20) | SQL Editor: `select proname from pg_proc where proname in ('deduct_credits','deduct_credits_once','refund_credits','bog_fulfill_order');` then `notify pgrst, 'reload schema';` | All four names listed. Until the reload, paid routes may see "Could not find the function" (see #407) |
+| BOG redelivery (8.20) | Vercel logs for `/api/billing/bog/webhook` after the first real payment | One `bog:` credit per order, even if BOG sends the callback twice |
+| Live reconnect (8.20) | GG on a phone: start a Live call, switch Wi-Fi off and on | "კავშირის აღდგენა…" then the call continues, or a clear error. Never a frozen screen |
 
 > Do not rely on `/api/health/public`. It said 6/6 during the outage because it never touches the database.
 
@@ -360,6 +368,27 @@ The order:
       - **#392:** Notion and GitHub routes.
       - **#311** and **#393** were brought up to date with #310.
     - **#401** is the throwaway combined run (#312, #387, #400, #399, #308 to #311, #356, #365, #366 to #369, #390, #392). It is closed unmerged after CI.
+
+26. *(new, 2026-11-27, Phase 8.20 pre-flight)* Built work that was outside this list, plus the 8.20 fixes. Each is its own card; flags stay off.
+    - **#381 → #382 → #383 → #384 → #385 → #386** (Agent G 8.10), then **#387 → #388 → #389** (8.11 browser v2, error safety, follow-ups). #387 goes after #312; #400 then follows #387 (item 25).
+    - **#402 → #403 → #404 → #405** (EU AI Act). Visible labels stay off; only `AI_PROVENANCE_META` may go on later.
+    - **#406** (Agent G task card says "temporarily unavailable" in Georgian): main-based, no flag, any time.
+    - **#407** (ledger fail-closed, `LEDGER_FAIL_CLOSED` off): main-based. Billing-adjacent, so its own GG card.
+    - **#408** (login browser behind the network guard): goes **after #346 and #399**. Its base is #346's branch, so after #346 merges, retarget it to main. Required before `AGENT_BROWSER_LOGIN=1`.
+    - New commits on existing PRs (order unchanged): **#396** now lists 13 more switches and the infra names in `.env.example`; **#364** and **#369** got localized skeletons while their panel loads.
+27. *(new, 2026-11-27)* Conflicts the 8.20 combined run (branch `claude/throwaway-820-combined`, all 96 PRs + the 8.20 fixes) hit, with the tested resolution. Use the same when the real merges hit them:
+    - **#318** privacy page: drop the OpenAI row (chat memory and dictation are both on Google after #306).
+    - **#328** clipOrder.ts and **#331** OmniStudio imports: keep both sides.
+    - **#340** tasks route.test: keep both test blocks.
+    - **#351** live route.test: keep the 3.8 model from #292 and #351's new call shape.
+    - **#358**: the upscale button is already gone (#333). Add `artPick`/`runArtChat` and the recipe line in LibraryGallery.
+    - **#361** and **#364** OmniStudio: keep Art Director, Music Producer and Virtual Studio side by side (5 hunks, all "keep all").
+    - **#371** clip route imports, **#392** AgentTerminal imports, **#403**, **#404**: keep both.
+    - **#390** ConnectorsButton: the tested file in `/mnt/project-files/launch-green/resolutions/ConnectorsButton.tsx`.
+    - **#396** and **#389** `.env.example`: keep both blocks (#389: keep ours; its seek label is already in #398).
+    - **#398**: its a11y labels win; keep #376's ka/ru TrackPlayer copy.
+    - **#399** script.ts header comment: keep both bullets (saved login from #346 and the network guard). #408 carries the same resolution.
+    - **#388**: CommandCenter, OnboardingWizard and UnifiedServiceLayout stay deleted (#334); in LiveAvatarEnroll keep both imports.
 
 **If a merge goes wrong:** in Vercel, promote the previous production deployment. This is instant and needs no rebuild. Then revert the merge commit. No step here runs SQL inside a merge, so a rollback never needs a database change.
 
