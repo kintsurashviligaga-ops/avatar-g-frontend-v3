@@ -20,7 +20,6 @@ jest.mock('../services/billing/guardedCall', () => ({
   BudgetExceededError: class extends Error {},
   guardedCall: jest.fn(async (_o: unknown, fn: () => Promise<unknown>) => fn()),
 }));
-jest.mock('../video/remixOps', () => ({ stripBottomWatermark: jest.fn() }));
 jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 
 import { ServiceManager, type ServiceManagerRequest } from './ServiceManager';
