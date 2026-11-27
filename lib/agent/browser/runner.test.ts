@@ -59,6 +59,27 @@ describe('hostBrowserRunner', () => {
     expect(await spend.total()).toBeLessThanOrEqual(browserWorstCaseUsd(plan));
   });
 
+  it('loads the person’s saved login only for the site the task starts on, and says it did', async () => {
+    const done = { finalUrl: 'https://example.com/', steps: [{ op: 'goto', ok: true }] };
+    const state = { cookies: [{ name: 'sid', value: 's', domain: '.example.com' }], origins: [] };
+    const asked: string[] = [];
+    const { host, log } = fakeHost(done);
+    const r = await hostBrowserRunner(host, memorySpendStore(), {
+      loadState: async (url) => { asked.push(url); return url.startsWith('https://example.com') ? { site: 'example.com', state } : null; },
+    }).run(plan, sig());
+    expect(asked).toEqual(['https://example.com/']);
+    expect(JSON.parse(log.written['state.json']!)).toEqual(state);
+    expect(JSON.parse(log.written['task.json']!).useState).toBe(true);
+    expect(r).toMatchObject({ ok: true, session: 'example.com' });
+
+    // No saved login, or a vault that fails: the task runs as before, with an empty browser.
+    const b = fakeHost(done);
+    const r2 = await hostBrowserRunner(b.host, memorySpendStore(), { loadState: async () => { throw new Error('vault down'); } }).run(plan, sig());
+    expect(b.log.written['state.json']).toBeUndefined();
+    expect(JSON.parse(b.log.written['task.json']!).useState).toBe(false);
+    expect(r2.ok && 'session' in r2).toBe(false);
+  });
+
   it('refuses before creating anything when the $20 ledger is full', async () => {
     const { host, log } = fakeHost({ steps: [], finalUrl: '' });
     const r = await hostBrowserRunner(host, memorySpendStore(20)).run(plan, sig());

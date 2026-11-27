@@ -30,6 +30,7 @@ import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 import { saveMedia } from '@/lib/media/saveMedia';
 import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/LibraryState';
+import { LibraryLoading } from '@/components/library/LibraryLoading';
 import {
   type LibraryItem, forgetLibraryLink, libraryFailure, migrateDeviceFavorites, removeLibraryItem, setLibraryFavorite, useLibraryOwner,
   useLibraryPage,
@@ -282,7 +283,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-app-muted"><Loader2 className="animate-spin" size={22} /></div>
+        <LibraryLoading lang={lang} />
       ) : failure ? (
         <LibraryFailed lang={lang} failure={failure} onRetry={reload} retrying={library.isFetching} />
       ) : display.length === 0 && demo ? (
