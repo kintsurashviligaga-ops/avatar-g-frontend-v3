@@ -9,8 +9,14 @@ Status: draft, every switch off. GG decided on 2026-11-27 to close the Article 5
 |---|---|---|
 | 50(1) | Tell people they are talking to an AI | Live voice `aiNotice` (components/voice/live/liveOverlayCopy.ts), already in production |
 | 50(2) | Machine-readable marking of synthetic image, video and audio | SynthID from Google's models (we never remove it) **plus** IPTC/XMP metadata from `lib/provenance/aiMarking.ts` (this PR) |
-| 50(4) | Disclose deepfakes (a real person's likeness) | Visible "AI-generated, not a real recording" label (separate PR) |
-| Visible label | Code of Practice: a visible mark next to the machine-readable one | "AI-generated" badge on every result (separate PR) |
+| 50(4) | Disclose deepfakes (a real person's likeness) | Machine-readable `likeness` description in the metadata. A visible label exists only as an opt-in (below) |
+| Visible label | Code of Practice: a visible mark next to the machine-readable one | Opt-in only (`NEXT_PUBLIC_AI_LABELS` exactly `1`), **off on myavatar.ge** |
+
+**Product decision (GG, 2026-11-27):** the public site shows clean results with no visible "AI" badge,
+watermark or deepfake label, like Google AI Studio and Gemini. Compliance there rests on the invisible
+layers: SynthID from Google's models plus the IPTC/XMP metadata below. The visible badge
+(`components/studio/ui/AiContentBadge`) is kept only for a deployment whose client legally demands it.
+Neither layer changes what the user sees in the result or in the downloaded file.
 
 We never crop, blur or cover a provider's watermark. The Veo bottom-band crop
 (`stripBottomWatermark`) was deleted in a separate PR.
@@ -64,7 +70,8 @@ add a signer next to `maybeMarkAiOutput` (same call sites) and keep the XMP pack
 
 | Variable | Values | Default | Effect |
 |---|---|---|---|
-| `AI_PROVENANCE_META` | exactly `1` | off | writes the XMP metadata at upload |
+| `AI_PROVENANCE_META` | exactly `1` | off | writes the invisible XMP metadata at upload |
+| `NEXT_PUBLIC_AI_LABELS` | exactly `1` | off (keep unset on myavatar.ge) | visible labels, enterprise opt-in only |
 
 Turn-on: set the variable in Vercel Production, redeploy, generate one image, one clip and one song,
 then check with `exiftool -XMP:all <file>` that `DigitalSourceType` is present.
