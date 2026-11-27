@@ -8,6 +8,8 @@
 import { useState } from 'react';
 import { ProducerControls } from './ProducerControls';
 import { MusicCard, type MusicCardTrack } from './MusicCard';
+import { UseInVideoSheet } from './UseInVideoSheet';
+import type { montageHandoff } from '@/lib/music/producer/placement';
 import { DEFAULT_SPEC, parseProducerSpec, type ProducerLang, type ProducerSpec } from '@/lib/music/producer/spec';
 import { quoteProducer, type ProducerBook } from '@/lib/music/producer/price';
 import { specSummary } from '@/lib/music/producer/brief';
@@ -27,13 +29,14 @@ const T = {
   low: { ka: 'კრედიტი არ კმარა.', en: 'Not enough credits.', ru: 'Недостаточно кредитов.' },
 } as const;
 
-export function MusicProducerPanel({ lang, book = 'today', post = fetchPost, onUseInVideo, initialSpec }: {
+export function MusicProducerPanel({ lang, book = 'today', post = fetchPost, onOpenMontage, initialSpec }: {
   lang: ProducerLang;
   book?: ProducerBook;
   post?: ProducerPost;
-  onUseInVideo?: (t: MusicCardTrack) => void;
+  onOpenMontage?: (handoff: ReturnType<typeof montageHandoff>) => void;
   initialSpec?: ProducerSpec;
 }) {
+  const [sheetFor, setSheetFor] = useState<string | null>(null);
   const [spec, setSpec] = useState<ProducerSpec>(initialSpec ?? { ...DEFAULT_SPEC, vocals: true });
   const [tracks, setTracks] = useState<MusicCardTrack[]>([]);
   const [busy, setBusy] = useState(false);
@@ -77,7 +80,8 @@ export function MusicProducerPanel({ lang, book = 'today', post = fetchPost, onU
             restyleCredits={quoteProducer('restyle', t.meta.spec.lengthSec, book).credits}
             onExtend={(id) => send({ action: 'extend', parentId: id })}
             onRestyle={(id, style) => send({ action: 'restyle', parentId: id, style })}
-            onUseInVideo={onUseInVideo} />
+            onUseInVideo={() => setSheetFor((cur) => (cur === t.id ? null : t.id))}
+            footer={sheetFor === t.id ? <UseInVideoSheet track={t} lang={lang} post={post} onClose={() => setSheetFor(null)} onOpenMontage={onOpenMontage} /> : null} />
         ))}
       </div>
     </section>

@@ -43,3 +43,30 @@ enabled with a small "Beta" tag.
 - Sung language picker (Auto + Lyria's 8 + Georgian "Beta"). Spec field `language` (optional, default auto).
 - UI: ProducerControls, WaveformPlayer (Web Audio peaks, click/arrow-key seek), LyricsPane ("Synced by section",
   active line lit, click to seek), MusicCard, MusicProducerPanel; admin page `/{locale}/admin/music-producer`.
+
+## PR C (Agent G + Use in Video + Library) — built
+
+- `lib/music/producer/placement.ts` (pure): a scene's place in the film = the sum of the scenes before it (same order as
+  the Director's Workflow cut). Scene N trimmed to that scene by default, or "until the end", or the whole film. 0.5 s
+  fades, music 6 dB under the film, dipped further under speech (sidechaincompress from the film's own audio), dialogue
+  untouched (amix normalize=0), picture stream-copied. A short track under a whole film plays once and fades (never looped).
+- `POST /api/music/producer/place` (free, ffmpeg only): own track (recipe), own-storage film only, scene must exist
+  (422 no_scene), new film saved as `mpfilm_<project>_<track>` in the Library (subtype director-music); original kept.
+- `GET /api/music/producer/recipe?id=`: recipe + fresh signed link for the Library card / reopening the Music Card.
+- Agent G (`lib/music/producer/agent.ts` + `MusicPlanCard`): "Create a sad piano track, 1 minute long, and add it to
+  Scene 3 of my video." → one card: 1. make (✦11) 2. put under Scene 3 (0:16 – 0:22), free. Refused on the card before any
+  charge when there is no film or no such scene. Offers "30 s is enough · ✦6" when the scene is shorter (user's choice).
+  A place miss after the track keeps the track and says so.
+- Use in Video sheet on every Music Card: scenes of the newest films, "this scene only / until the end", whole film,
+  Open in Montage (hands `musicUrl, musicStartSec 0, musicGainDb -6` to /api/v2/montage/render).
+- The seam with Director's Workflow: `registerFilmTarget({ projectId, title, filmUrl, scenes, sceneTitles })` from
+  `lib/music/producer/videoTargets` — ONE call in FinalCutPanel after a successful cut (#355), to add once #355 and this
+  stack are both merged. Neither side imports the other until then.
+- Chat: `NEXT_PUBLIC_MUSIC_PRODUCER_V2` ('admin'|'everyone') shows the plan card for a music line in the Music tool, or a
+  music line naming a video anywhere. Server `MUSIC_PRODUCER_V2` still decides per user. Turn both on together.
+
+### Turn-on (after Supabase GREEN + GG OK)
+1. Merge order: #359 → #360 → PR C (then the one-line #355 hook).
+2. Set `MUSIC_PRODUCER_V2=admin` and `NEXT_PUBLIC_MUSIC_PRODUCER_V2=admin`, redeploy.
+3. Paid check (~$0.30): one 30 s clip, one 1 min Pro, one Add 30 s, one place on a scene (free). Verify charges 6/11/6
+   (v8) or 3/6/3 (today), refunds on a forced miss, Library rows.
