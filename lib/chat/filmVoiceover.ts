@@ -37,6 +37,7 @@ import { mp3DurationSec } from '@/lib/audio/mp3Duration';
 import { transcribeWithGeminiDetailed } from '@/lib/voice-v2v/geminiStt';
 import type { CaptionWord } from '@/lib/pipeline/compositing/word-synced-captions';
 import { checkFilmVoice, type VoiceVerdict } from './filmVoiceCheck';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 /**
  * Strong-signal commentator / narration intent across Georgian, English and
@@ -205,7 +206,7 @@ export async function textToHostedSpeech(text: string, gender?: 'male' | 'female
     const audio = await synthesizeVoiceover(text, { gender: gender ? (gender === 'male' ? 'MALE' : 'FEMALE') : genderForPersona(detectPersona(text)) });
     if (!audio) return null;
     const path = `lipsync-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200, { aiMark: AI_GENERATED })) ?? null;
   } catch {
     return null;
   }
@@ -230,7 +231,7 @@ export async function speakAvatarLine(opts: { text: string; gender?: 'male' | 'f
     const buf = Buffer.from(audio.base64, 'base64');
     const seconds = mp3DurationSec(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
     if (seconds === null) return null;
-    const url = await uploadBufferAndSign('renders', opts.path, buf, audio.contentType, 7200);
+    const url = await uploadBufferAndSign('renders', opts.path, buf, audio.contentType, 7200, { aiMark: AI_GENERATED });
     return url ? { url, seconds } : null;
   } catch {
     return null;
@@ -305,7 +306,7 @@ export async function generateFilmVoiceover(opts: FilmVoiceoverOptions): Promise
     if (!audio) return null;
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;
-    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200, { aiMark: AI_GENERATED })) ?? null;
   } catch {
     return null;
   }
@@ -355,7 +356,7 @@ export async function generateCheckedFilmVoiceover(opts: FilmVoiceoverOptions): 
       },
     });
     if (!outcome) return null;
-    const url = await uploadBufferAndSign('renders', `${opts.compositeId}/voiceover.mp3`, outcome.read.audio.buf, outcome.read.audio.contentType, 7200);
+    const url = await uploadBufferAndSign('renders', `${opts.compositeId}/voiceover.mp3`, outcome.read.audio.buf, outcome.read.audio.contentType, 7200, { aiMark: AI_GENERATED });
     if (!url) return null;
     return { url, score: outcome.score, verdict: outcome.verdict, reads: outcome.reads, words: outcome.words };
   } catch {
@@ -414,7 +415,7 @@ export async function generateDialogueVoiceover(opts: {
     if (!buffers.length) return null;
     const merged = Buffer.concat(buffers);
     const path = `${opts.compositeId}/dialogue.mp3`;
-    return (await uploadAndSign('renders', path, merged.toString('base64'), 'audio/mpeg', 7200)) ?? null;
+    return (await uploadAndSign('renders', path, merged.toString('base64'), 'audio/mpeg', 7200, { aiMark: AI_GENERATED })) ?? null;
   } catch {
     return null;
   }
@@ -459,7 +460,7 @@ export async function generateDialogueStems(opts: {
       const audio = await synthesizeVoiceover(text, { gender: (cast?.gender ?? 'female') === 'male' ? 'MALE' : 'FEMALE', variant: variants.get(speaker) }).catch(() => null);
       if (!audio) return null;
       const path = `${opts.compositeId}/dstem-${i}-${speaker.replace(/[^a-z0-9]+/gi, '').slice(0, 16) || 'x'}.mp3`;
-      const url = await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200);
+      const url = await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200, { aiMark: AI_GENERATED });
       return url ? { url, speaker: t.speaker, startSec: t.startSec as number, buf: Buffer.from(audio.base64, 'base64') } : null;
     }));
     // Every turn must have produced a stem (the assembly's 1:1 stem↔entry guard) — else fall back to merged.
@@ -468,7 +469,7 @@ export async function generateDialogueStems(opts: {
     const stems: DialogueStem[] = ok.map(({ url, speaker, startSec }) => ({ url, speaker, startSec }));
     // Merged single-track fallback from the SAME buffers (no re-render).
     const mergedPath = `${opts.compositeId}/dialogue.mp3`;
-    const mergedUrl = (await uploadAndSign('renders', mergedPath, Buffer.concat(ok.map((r) => r.buf)).toString('base64'), 'audio/mpeg', 7200)) ?? null;
+    const mergedUrl = (await uploadAndSign('renders', mergedPath, Buffer.concat(ok.map((r) => r.buf)).toString('base64'), 'audio/mpeg', 7200, { aiMark: AI_GENERATED })) ?? null;
     return { stems, mergedUrl };
   } catch {
     return null;

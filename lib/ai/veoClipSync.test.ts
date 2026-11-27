@@ -188,7 +188,7 @@ describe('delivery', () => {
 
     expect(res?.url).toBe('https://supabase.example.com/renders/raw.mp4?token=t');
     expect(uploadBufferAndSign).toHaveBeenCalledWith(
-      'renders', expect.stringMatching(/^product-ad\/u1\/\d+\.mp4$/), MP4, 'video/mp4', 604_800,
+      'renders', expect.stringMatching(/^product-ad\/u1\/\d+\.mp4$/), MP4, 'video/mp4', 604_800, { aiMark: { source: 'generated' } },
     );
   });
 

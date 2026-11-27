@@ -27,6 +27,7 @@ import { composeLyriaBed, lyriaBedPlan, lyriaBedReady } from '@/lib/audio/lyriaB
 import { generateWithGemini } from '@/lib/gemini/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const exec = promisify(execFile);
 
@@ -224,7 +225,7 @@ export async function generateGeorgianSong(
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) return null;
     const path = `films/kasong-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-    const url = (await uploadAndSign('uploads', path, buf.toString('base64'), 'audio/mpeg', 604_800)) ?? null;
+    const url = (await uploadAndSign('uploads', path, buf.toString('base64'), 'audio/mpeg', 604_800, { aiMark: AI_GENERATED })) ?? null;
     // eslint-disable-next-line no-console
     console.log('[ka-song] Georgian song ready:', url ? 'yes' : 'no');
     return url;

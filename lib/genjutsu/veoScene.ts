@@ -27,6 +27,7 @@ import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } fr
 import type { VeoAspect, VeoFailureReason, VeoMedia, VeoResizeMode, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { SCENE_SECONDS } from './limits';
 import type { GenjutsuQuality } from './types';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const WEEK_SEC = 604_800;
 const MIN_CLIP_BYTES = 1_024;
@@ -171,7 +172,7 @@ export async function deliverScene(video: VeoVideo | undefined, path: string): P
 
     const buf = Buffer.from(video.base64, 'base64');
     if (buf.byteLength < MIN_CLIP_BYTES) return null;
-    return await uploadBufferAndSign('renders', path, buf, 'video/mp4', WEEK_SEC);
+    return await uploadBufferAndSign('renders', path, buf, 'video/mp4', WEEK_SEC, { aiMark: AI_GENERATED });
   } catch {
     return null;
   }

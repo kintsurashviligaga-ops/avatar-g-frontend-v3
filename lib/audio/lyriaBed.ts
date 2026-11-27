@@ -14,6 +14,7 @@ import { generateLyriaTrack, hasLyriaProvider } from '@/lib/ai/lyriaMusic';
 import { lyriaProMaxSec, lyriaVocalsVerified } from '@/lib/music/studio/capabilities';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { LYRIA_CLIP_MAX_SEC, LYRIA_CLIP_MODEL, LYRIA_PRO_MODEL, musicLengthDirection } from '@/lib/studio/musicEngines';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 type Env = NodeJS.ProcessEnv;
 
@@ -51,5 +52,5 @@ export async function composeLyriaBed(o: {
   if (!track) return null;
   const ext = /wav/.test(track.mime) ? 'wav' : /ogg/.test(track.mime) ? 'ogg' : 'mp3';
   const path = `${o.folder}/lyria-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  return (await uploadAndSign(o.bucket ?? 'uploads', path, track.base64, track.mime, 604_800)) ?? null;
+  return (await uploadAndSign(o.bucket ?? 'uploads', path, track.base64, track.mime, 604_800, { aiMark: AI_GENERATED })) ?? null;
 }

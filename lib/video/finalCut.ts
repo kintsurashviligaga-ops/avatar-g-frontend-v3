@@ -19,6 +19,7 @@ import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { VIDEO_FPS, framesFor } from '@/lib/video/durationContract';
 import { countDecodedFrames } from '@/lib/video/frameCount';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const RENDER_BUCKET = process.env.RENDER_BUCKET ?? 'renders';
 
@@ -85,7 +86,7 @@ export async function cutMasterToLength(videoUrl: string, finalSec: number): Pro
       throw new FinalCutRejected(actualFrames, expectedFrames);
     }
     const path = `films/final-${Date.now()}-${framesFor(finalSec)}f-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    const url = await uploadBufferAndSign(RENDER_BUCKET, path, buf, 'video/mp4', 604_800);
+    const url = await uploadBufferAndSign(RENDER_BUCKET, path, buf, 'video/mp4', 604_800, { aiMark: AI_GENERATED });
     if (!url) throw new Error('final cut: hosting the cut master failed');
     return url;
   } finally {

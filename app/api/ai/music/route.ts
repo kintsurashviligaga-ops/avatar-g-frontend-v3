@@ -33,6 +33,7 @@ import {
 import { isMusicEngineId, isRetiredMusicEngineId, LYRIA_CLIP_MAX_SEC, LYRIA_PRO_MODEL, lyriaModelForSec, musicLengthDirection, musicTargetSec, offeredMusicLengths } from '@/lib/studio/musicEngines';
 import { lyriaProMaxSec, lyriaVocalsVerified } from '@/lib/music/studio/capabilities';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 /**
  * Assistant music generation.
@@ -102,7 +103,7 @@ async function composeTrackUrl(brief: MusicBrief, _style: string, instrumental: 
     if (!t) throw new Error('Lyria did not return audio');
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800);
+    const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800, { aiMark: AI_GENERATED });
     if (url) return { url, engine: pro ? 'Lyria 3 Pro' : 'Lyria', controls: report('lyria', prompt) };
     throw new Error('Lyria host failed');
   };
@@ -489,7 +490,7 @@ export async function POST(req: NextRequest) {
         const buf = Buffer.from(await r.arrayBuffer());
         deliveredSec = await probeTrackDurationSec(buf, ext).catch(() => 0);
         const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const signed = await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800); // 7-day signed URL
+        const signed = await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800, { aiMark: AI_GENERATED }); // 7-day signed URL
         if (signed) hostedUrl = signed;
       }
     } catch {

@@ -243,7 +243,7 @@ describe('a clip that succeeds', () => {
     expect(res.action).toBe('done');
     expect(refundCredits).not.toHaveBeenCalled();
     expect(pollVeoClip).toHaveBeenCalledWith(VERTEX_OP);
-    expect(uploadBufferAndSign).toHaveBeenCalledWith('uploads', 'agentq/item-1.mp4', MP4, 'video/mp4', 604_800);
+    expect(uploadBufferAndSign).toHaveBeenCalledWith('uploads', 'agentq/item-1.mp4', MP4, 'video/mp4', 604_800, { aiMark: { source: 'generated' } });
     expect(db.rows[0].video_url).toBe('https://x/clip.mp4');
     expect(db.rows[0].credits).toBe(25);
   });

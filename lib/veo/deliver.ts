@@ -10,6 +10,7 @@ import 'server-only';
 import { deliverableUrl } from './engine';
 import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import type { VeoVideo } from './types';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const MAX_CLIP_BYTES = 256 * 1024 * 1024;
@@ -53,7 +54,7 @@ export async function hostGcsVideo(video: Extract<VeoVideo, { kind: 'gcs' }>, pa
     const res = await fetch(signed, { cache: 'no-store', redirect: 'follow', signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
     const buf = res.ok ? await readCapped(res) : null;
     if (buf && buf.byteLength >= 1_024) {
-      const hosted = await uploadBufferAndSign('renders', path, buf, video.mimeType || 'video/mp4', WEEK_SEC);
+      const hosted = await uploadBufferAndSign('renders', path, buf, video.mimeType || 'video/mp4', WEEK_SEC, { aiMark: AI_GENERATED });
       if (hosted) return hosted;
     }
   } catch {

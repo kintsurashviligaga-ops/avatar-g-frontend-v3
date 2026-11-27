@@ -13,6 +13,7 @@ import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { addWatermark } from '@/lib/video/remixOps';
 import { shouldWatermark } from '@/lib/billing/entitlements';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 /**
  * The batch video queue Agent G drives — enqueue N prompts, drain one step at a time, poll for results.
@@ -191,7 +192,7 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
       const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : null;
       if (!buf || buf.byteLength < MIN_CLIP_BYTES) { await fail(svc, item, userId, 'video could not be downloaded'); return { action: 'failed', item }; }
 
-      url = await uploadBufferAndSign('uploads', `agentq/${item.id}.mp4`, buf, 'video/mp4', DELIVERY_TTL_SEC);
+      url = await uploadBufferAndSign('uploads', `agentq/${item.id}.mp4`, buf, 'video/mp4', DELIVERY_TTL_SEC, { aiMark: AI_GENERATED });
       if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
     }
 
