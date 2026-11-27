@@ -9,3 +9,4 @@ export * from './intent';
 export * from './labels';
 export * from './request';
 export * from './library';
+export * from './errors';
