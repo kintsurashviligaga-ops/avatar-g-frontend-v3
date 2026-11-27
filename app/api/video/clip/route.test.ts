@@ -33,6 +33,7 @@ jest.mock('../../../../lib/video/clipSpeech', () => ({ readClipPrompt: jest.fn()
 jest.mock('../../../../lib/server/serviceSwitches', () => ({ serviceOffResponse: jest.fn(async () => null) }));
 jest.mock('../../../../lib/video/omniClip', () => ({ submitOmniClip: jest.fn(), OMNI_MODEL: 'gemini-omni-1.2-flash' }));
 jest.mock('../../../../lib/veo/engine', () => ({ veoModelProblem: jest.fn(() => null) }));
+jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (t: string) => `EN(${t})`) }));
 
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
@@ -50,6 +51,8 @@ import { DIRECT_CLIP_BODY_MAX_BYTES, DIRECT_CLIP_PHOTO_MAX_BYTES } from '../../.
 import { omniClipCredits } from '../../../../lib/credits/priceBook';
 import { submitOmniClip } from '../../../../lib/video/omniClip';
 import { veoModelProblem } from '../../../../lib/veo/engine';
+import { promptToEnglish } from '../../../../lib/ai/promptToEnglish';
+import { clipNegativePrompt } from '../../../../lib/video/clipPrompt';
 
 const ENV = { ...process.env };
 const UID = '11111111-2222-4333-8444-555555555555';
@@ -392,4 +395,53 @@ test('Omni refuses the submit → the ✦47 reservation is refunded BY REF and t
   const busy = await POST(post({ prompt: 'a fox', seconds: 10 }));
   expect(busy.status).toBe(503);
   expect(await busy.json()).toMatchObject({ error: 'provider_unavailable', refunded: true });
+});
+
+// ─── Phase 7.5: "what to avoid" and a seed (lib/video/clipAdvanced), behind CLIP_ADVANCED ────────────────────────────────
+
+test('CLIP_ADVANCED off (the default): avoid and seed in the body are never read — today\'s negative prompt, no seed', async () => {
+  const res = await POST(post({ prompt: 'a fox', avoid: 'text on screen', seed: 42 }));
+  expect(res.status).toBe(202);
+  const sent = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sent.negativePrompt).toBe(clipNegativePrompt('a fox'));
+  expect('seed' in sent).toBe(false);
+  expect(promptToEnglish).not.toHaveBeenCalled();
+});
+
+test('CLIP_ADVANCED off: even a malformed seed is ignored, not refused (the request is exactly as before)', async () => {
+  expect((await POST(post({ prompt: 'a fox', seed: 'abc', avoid: 'x'.repeat(999) }))).status).toBe(202);
+});
+
+test('CLIP_ADVANCED on: Veo gets the derived negative prompt + the user\'s words in English, and the seed; same price', async () => {
+  process.env.CLIP_ADVANCED = 'on';
+  const res = await POST(post({ prompt: 'a fox', avoid: 'ეკრანზე ტექსტი', seed: 4471 }));
+  expect(res.status).toBe(202);
+  const sent = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sent.negativePrompt).toBe(`${clipNegativePrompt('a fox')}, EN(ეკრანზე ტექსტი)`);
+  expect(sent.seed).toBe(4471);
+  expect((await res.json()).credits).toBe(quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' }));
+  // Translated before the charge: a slow translation never sits between the debit and the submit.
+  expect((promptToEnglish as jest.Mock).mock.invocationCallOrder[0]!).toBeLessThan((deductCredits as jest.Mock).mock.invocationCallOrder[0]!);
+});
+
+test('CLIP_ADVANCED on: a bad seed or a too-long avoid is refused free, before the rate limit and the charge', async () => {
+  process.env.CLIP_ADVANCED = 'on';
+  for (const body of [{ prompt: 'a fox', seed: -1 }, { prompt: 'a fox', seed: 2 ** 32 }, { prompt: 'a fox', seed: 1.5 }, { prompt: 'a fox', seed: 'abc' },
+    { prompt: 'a fox', avoid: 'x'.repeat(301) }, { prompt: 'a fox', avoid: 7 }]) {
+    const res = await POST(post(body));
+    expect(res.status).toBe(400);
+  }
+  expect(checkRateLimitByKey).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+});
+
+test('CLIP_ADVANCED on: an Omni clip (10 s) takes neither field — nothing translated, nothing extra sent', async () => {
+  process.env.CLIP_ADVANCED = 'on';
+  const res = await POST(post({ prompt: 'a fox', seconds: 10, avoid: 'blur', seed: 9 }));
+  expect(res.status).toBe(202);
+  expect(submitScene).not.toHaveBeenCalled();
+  const sent = (submitOmniClip as jest.Mock).mock.calls[0][0];
+  expect('seed' in sent).toBe(false);
+  expect(JSON.stringify(sent)).not.toContain('blur');
+  expect(promptToEnglish).not.toHaveBeenCalled();
 });

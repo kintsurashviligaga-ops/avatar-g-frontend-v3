@@ -40,6 +40,8 @@ import { CLIP_SPEECH_MAX_CHARS, asksForCuts, asksForMusic, asksForSubtitles, cli
 import { readClipPrompt } from '@/lib/video/clipSpeech';
 import { DIRECT_CLIP_BODY_MAX_BYTES, directClipCredits, directClipEngine, directClipResolution, parseDirectClipRequest, type DirectClipRequest, type DirectClipSpeech } from '@/lib/video/directClip';
 import { OMNI_MODEL, submitOmniClip } from '@/lib/video/omniClip';
+import { clipAdvancedServerOn, mergeClipNegative, parseClipAdvanced, type ClipAdvanced } from '@/lib/video/clipAdvanced';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -70,9 +72,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (serviceOff) return serviceOff;
 
   // Its photos ride in the body: read up to their ceiling, never the 64 KB default (which refused every photo).
-  const parsed = parseDirectClipRequest(await readJson(req, DIRECT_CLIP_BODY_MAX_BYTES));
+  const body = await readJson(req, DIRECT_CLIP_BODY_MAX_BYTES);
+  const parsed = parseDirectClipRequest(body);
   if (!parsed.ok) return fail(400, 'invalid_request', { issues: [{ path: parsed.field, code: parsed.code }] });
   const r = parsed.value;
+  // Phase 7.5: "what to avoid" and a seed, read only while CLIP_ADVANCED is on (lib/video/clipAdvanced). Off, the body's
+  // fields are never looked at, so the clip is made exactly as before.
+  let advanced: ClipAdvanced = { avoid: '', seed: null };
+  if (clipAdvancedServerOn()) {
+    const adv = parseClipAdvanced(body);
+    if (!adv.ok) return fail(400, 'invalid_request', { issues: [{ path: adv.field, code: adv.code }] });
+    advanced = adv.value;
+  }
 
   const limited = await checkRateLimitByKey(userId, GENJUTSU_RATE);
   if (limited) return limited;
@@ -80,7 +91,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const release = await claimInflight(userId, r);
   if (!release) return fail(409, 'duplicate_request');
   try {
-    return await startClip(userId, r, locale);
+    return await startClip(userId, r, locale, advanced);
   } finally {
     await release();
   }
@@ -95,7 +106,7 @@ function pricedFor(r: DirectClipRequest, speech: DirectClipSpeech) {
   };
 }
 
-async function startClip(userId: string, r: DirectClipRequest, locale: ReturnType<typeof billingLocale>): Promise<NextResponse> {
+async function startClip(userId: string, r: DirectClipRequest, locale: ReturnType<typeof billingLocale>, advanced: ClipAdvanced): Promise<NextResponse> {
   // What the card priced: Veo, or Omni when it read a Georgian line (or at 10 s).
   let priced = pricedFor(r, r.speech);
   if (r.expectedCredits !== null && r.expectedCredits !== priced.credits) return fail(409, 'price_changed', { credits: priced.credits });
@@ -124,6 +135,9 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
   const fit = clipSpeechFits(reading.lines, r.seconds, reading.speakers);
   if (!fit.fits) return fail(422, 'speech_too_long', { seconds: fit.seconds, maxSeconds: r.seconds });
 
+  // Veo only (Omni has neither field). The user's words to avoid go to Veo in English, after the derived ones; translated
+  // here, before the slot and the charge (promptToEnglish never throws: on any failure it returns the words as typed).
+  const avoidEn = engine === 'veo' && advanced.avoid ? await promptToEnglish(advanced.avoid, 'video') : '';
   const uuid = randomUUID();
   if (!(await claimDailySlot())) return fail(429, 'rate_limited', { scope: 'daily' });
 
@@ -166,7 +180,8 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
     : await submitScene({
       prompt: composeClipPrompt({ reading, photos: photoMode, cuts: asksForCuts(r.prompt) }),
       aspect: r.aspect, quality: 'fast', tier: r.tier, durationSec: r.seconds, userId, sessionId: `clip-${uuid}`,
-      negativePrompt: clipNegativePrompt(r.prompt),
+      negativePrompt: mergeClipNegative(clipNegativePrompt(r.prompt), avoidEn),
+      ...(advanced.seed !== null ? { seed: advanced.seed } : {}),
       referenceUrls: [],
       // One photo is the first frame, cropped to fill the frame (Veo's default letterboxes a photo of another shape).
       ...(photoMode === 'frame' ? { startImage: photos[0]!, resizeMode: 'crop' as const } : {}),
