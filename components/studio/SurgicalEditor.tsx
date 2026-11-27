@@ -62,7 +62,7 @@ interface Copy {
   selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
   returnChat: string;
   agentTitle: string; agentPhPhoto: string; agentPhVideo: string; agentPhAudio: string; agentSend: string; agentNoOp: string;
-  detach: string; undetach: string; aspect: string; aspectOrig: string; bgReplace: string; bgReplacePh: string; volume: string;
+  detach: string; undetach: string; aspect: string; aspectOrig: string; bgReplace: string; bgReplacePh: string; volume: string; seek: string;
 }
 
 const T: Record<Lang, Copy> = {
@@ -89,7 +89,7 @@ const T: Record<Lang, Copy> = {
     tabRetouch: 'რეტუში', tabTrim: 'მოჭრა', tabAi: 'AI', tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
     cropSingleOnly: 'ჩარჩო მუშაობს ერთ კლიპზე — თანმიმდევრობაში დარჩება მთლიანი კადრი.',
     cropWholeSeq: 'ჩარჩო მოქმედებს მთელ თანმიმდევრობაზე.', clipsUsed: 'კადრი',
-    detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
+    detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე', seek: 'გადახვევა',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
@@ -114,7 +114,7 @@ const T: Record<Lang, Copy> = {
     tabRetouch: 'Retouch', tabTrim: 'Trim', tabAi: 'AI', tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
     cropSingleOnly: 'Crop works on a single clip — a multi-clip sequence keeps the full frame.',
     cropWholeSeq: 'The crop frames the whole sequence.', clipsUsed: 'clips',
-    detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
+    detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume', seek: 'Seek',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
@@ -139,7 +139,7 @@ const T: Record<Lang, Copy> = {
     tabRetouch: 'Ретушь', tabTrim: 'Обрезка', tabAi: 'AI', tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
     cropSingleOnly: 'Кадрирование работает с одним клипом — в последовательности кадр остаётся целиком.',
     cropWholeSeq: 'Кадрирование применяется ко всей последовательности.', clipsUsed: 'кадров',
-    detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
+    detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость', seek: 'Перемотка',
   },
 };
 
@@ -1226,7 +1226,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                     <div className="text-[10.5px] tabular-nums text-app-muted">{fmt(audioCur)} / {fmt(audioDur)}</div>
                   </div>
                 </div>
-                <div role="button" tabIndex={0} aria-label="seek"
+                <div role="button" tabIndex={0} aria-label={t.seek}
                   onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seekAudio((e.clientX - r.left) / r.width); }}
                   onKeyDown={(e) => { if (e.key === 'ArrowRight') seekAudio(Math.min(1, audioProgress + 0.05)); if (e.key === 'ArrowLeft') seekAudio(Math.max(0, audioProgress - 0.05)); }}
                   className="flex h-24 cursor-pointer items-center gap-[2px]">
