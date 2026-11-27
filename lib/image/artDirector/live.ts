@@ -18,6 +18,7 @@ import { guardedCall } from '@/lib/services/billing/guardedCall';
 import { ArtError } from './errors';
 import { ART_MODEL } from './spec';
 import type { ArtRunDeps } from './run';
+import type { ArtFileDeps } from './download';
 
 export const RESULTS_BUCKET = 'renders';
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
@@ -76,5 +77,16 @@ export function liveArtDeps(): ArtRunDeps {
     },
     newId: randomUUID,
     now: () => new Date(),
+  };
+}
+
+/** Reads one object of the results bucket (the download and recipe routes check the path with artResultId first). */
+export function artFileReader(): ArtFileDeps {
+  return {
+    async read(path) {
+      const { data, error } = await createServiceRoleClient().storage.from(RESULTS_BUCKET).download(path);
+      if (error || !data) return null;
+      return Buffer.from(await data.arrayBuffer());
+    },
   };
 }
