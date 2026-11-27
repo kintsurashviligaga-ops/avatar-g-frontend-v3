@@ -15,7 +15,7 @@
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",
   "regions": [
-    "iad1"
+    "fra1"
   ],
   "functions": {
     "app/api/v2/montage/render/route.ts": {
