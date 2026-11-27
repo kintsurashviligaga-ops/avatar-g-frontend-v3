@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import { PlanStartCard, type SignedPlan } from './PlanStartCard';
+import { TERMINAL_COPY, terminalErrorText, terminalLang } from './agentTerminalCopy';
 
 interface Step {
   thought?: string;
@@ -27,21 +28,6 @@ interface RunResult {
   codeQuote?: SignedPlan;
 }
 
-const SUGGESTIONS = [
-  'Research 2026 Georgian coffee-shop marketing trends and summarize 3 hooks.',
-  'Prepare an Instagram caption for a weekend discount on our skincare line.',
-  'Draft a 6-second vertical video brief for a new energy drink launch.',
-];
-
-const TOOL_META: Record<string, { label: string; color: string }> = {
-  web_search: { label: 'web search', color: '#0ea5e9' },
-  scrape_webpage: { label: 'scrape page', color: '#22d3ee' },
-  prepare_instagram_post: { label: 'prepare post ⛔', color: '#a855f7' },
-  orchestrate_media: { label: 'orchestrate media', color: '#f97316' },
-  quote_browser_task: { label: 'browser plan', color: '#38bdf8' },
-  quote_code_run: { label: 'program plan', color: '#38bdf8' },
-};
-
 function pretty(v: unknown, max = 1200): string {
   if (v == null) return '';
   let s: string;
@@ -49,8 +35,9 @@ function pretty(v: unknown, max = 1200): string {
   return s.length > max ? s.slice(0, max) + '\n…(truncated)' : s;
 }
 
-const card: React.CSSProperties = { border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', borderRadius: 14 };
-const mono = "ui-monospace, SFMono-Regular, Menlo, monospace";
+/** One card look for every block, on the app's tokens (the Phase 7 workspace look) — no inline colours. */
+const CARD = 'rounded-2xl border border-app-border bg-app-surface';
+const PRE = 'mt-2 max-h-[200px] overflow-auto rounded-lg bg-app-bg/60 p-2.5 font-mono text-[12px] leading-relaxed';
 
 // `embedded` = mounted in-place inside the main /dashboard window (ServiceHub → ChatChrome),
 // where the shell already owns the top bar + scroll. Standalone (route) is the fallback.
@@ -59,6 +46,8 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lang = terminalLang(locale);
+  const t = TERMINAL_COPY[lang];
 
   // Prompt handoff: when the user types in the "Ask Agent G" bar (which redirects here with
   // ?prompt=…), carry that text straight into the goal box — the request lands in-place, in the
@@ -79,70 +68,77 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal: trimmed, maxSteps: 6 }),
       });
-      const body = await res.json();
-      if (res.status === 401) { setError('Please sign in to run the agent.'); return; }
-      if (!res.ok && res.status !== 502) { setError(body?.error || `Request failed (${res.status})`); return; }
-      setResult(body as RunResult);
+      // A 502 still carries the run (the model failed mid-way: its steps and stopReason are worth showing).
+      if (!res.ok && res.status !== 502) { setError(terminalErrorText(res.status, lang)); return; }
+      const body = (await res.json().catch(() => null)) as RunResult | null;
+      if (!body || !Array.isArray(body.steps)) { setError(terminalErrorText(500, lang)); return; }
+      setResult(body);
     } catch {
-      setError('Network error — the agent could not be reached.');
+      setError(terminalErrorText(0, lang));
     } finally {
       setRunning(false);
     }
   }
 
   const stopBadge = result && ({
-    final: { text: 'completed', color: '#10b981' },
-    max_steps: { text: 'stopped at step limit', color: '#f59e0b' },
-    llm_error: { text: 'model unavailable', color: '#ef4444' },
+    final: { text: t.stop.final, dot: 'bg-app-success' },
+    max_steps: { text: t.stop.max_steps, dot: 'bg-app-warning' },
+    llm_error: { text: t.stop.llm_error, dot: 'bg-app-danger' },
   } as const)[result.stopReason];
+  const canRun = !running && !!goal.trim();
 
   return (
-    <main style={{ maxWidth: 860, margin: '0 auto', padding: '28px 20px 72px', color: '#fff', minHeight: embedded ? '100%' : '100vh' }}>
-      <header style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 999, background: running ? '#f59e0b' : '#10b981', boxShadow: `0 0 10px ${running ? '#f59e0b' : '#10b981'}` }} />
-          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em' }}>Agent Terminal</h1>
+    <main
+      data-testid="agent-terminal"
+      className={`relative mx-auto max-w-[860px] px-5 pb-[72px] pt-7 text-app-text ${embedded ? 'min-h-full' : 'min-h-screen bg-app-bg'}`}
+    >
+      <header className="mb-5">
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${running ? 'bg-app-warning' : 'bg-app-success'}`} />
+          <h1 className="text-[24px] font-bold tracking-tight">{t.title}</h1>
         </div>
-        <p style={{ marginTop: 6, fontSize: 13.5, color: 'rgba(255,255,255,0.5)' }}>
-          An autonomous agent that researches, prepares, and orchestrates your marketing media. It reasons step by step —
-          you see every Thought, Action, and Observation. Social posts are <strong style={{ color: 'rgba(255,255,255,0.75)' }}>prepared, never published</strong>.
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-app-muted">
+          {t.intro} <strong className="font-semibold text-app-text">{t.introStrong}</strong>.
         </p>
       </header>
 
       {/* Goal input */}
-      <div style={{ ...card, padding: 14, marginBottom: 14 }}>
+      <div className={`${CARD} mb-3.5 p-3.5`}>
         <textarea
+          data-testid="agent-terminal-goal"
           value={goal}
-          onChange={(e) => setGoal(e.target.value)}
+          onChange={(e) => setGoal(e.target.value.slice(0, 2000))}
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') run(goal); }}
-          placeholder="Give the agent a goal… (⌘/Ctrl + Enter to run)"
+          placeholder={t.placeholder}
+          aria-label={t.placeholder}
           rows={3}
           disabled={running}
-          style={{ width: '100%', resize: 'vertical', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 15, lineHeight: 1.5, fontFamily: 'inherit' }}
+          className="w-full resize-y bg-transparent text-[15px] leading-normal text-app-text outline-none placeholder:text-app-muted"
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{goal.length}/2000</span>
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[12px] tabular-nums text-app-muted">{goal.length}/2000</span>
           <button
+            type="button"
+            data-testid="agent-terminal-run"
             onClick={() => run(goal)}
-            disabled={running || !goal.trim()}
-            style={{
-              padding: '9px 20px', borderRadius: 999, border: 'none', fontSize: 13.5, fontWeight: 600,
-              color: '#fff', cursor: running || !goal.trim() ? 'default' : 'pointer',
-              opacity: running || !goal.trim() ? 0.5 : 1,
-              background: 'linear-gradient(135deg,#7c3aed,#0ea5e9)', boxShadow: '0 6px 18px -6px rgba(124,58,237,0.6)',
-            }}
+            disabled={!canRun}
+            className="rounded-full bg-app-accent px-5 py-2 text-[13.5px] font-semibold text-app-bg transition hover:opacity-90 disabled:cursor-default disabled:opacity-50"
           >
-            {running ? 'Running…' : 'Run agent'}
+            {running ? t.running : t.run}
           </button>
         </div>
       </div>
 
       {/* Suggestions */}
       {!result && !running && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-          {SUGGESTIONS.map((s) => (
-            <button key={s} onClick={() => { setGoal(s); run(s); }}
-              style={{ padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.7)', fontSize: 12.5, cursor: 'pointer', textAlign: 'left' }}>
+        <div className="mb-5 flex flex-wrap gap-2">
+          {t.suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => { setGoal(s); run(s); }}
+              className="rounded-full border border-app-border bg-app-surface px-3 py-2 text-left text-[12.5px] text-app-muted transition hover:border-app-accent/50 hover:text-app-text"
+            >
               {s}
             </button>
           ))}
@@ -150,45 +146,43 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
       )}
 
       {error && (
-        <div style={{ ...card, padding: 14, borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)', color: '#fca5a5', fontSize: 13.5, marginBottom: 16 }}>
+        <div role="alert" data-testid="agent-terminal-error" className="mb-4 rounded-2xl border border-app-danger/30 bg-app-danger/10 p-3.5 text-[13.5px] text-app-danger">
           {error}
         </div>
       )}
 
       {running && (
-        <div style={{ ...card, padding: 16, fontFamily: mono, fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 16 }}>
-          <span className="ag-pulse">▍</span> agent is reasoning…
+        <div className={`${CARD} mb-4 p-4 font-mono text-[13px] text-app-muted`} aria-live="polite">
+          <span className="ag-pulse" aria-hidden="true">▍</span> {t.reasoning}
         </div>
       )}
 
       {/* Trace */}
       {result && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <section className="flex flex-col gap-2.5">
           {result.steps.map((st, i) => {
             if (st.final != null && st.tool == null) return null; // final rendered below
-            const meta = st.tool ? TOOL_META[st.tool] ?? { label: st.tool, color: '#94a3b8' } : null;
+            const label = st.tool ? (t.tools[st.tool] ?? st.tool) : null;
             const isError = st.observation != null && typeof st.observation === 'object' && 'error' in (st.observation as object);
             return (
-              <div key={i} style={{ ...card, padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: st.thought ? 8 : 0 }}>
-                  <span style={{ fontFamily: mono, fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>#{i + 1}</span>
-                  {meta && (
-                    <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.02em', color: meta.color, background: `${meta.color}18`, padding: '3px 9px', borderRadius: 999 }}>
-                      {meta.label}
-                    </span>
+              <div key={i} className={`${CARD} p-3.5`}>
+                <div className={`flex items-center gap-2 ${st.thought ? 'mb-2' : ''}`}>
+                  <span className="font-mono text-[11px] text-app-muted">#{i + 1}</span>
+                  {label && (
+                    <span className="rounded-full bg-app-accent/10 px-2.5 py-0.5 text-[11.5px] font-semibold text-app-accent">{label}</span>
                   )}
                 </div>
                 {st.thought && (
-                  <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.78)', marginBottom: 10, lineHeight: 1.5 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.4)' }}>thought · </span>{st.thought}
+                  <div className="mb-2.5 text-[13.5px] leading-normal text-app-text/85">
+                    <span className="text-app-muted">{t.thought} · </span>{st.thought}
                   </div>
                 )}
                 {st.input != null && (
-                  <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: '#93c5fd', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, overflow: 'auto', maxHeight: 140 }}>{pretty(st.input, 400)}</pre>
+                  <pre className={`${PRE} max-h-[140px] text-app-accent`}>{pretty(st.input, 400)}</pre>
                 )}
                 {st.observation != null && (
-                  <pre style={{ margin: '8px 0 0', fontFamily: mono, fontSize: 12, color: isError ? '#fca5a5' : 'rgba(255,255,255,0.6)', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, overflow: 'auto', maxHeight: 200 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.35)' }}>observation · </span>{pretty(st.observation, 800)}
+                  <pre className={`${PRE} ${isError ? 'text-app-danger' : 'text-app-muted'}`}>
+                    <span className="text-app-muted/70">{t.observation} · </span>{pretty(st.observation, 800)}
                   </pre>
                 )}
               </div>
@@ -197,9 +191,9 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
 
           {/* Final answer */}
           {result.answer != null && (
-            <div style={{ ...card, padding: 16, borderColor: 'rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.05)' }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#34d399', letterSpacing: '0.04em', marginBottom: 8 }}>FINAL</div>
-              <div style={{ fontSize: 14.5, lineHeight: 1.6, color: 'rgba(255,255,255,0.92)', whiteSpace: 'pre-wrap' }}>{result.answer}</div>
+            <div className="rounded-2xl border border-app-success/30 bg-app-success/5 p-4">
+              <div className="mb-2 text-[11.5px] font-bold uppercase tracking-wide text-app-success">{t.final}</div>
+              <div className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-app-text">{result.answer}</div>
             </div>
           )}
 
@@ -209,24 +203,28 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
 
           {/* Status footer */}
           {stopBadge && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12.5, color: 'rgba(255,255,255,0.4)' }}>
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: stopBadge.color }} />
-              {stopBadge.text} · {result.steps.filter((s) => s.tool).length} tool call(s)
-              <button onClick={() => { setResult(null); setGoal(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', padding: '5px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer' }}>
-                New run
+            <div className="mt-1 flex items-center gap-2 text-[12.5px] text-app-muted">
+              <span aria-hidden="true" className={`h-[7px] w-[7px] rounded-full ${stopBadge.dot}`} />
+              {stopBadge.text} · {t.toolCalls(result.steps.filter((s) => s.tool).length)}
+              <button
+                type="button"
+                onClick={() => { setResult(null); setGoal(''); }}
+                className="ml-auto rounded-full border border-app-border px-3 py-1 text-[12px] text-app-muted transition hover:text-app-text"
+              >
+                {t.newRun}
               </button>
             </div>
           )}
         </section>
       )}
 
-      <style>{`.ag-pulse{animation:agpulse 1s steps(2) infinite}@keyframes agpulse{50%{opacity:0.2}}`}</style>
+      <style>{`.ag-pulse{animation:agpulse 1s steps(2) infinite}@keyframes agpulse{50%{opacity:0.2}}@media (prefers-reduced-motion:reduce){.ag-pulse{animation:none}}`}</style>
       {embedded ? (
         onExit ? (
-          <button type="button" onClick={onExit} style={{ position: 'absolute', top: 8, right: 12, fontSize: 13, color: 'rgba(255,255,255,0.5)', background: 'transparent', border: 'none', cursor: 'pointer' }}>✕ Close</button>
+          <button type="button" onClick={onExit} className="absolute right-3 top-2 text-[13px] text-app-muted hover:text-app-text">✕ {t.close}</button>
         ) : null
       ) : (
-        <a href={`/${locale}/dashboard`} style={{ position: 'fixed', top: 16, right: 18, fontSize: 13, color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>✕ Close</a>
+        <a href={`/${locale}/dashboard`} className="fixed right-[18px] top-4 text-[13px] text-app-muted no-underline hover:text-app-text">✕ {t.close}</a>
       )}
     </main>
   );
