@@ -5,6 +5,17 @@
  */
 
 export async function register() {
+  // Phase 8.14: a launch flag set to a value its reader ignores is OFF without a sound. Say so once per cold start in
+  // the server log (names and accepted values only, never a secret). Never throws, changes nothing.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    try {
+      const { checkLaunchFlags } = await import('./lib/env/launchFlags');
+      for (const w of checkLaunchFlags()) console.warn('[launch-flags]', w.message);
+    } catch {
+      /* the check is advisory */
+    }
+  }
+
   const DSN = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
 
   if (!DSN) return; // Skip if no DSN configured
