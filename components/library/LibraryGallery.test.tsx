@@ -270,7 +270,7 @@ test('going back to a tab already loaded shows it at once: no spinner, no reques
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
   expect(kinds()).toEqual(['film,avatar', 'image,interior']);
   act(() => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
-  expect(document.querySelector('.py-20 .animate-spin')).toBeNull();
+  expect(document.querySelector('[data-testid="library-skeleton"]')).toBeNull();
   expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
   await act(async () => {});
   expect(kinds()).toEqual(['film,avatar', 'image,interior']);
@@ -349,7 +349,7 @@ test('a tab older than 30 s stays on screen while it is refreshed behind it', as
     const calls = delayedLibraryRequests();
     act(() => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
     expect(calls).toHaveLength(1); // the refresh went out…
-    expect(document.querySelector('.py-20 .animate-spin')).toBeNull(); // …behind the grid, which never blanked
+    expect(document.querySelector('[data-testid="library-skeleton"]')).toBeNull(); // …behind the grid, which never blanked
     expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
     const NEWER = { ...AVATAR, id: 'av-2', url: 'https://cdn.example.com/b.mp4' };
     await act(async () => { calls[0]!.resolve([NEWER, AVATAR]); });
@@ -479,5 +479,27 @@ describe('empty, demo, unavailable and failed are told apart (§4.2.7)', () => {
     answerWith(() => ({ ok: true, status: 200, body: { items: [AVATAR], demo: true } }));
     await act(async () => { render(<LibraryGallery locale="ru" />); });
     expect(screen.getByTestId('library-demo').textContent).toContain('Это примеры. Войдите, чтобы увидеть свои работы.');
+  });
+});
+
+describe('Phase 8.24: loading and first-visit states', () => {
+  it('the empty Library says what goes there and offers the first step (ka, informal)', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [], demo: false }) })) as unknown as typeof fetch;
+    await act(async () => { render(<LibraryGallery locale="ka" />); });
+    expect(await screen.findByText('ჯერ არაფერი შეგიქმნია')).toBeTruthy();
+    expect(screen.getByText('აქ გამოჩნდება ყველა ვიდეო, სურათი და მუსიკა, რასაც შექმნი.')).toBeTruthy();
+    expect(screen.getByTestId('library-create-first').textContent).toBe('შექმენი პირველი ნამუშევარი');
+    fireEvent.click(screen.getByTestId('library-create-first'));
+    expect(push).toHaveBeenCalledWith('/ka/dashboard');
+  });
+
+  it('while the first page loads, the grid shape shimmers (one status, no spinner)', async () => {
+    delayedLibraryRequests();
+    await act(async () => { render(<LibraryGallery locale="ru" />); });
+    const sk = screen.getByTestId('library-skeleton');
+    expect(sk.getAttribute('role')).toBe('status');
+    expect(sk.textContent).toBe('Библиотека загружается…');
+    expect(sk.querySelectorAll('[data-skeleton]')).toHaveLength(8);
+    expect(document.querySelector('.py-20 .animate-spin')).toBeNull();
   });
 });

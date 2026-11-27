@@ -4342,3 +4342,39 @@ html:has(.app-native-shell), body:has(.app-native-shell) {
    moves left to make room while the panel is open. */
 :root { --agent-screen-w: min(42vw, 600px); }
 html.agent-screen-open body { padding-right: var(--agent-screen-w); }
+
+/* ── Button states and skeletons (Phase 8.24) ─────────────────────────────────────────────────────────
+   1. A disabled control says so under the pointer, everywhere (busy Generate / Approve buttons included).
+   2. Service panels carry `data-ui-surface`; inside one, every enabled button gets a hover lift on devices
+      that really hover. Panels that already set their own hover: classes keep them (this only adds light).
+   3. `.ag-card-btn` is the same lift for the inline-styled Agent G cards.
+   4. `.ag-shimmer` is the shared skeleton sweep. No motion under prefers-reduced-motion. */
+button:disabled,
+[role='button'][aria-disabled='true'] {
+  cursor: not-allowed;
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-ui-surface] button:not(:disabled):hover,
+  .ag-card-btn:not(:disabled):hover {
+    filter: brightness(1.12);
+  }
+}
+.ag-card-btn:not(:disabled):active { transform: scale(0.97); }
+.ag-card-btn:disabled { opacity: 0.55; }
+.ag-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: rgb(var(--app-elevated));
+}
+.ag-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(var(--app-text) / 0.06), transparent);
+  animation: ag-shimmer-sweep 1.6s ease-in-out infinite;
+}
+@keyframes ag-shimmer-sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .ag-shimmer::after { animation: none; display: none; }
+}
