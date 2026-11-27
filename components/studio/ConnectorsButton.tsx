@@ -14,6 +14,7 @@ import { BrowserLoginSheet } from '@/components/agent/BrowserLoginSheet';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { fetchConnectors } from './research/api';
 import { researchActions } from './research/store';
+import { PluginsList, pluginsUiOn } from './PluginsList';
 import type { ConnectorState } from '@/lib/connectors/types';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -102,6 +103,7 @@ export function ConnectorsButton({ locale, className }: { locale: string; classN
             );
           })}
         </ul>
+        {pluginsUiOn() && <PluginsList lang={lang} open={open} />}
       </BottomSheet>
       {logins.enabled && <BrowserLoginSheet open={loginOpen} onClose={() => setLoginOpen(false)} locale={locale} />}
     </>
