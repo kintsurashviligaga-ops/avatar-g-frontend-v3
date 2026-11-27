@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createServerClient, createServiceRoleClient, getSessionUser } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const userSupabase = createServerClient();
   const {
     data: { user },
-  } = await userSupabase.auth.getUser();
+  } = await getSessionUser(userSupabase);
 
   const admin = await assertAdminAccess(request, user);
   if (!admin.ok) {

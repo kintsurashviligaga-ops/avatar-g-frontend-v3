@@ -1,4 +1,4 @@
-import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createServerClient, createServiceRoleClient, getSessionUser } from '@/lib/supabase/server';
 import { isAdminUserAsync } from '@/lib/admin/guard';
 import { gatherAdminStats, type AdminStats } from '@/lib/admin/stats';
 import { listUsers, type AdminUserPage } from '@/lib/admin/users';
@@ -18,7 +18,7 @@ export default async function AdminPage({ params }: Props) {
   const { locale } = await params;
 
   const supabase = createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await getSessionUser(supabase);
 
   // SECURITY (v358): authorize with isAdminUserAsync — the ONE admin rule every admin API uses (lib/auth/adminGuard
   // isAdminIdentity: app_metadata role, or a verified email on the code ∪ env ∪ panel-granted allowlist). NEVER user_metadata: it is client-writable via supabase.auth.updateUser, so any signed-in user

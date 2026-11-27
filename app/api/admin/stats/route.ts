@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server'
 import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { structuredLog } from '@/lib/logger'
 import { isAdmin } from '@/lib/auth/adminGuard'
+import { getSessionUser } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -21,7 +22,7 @@ export async function GET(): Promise<NextResponse> {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser()
+    } = await getSessionUser(supabase)
 
     if (authError || !user) {
       return NextResponse.json(
