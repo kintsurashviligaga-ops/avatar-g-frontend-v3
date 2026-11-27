@@ -14,10 +14,19 @@
  * A delete marks the file deleted (a version with no bytes); restore brings any kept version back as a new version.
  * Nothing the user had is lost by an agent's write or delete until it falls out of the WS_MAX_VERSIONS history.
  *
- * ⚠️ ONE WRITER AT A TIME PER WORKSPACE, PER INSTANCE. The manifest is read, changed and written back; two writes at
- * once on one instance are queued here, but two serverless instances writing the same workspace in the same second
- * can still lose one manifest update (the bytes stay in storage, the manifest misses them). A chat writes one step at
- * a time, so this is accepted for v1 and named here, not hidden.
+ * ⚠️ CONCURRENT WRITERS. On one instance, writes to a workspace are queued (`serial`). Across serverless instances
+ * there are two gaps, each closed by an opt-in switch read in live.ts (both OFF by default, Phase 8.23):
+ *   1. Same-file bytes. Two instances writing the same path read the same manifest and pick the same version v. With
+ *      an overwriting upload the second one's bytes replace the first one's. WORKSPACE_CREATE_ONLY=1 uploads each
+ *      version blob create-only (`putNew`, Storage `upsert: false`); on a clash the writer moves to v+1, up to
+ *      VERSION_PUT_TRIES times, then answers `busy`. Bytes are then never overwritten.
+ *   2. The manifest. It is read, changed and written back, so the later of two writers drops the earlier one's entry.
+ *      WORKSPACE_LOCKS=1 takes a short lease row per workspace (supabase/migrations/20261127a_workspace_locks.sql,
+ *      lib/agent/workspace/dbLock.ts) around every write and delete, so only one instance changes a workspace at a
+ *      time. A lease ends after LOCK_TTL_SEC even if its holder dies. If the lock itself cannot be reached (table not
+ *      created yet, DB error) the write goes ahead without it, exactly as before: the lock is additive, not a gate.
+ * The user's workspace list (index.json) is still last-writer-wins across instances; it only lists titles and times,
+ * and the next write to a workspace rewrites its row.
  *
  * Every effect is a BlobStore passed in: tests run on a Map; live.ts wires Supabase Storage.
  */
@@ -33,6 +42,14 @@ export interface BlobStore {
   remove(paths: string[]): Promise<void>;
   /** A link that opens the object for `ttlSec` seconds, or null. */
   sign(path: string, ttlSec: number, downloadName?: string): Promise<string | null>;
+  /** Create-only write: 'exists' when an object is already at `path`, and nothing is overwritten. Optional. */
+  putNew?(path: string, bytes: Buffer, contentType: string): Promise<'ok' | 'exists'>;
+}
+
+/** A short lease on one workspace, shared by every instance (dbLock.ts). `acquire` false = someone else holds it. */
+export interface WorkspaceLock {
+  acquire(uid: string, ws: string, holder: string, ttlSec: number): Promise<boolean>;
+  release(uid: string, ws: string, holder: string): Promise<void>;
 }
 
 export interface WorkspaceInfo { id: string; title: string; createdAt: string; updatedAt: string }
@@ -62,7 +79,7 @@ interface Manifest {
   last: Record<string, number>;
 }
 
-export type WsError = 'bad_input' | 'not_found' | 'too_large' | 'too_many' | 'storage_failed';
+export type WsError = 'bad_input' | 'not_found' | 'too_large' | 'too_many' | 'storage_failed' | 'busy';
 export type WsResult<T> = ({ ok: true } & T) | { ok: false; error: WsError; message: string };
 
 const fail = (error: WsError, message: string) => ({ ok: false as const, error, message });
@@ -83,12 +100,32 @@ function okUid(uid: string): boolean {
   return /^[A-Za-z0-9_-]{6,64}$/.test(uid);
 }
 
-export interface WorkspaceStoreOpts { now?: () => Date; newId?: () => string }
+export interface WorkspaceStoreOpts {
+  now?: () => Date;
+  newId?: () => string;
+  /** Upload version blobs create-only (needs `blobs.putNew`). Off = the old overwriting upload. */
+  createOnly?: boolean;
+  /** Hold a cross-instance lease around each write and delete. Null/absent = the old in-instance queue only. */
+  lock?: WorkspaceLock | null;
+  /** How long a write waits for someone else's lease before answering `busy`. */
+  lockWaitMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/** Tries per file before a create-only write gives up (v, v+1, v+2). */
+export const VERSION_PUT_TRIES = 3;
+/** A lease outlives a dead holder by at most this long. A write is a few storage calls, well under it. */
+export const LOCK_TTL_SEC = 30;
+const LOCK_WAIT_MS = 5_000;
+const LOCK_POLL_MS = 250;
+
+class VersionClash extends Error {}
 
 export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) {
   const now = () => (opts.now ? opts.now() : new Date()).toISOString();
   const newId = opts.newId ?? newWorkspaceId;
   const queues = new Map<string, Promise<unknown>>();
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   /** Run `fn` after every earlier write to the same key on this instance. */
   function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -97,6 +134,46 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
     queues.set(key, next);
     void next.finally(() => { if (queues.get(key) === next) queues.delete(key); }).catch(() => undefined);
     return next;
+  }
+
+  /** Run `fn` holding the workspace's lease (when a lock is configured). */
+  async function locked<T>(uid: string, ws: string, fn: () => Promise<WsResult<T>>): Promise<WsResult<T>> {
+    const lock = opts.lock;
+    if (!lock) return fn();
+    const holder = randomBytes(9).toString('hex');
+    const tries = Math.max(0, Math.ceil((opts.lockWaitMs ?? LOCK_WAIT_MS) / LOCK_POLL_MS));
+    let got = false;
+    try {
+      for (let i = 0; ; i++) {
+        got = await lock.acquire(uid, ws, holder, LOCK_TTL_SEC);
+        if (got || i >= tries) break;
+        await sleep(LOCK_POLL_MS);
+      }
+    } catch (e) {
+      // The lock is additive: without it a write behaves exactly as it did before the lock existed.
+      // eslint-disable-next-line no-console
+      console.warn('[workspace] lock unavailable, writing without it:', e instanceof Error ? e.message : String(e));
+      return fn();
+    }
+    if (!got) return fail('busy', 'Another write to this workspace is still running. Try again in a moment.');
+    try {
+      return await fn();
+    } finally {
+      await lock.release(uid, ws, holder).catch(() => undefined);
+    }
+  }
+
+  /** Store the bytes of `path` at version `v` or, create-only, the first free version from v. Returns the one used. */
+  async function putVersion(uid: string, ws: string, path: string, v: number, bytes: Buffer): Promise<number> {
+    const ct = wsContentType(path);
+    if (!opts.createOnly || !blobs.putNew) {
+      await blobs.put(blobPath(uid, ws, path, v), bytes, ct);
+      return v;
+    }
+    for (let i = 0; i < VERSION_PUT_TRIES; i++) {
+      if ((await blobs.putNew(blobPath(uid, ws, path, v + i), bytes, ct)) === 'ok') return v + i;
+    }
+    throw new VersionClash(path);
   }
 
   async function readJson<T>(path: string): Promise<T | null> {
@@ -225,7 +302,7 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
         if (it.bytes.length > WS_MAX_FILE_BYTES) return fail('too_large', `${path} is over ${WS_MAX_FILE_BYTES / 1024 / 1024} MB.`);
         clean.push({ path, bytes: it.bytes });
       }
-      return serial(`ws:${uid}:${ws}`, async () => {
+      return serial(`ws:${uid}:${ws}`, () => locked(uid, ws, async () => {
         try {
           const m = await manifest(uid, ws);
           if (!m) return fail('not_found', 'No such workspace.');
@@ -243,8 +320,7 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
             const cur = m.files[it.path];
             // The same bytes again: nothing new to keep.
             if (cur && cur.sha256 === hash) { written.push({ path: it.path, type: wsContentType(it.path), ...cur }); continue; }
-            const v = (m.last[it.path] ?? 0) + 1;
-            await blobs.put(blobPath(uid, ws, it.path, v), it.bytes, wsContentType(it.path));
+            const v = await putVersion(uid, ws, it.path, (m.last[it.path] ?? 0) + 1, it.bytes);
             const ver: FileVersion = { v, bytes: it.bytes.length, sha256: hash, updatedAt: at, by };
             m.last[it.path] = v;
             m.files[it.path] = ver;
@@ -255,9 +331,12 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
           await writeJson(manifestPath(uid, ws), m);
           if (drop.length) await blobs.remove(drop).catch(() => undefined);
           await touchIndex(uid, m).catch(() => undefined);
-          return { ok: true, written };
-        } catch { return fail('storage_failed', 'Storage did not answer.'); }
-      });
+          return { ok: true as const, written };
+        } catch (e) {
+          if (e instanceof VersionClash) return fail('busy', `${e.message} is being written by another request. Try again in a moment.`);
+          return fail('storage_failed', 'Storage did not answer.');
+        }
+      }));
     },
 
     async write(uid: string, ws: string, path: unknown, bytes: Buffer, by: string): Promise<WsResult<{ file: WsFile }>> {
@@ -269,7 +348,7 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
     async remove(uid: string, ws: string, rawPath: unknown, by: string): Promise<WsResult<{ path: string; keptVersions: number }>> {
       const path = normalizeWsPath(rawPath);
       if (!path) return fail('bad_input', 'A file path inside the workspace is needed.');
-      return serial(`ws:${uid}:${ws}`, async () => {
+      return serial(`ws:${uid}:${ws}`, () => locked(uid, ws, async () => {
         try {
           const m = await manifest(uid, ws);
           if (!m) return fail('not_found', 'No such workspace.');
@@ -283,9 +362,9 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
           await writeJson(manifestPath(uid, ws), m);
           if (drop.length) await blobs.remove(drop.map((o) => blobPath(uid, ws, path, o))).catch(() => undefined);
           await touchIndex(uid, m).catch(() => undefined);
-          return { ok: true, path, keptVersions: (m.history[path] ?? []).filter((h) => !h.deleted).length };
+          return { ok: true as const, path, keptVersions: (m.history[path] ?? []).filter((h) => !h.deleted).length };
         } catch { return fail('storage_failed', 'Storage did not answer.'); }
-      });
+      }));
     },
 
     /** Bring version `v` of `path` back as its newest version (works after a delete too). */
@@ -331,13 +410,33 @@ export function workspaceStore(blobs: BlobStore, opts: WorkspaceStoreOpts = {}) 
 export type WorkspaceStore = ReturnType<typeof workspaceStore>;
 
 /** A BlobStore on a Map: the tests' storage. */
-export function memoryBlobs(): BlobStore & { data: Map<string, Buffer> } {
+export function memoryBlobs(): BlobStore & Required<Pick<BlobStore, 'putNew'>> & { data: Map<string, Buffer> } {
   const data = new Map<string, Buffer>();
   return {
     data,
     async get(p) { return data.get(p) ?? null; },
     async put(p, b) { data.set(p, Buffer.from(b)); },
+    async putNew(p, b) { if (data.has(p)) return 'exists'; data.set(p, Buffer.from(b)); return 'ok'; },
     async remove(ps) { for (const p of ps) data.delete(p); },
     async sign(p, ttl) { return data.has(p) ? `mem://${p}?ttl=${ttl}` : null; },
+  };
+}
+
+/** A WorkspaceLock on a Map, with the same lease rule as the SQL function: the tests' lock. */
+export function memoryLock(nowMs: () => number = Date.now): WorkspaceLock & { rows: Map<string, { holder: string; until: number }> } {
+  const rows = new Map<string, { holder: string; until: number }>();
+  return {
+    rows,
+    async acquire(uid, ws, holder, ttlSec) {
+      const k = `${uid}/${ws}`;
+      const cur = rows.get(k);
+      if (cur && cur.holder !== holder && cur.until > nowMs()) return false;
+      rows.set(k, { holder, until: nowMs() + ttlSec * 1000 });
+      return true;
+    },
+    async release(uid, ws, holder) {
+      const k = `${uid}/${ws}`;
+      if (rows.get(k)?.holder === holder) rows.delete(k);
+    },
   };
 }

@@ -10,6 +10,7 @@ import { ensureBucket } from '@/lib/orchestrator/storage-adapter';
 import { WORKSPACE_BUCKET, WS_MAX_FILE_BYTES } from './paths';
 import { workspaceStore, type BlobStore, type WorkspaceStore } from './store';
 import { isMissingObject } from './missingObject';
+import { dbWorkspaceLock } from './dbLock';
 
 type BucketApi = Parameters<typeof ensureBucket>[0];
 
@@ -44,6 +45,17 @@ export function supabaseBlobs(bucket: string = WORKSPACE_BUCKET): BlobStore {
         throw new Error(error.message);
       }
     },
+    async putNew(path, bytes, contentType) {
+      const c = sb();
+      await ensure(c);
+      // Create-only: a version blob is never overwritten (Phase 8.23, WORKSPACE_CREATE_ONLY=1).
+      const { error } = await c.storage.from(bucket).upload(path, bytes, { contentType, upsert: false });
+      if (!error) return 'ok';
+      if (isAlreadyExists(error)) return 'exists';
+      // eslint-disable-next-line no-console
+      console.error('[workspace] storage write failed:', error.message);
+      throw new Error(error.message);
+    },
     async remove(paths) {
       if (!paths.length) return;
       await sb().storage.from(bucket).remove(paths);
@@ -55,10 +67,24 @@ export function supabaseBlobs(bucket: string = WORKSPACE_BUCKET): BlobStore {
   };
 }
 
+/** Storage's answer to a create-only upload onto an existing object (409 "Duplicate" / "already exists"). */
+export function isAlreadyExists(error: unknown): boolean {
+  const e = (error ?? {}) as { statusCode?: unknown; status?: unknown; error?: unknown; message?: unknown };
+  if (String(e.statusCode) === '409' || e.status === 409) return true;
+  return /already exists|duplicate/i.test(`${String(e.error ?? '')} ${String(e.message ?? '')}`);
+}
+
+/** The two Phase 8.23 switches. Exactly '1' turns each on; anything else (or unset) is the old behaviour. */
+export function workspaceRaceFlags(env: Record<string, string | undefined> = process.env): { createOnly: boolean; locks: boolean } {
+  return { createOnly: env.WORKSPACE_CREATE_ONLY?.trim() === '1', locks: env.WORKSPACE_LOCKS?.trim() === '1' };
+}
+
 let shared: WorkspaceStore | null = null;
 /** One store per instance, so its per-workspace write queue is shared by every request on it. */
 export function liveWorkspaceStore(): WorkspaceStore {
-  return (shared ??= workspaceStore(supabaseBlobs()));
+  if (shared) return shared;
+  const f = workspaceRaceFlags();
+  return (shared = workspaceStore(supabaseBlobs(), { createOnly: f.createOnly, lock: f.locks ? dbWorkspaceLock() : null }));
 }
 
 /** The workspace Agent G uses when none is named. */
