@@ -30,7 +30,6 @@ export const env = createEnv({
     // OpenAI
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_REALTIME_MODEL: z.string().default('gpt-4o-realtime-preview'),
-    OPENAI_STT_MODEL: z.string().default('gpt-4o-mini-transcribe'),
 
     // Stripe
     STRIPE_SECRET_KEY: z.string().optional(),
@@ -120,7 +119,6 @@ export const env = createEnv({
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_REALTIME_MODEL: process.env.OPENAI_REALTIME_MODEL,
-    OPENAI_STT_MODEL: process.env.OPENAI_STT_MODEL,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
