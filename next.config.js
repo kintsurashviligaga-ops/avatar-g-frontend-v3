@@ -120,6 +120,9 @@ const nextConfig = {
       // The talking avatar's built-in faces (lib/avatar/curatedFace, MASTER TASK v3.1 PR 9): the route reads the preset it
       // is named from public/, which Vercel serves from its CDN but leaves out of the lambda unless it is listed here.
       '/api/avatar/veo': ['./public/avatars/**'],
+      // Virtual Studio (Phase 8.6): Omni scenes read the built-in faces; Live takes trim / compose and the stitch joins with ffmpeg.
+      '/api/avatar/studio/scene': ['./public/avatars/**', './node_modules/ffmpeg-static/**'],
+      '/api/avatar/studio/stitch': ['./node_modules/ffmpeg-static/**'],
       // Surgical Editor: deterministic ops shell out to ffmpeg-static (lib/video/{trimClip,surgicalOps}); text
       // overlays rasterise via @resvg (drawtext is unavailable on Vercel — no libfreetype). Both binaries must ride.
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],

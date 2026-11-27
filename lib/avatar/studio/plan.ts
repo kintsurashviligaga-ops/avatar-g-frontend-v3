@@ -73,6 +73,8 @@ export function buildStudioPlan(req: StudioRequest, opts: { book: StudioBook; ga
   if (bg.kind === 'green') background = { kind: 'green' };
   else if (bg.kind === 'upload') {
     if (typeof bg.path !== 'string' || !bg.path.trim()) return { ok: false, reason: 'bad_background', detail: 'the background upload is missing' };
+    // Omni's first frame is the presenter's face, so an image cannot sit behind a cinematic presenter: describe it instead.
+    if (presenter.engine === 'omni') return { ok: false, reason: 'bad_background', detail: 'a cinematic presenter takes a described background, not an image' };
     background = { kind: 'image' };
   } else if (bg.kind === 'generate') {
     const prompt = typeof bg.prompt === 'string' ? bg.prompt.trim().slice(0, 400) : '';
@@ -112,7 +114,7 @@ export function buildStudioPlan(req: StudioRequest, opts: { book: StudioBook; ga
       dub,
       turnSecs: presenter.engine === 'omni' ? s.turns.map((t) => estimateSeconds(t, pace, split.lang)) : undefined,
     })),
-    { book: opts.book, generateBackground: bg.kind === 'generate', gate: opts.gate },
+    { book: opts.book, generateBackground: bg.kind === 'generate' && presenter.engine === 'live', gate: opts.gate },
   );
   return { ok: true, plan: { presenter, voice, dub, tone, pace, format, resolution, lang: split.lang, background, compose, scenes, quote, warnings } };
 }
