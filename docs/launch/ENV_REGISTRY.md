@@ -224,3 +224,76 @@ are also baked into the browser bundle at build time.
 | Name | Side | Turns ON with | Where | Note |
 |---|---|---|---|---|
 | `NEXT_PUBLIC_CLIENT_ERROR_REPORTS` | client | `1` | lib/observability/clientErrorReports (#388) | #388 is NOT in the launch merge set yet. |
+
+## Agent G injection shield
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `AGENT_G_SHIELD` | server | `1` (exact) | app/api/agent/run/route.ts (#384) |  |
+
+## Agent G memory deadline
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `AGENT_G_CONTEXT_V2` | server | `1` (exact) | app/api/agent/run/route.ts (#385) |  |
+
+## Live voice planner
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `LIVE_AGENT_PLANNER` | server | `1` (exact) | app/api/voice/live/route.ts (#386) |  |
+
+## Agent G router v2
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_AGENT_G_ROUTER_V2` | client | `1` (exact) | components/studio/OmniStudio.tsx (#381) |  |
+
+## Agent G credits / undo commands
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_AGENT_G_COMMANDS` | client | `1` (exact) | components/studio/OmniStudio.tsx (#382) |  |
+
+## Chat goal pin
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_CHAT_PIN_GOAL` | client | `1` (exact) | app/api/chat/gemini/route.ts + OmniStudio (#385) | Read by the server route too; a change needs a redeploy. |
+
+## Image extra ratios
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `IMAGE_EXTRA_RATIOS` | server | `1` `true` `on` `yes` | lib/studio/imageExtras.ts (#321) | Pair: `NEXT_PUBLIC_IMAGE_EXTRA_RATIOS`. |
+| `NEXT_PUBLIC_IMAGE_EXTRA_RATIOS` | client | `1` `true` `on` `yes` | lib/studio/imageExtras.ts (#321) | Pair: `IMAGE_EXTRA_RATIOS`. |
+
+## Image up to 14 references
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `IMAGE_MULTI_REF` | server | `1` `true` `on` `yes` | lib/studio/imageExtras.ts (#321) |  |
+
+## Image edit mode
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_IMAGE_EDIT_MODE` | client | `1` `true` `on` `yes` | lib/studio/imageExtras.ts (#321) |  |
+
+## AI provenance metadata (EU AI Act Art. 50)
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `AI_PROVENANCE_META` | server | `1` (exact) | lib/provenance/aiMarking.ts (#403) | Metadata only, invisible. GG 2026-11-27: may go on at launch. |
+
+## Visible AI badge / deepfake label
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_AI_LABELS` | client | `1` (exact) | components/studio/ui/AiContentBadge.tsx (#404, #405) | GG 2026-11-27 08:09Z: stays OFF by default. |
+
+## Ledger fail-closed
+
+| Name | Side | Turns ON with | Where | Note |
+|---|---|---|---|---|
+| `LEDGER_FAIL_CLOSED` | server | `1` (exact) | lib/orchestrator/ledger.ts (#407) | Production only. Billing: GG card. |
