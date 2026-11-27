@@ -123,6 +123,11 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
     return next;
   }, [api, lang]);
 
+  // Refs, not state: "Make all" runs with the `slots` of the moment it started, so a scene the user started or finished
+  // by hand meanwhile would otherwise be made (and charged) a second time. Same for two taps in one frame.
+  const inFlight = useRef(new Set<number>());
+  const readyRef = useRef(new Set<number>());
+
   const poll = useCallback(async (i: number, job: PublicSceneJob) => {
     let cur = job;
     for (let n = 0; cur.state === 'processing' && n < POLL_LIMIT; n++) {
@@ -131,10 +136,11 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
       if (res.status === 200 && res.data.job) cur = res.data.job as PublicSceneJob;
       else if (res.status !== 200) break;
     }
+    if (cur.state === 'ready') readyRef.current.add(i);
     patchSlot(i, { job: cur, busy: false, error: cur.state === 'failed' ? t('refunded', lang) : undefined });
   }, [api, pollMs, lang, patchSlot]);
 
-  const makeScene = useCallback(async (i: number, opts: { take?: number; text?: string; request?: StudioRequest } = {}) => {
+  const makeSceneOnce = useCallback(async (i: number, opts: { take?: number; text?: string; request?: StudioRequest } = {}) => {
     let r: StudioRequest | null = opts.request ?? reqRef.current;
     const slot = slots[i];
     const take = opts.take ?? slot?.take ?? 0;
@@ -154,10 +160,20 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
     await poll(i, job);
   }, [slots, book, api, lang, ensureBackground, patchSlot, poll, onCharged]);
 
+  const makeScene = useCallback(async (i: number, opts: { take?: number; text?: string; request?: StudioRequest } = {}) => {
+    if (inFlight.current.has(i)) return;
+    inFlight.current.add(i);
+    readyRef.current.delete(i);
+    try { await makeSceneOnce(i, opts); } finally { inFlight.current.delete(i); }
+  }, [makeSceneOnce]);
+
   const makeAll = async () => {
     if (!plan) return;
     // One after another: a Live take is recorded in real time, and the balance is checked before each charge.
-    for (const s of plan.scenes) if (slots[s.index]?.job?.state !== 'ready') await makeScene(s.index);
+    for (const s of plan.scenes) {
+      if (readyRef.current.has(s.index) || inFlight.current.has(s.index) || slots[s.index]?.job?.state === 'ready') continue;
+      await makeScene(s.index);
+    }
   };
 
   const join = async () => {
@@ -175,7 +191,7 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
   const bgExtra = plan && plan.presenter.engine === 'live' && req.background?.kind === 'generate' ? BACKGROUND_CREDITS[book] : 0;
 
   return (
-    <section data-testid="virtual-studio" className="mx-auto max-w-4xl space-y-5 p-4">
+    <section data-testid="virtual-studio" data-ui-surface className="mx-auto max-w-4xl space-y-5 p-4">
       {!compact && <h1 className="text-[20px] font-semibold text-app-text">{t('title', lang)}</h1>}
       {!req.script.trim() && initialRequest && <p data-testid="vs-no-script" className="text-[13px] text-app-muted">{t('noScript', lang)}</p>}
       <label className="block text-[12px] text-app-muted">{t('script', lang)}
@@ -184,8 +200,8 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
           className="mt-1 block w-full rounded-xl border border-app-border bg-app-bg p-3 text-[14px] text-app-text" />
       </label>
       <StudioControls value={req} onChange={changeRequest} lang={lang} book={book} onUploadBackground={uploadBackground} />
-      {notice && <p data-testid="vs-notice" className="text-[13px] text-amber-300">{notice}</p>}
-      {!built.ok && req.script.trim() && <p data-testid="vs-plan-error" className="text-[13px] text-amber-300">{built.detail}</p>}
+      {notice && <p data-testid="vs-notice" className="text-[13px] text-app-warning">{notice}</p>}
+      {!built.ok && req.script.trim() && <p data-testid="vs-plan-error" className="text-[13px] text-app-warning">{built.detail}</p>}
       {plan && plan.warnings.includes('live_wide_pillared') && <p className="text-[12px] text-app-muted">{t('pillared', lang)}</p>}
 
       {plan && (
@@ -212,17 +228,23 @@ export function VirtualStudio({ lang, book, api = fetchApi, pollMs = 4000, initi
               <div key={s.index} data-testid={`vs-scene-${s.index}`} className="space-y-2 rounded-2xl border border-app-border p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[12px] text-app-muted">{t('scene', lang)} {s.index + 1} · ≈{Math.round(s.estSec)} s{s.direction ? ` · ${s.direction}` : ''}</div>
+                    <div className="text-[12px] text-app-muted">{t('scene', lang)} {s.index + 1} · ≈{Math.round(s.estSec)} {t('sec', lang)}{s.direction ? ` · ${s.direction}` : ''}</div>
                     {!card && <p className="mt-1 line-clamp-3 text-[14px] text-app-text">{slot?.text ?? s.text}</p>}
                   </div>
                   {!card && (
-                    <button type="button" data-testid={`vs-make-${s.index}`} disabled={slot?.busy} onClick={() => makeScene(s.index)}
+                    <button type="button" data-testid={`vs-make-${s.index}`} disabled={slot?.busy} aria-busy={!!slot?.busy} onClick={() => makeScene(s.index)}
                       className="shrink-0 rounded-full border border-app-accent px-3 py-1.5 text-[13px] text-app-text disabled:opacity-40">
                       {slot?.busy ? t('working', lang) : `${t('make', lang)} · ✦${price}`}
                     </button>
                   )}
                 </div>
-                {slot?.error && <p data-testid={`vs-error-${s.index}`} className="text-[12px] text-amber-300">{slot.error}</p>}
+                {slot?.error && <p data-testid={`vs-error-${s.index}`} role="alert" className="text-[12px] text-app-warning">{slot.error}</p>}
+                {slot?.busy && !(card && job) && (
+                  <div data-testid={`vs-recording-${s.index}`} role="status" aria-live="polite"
+                    className={`ag-shimmer w-full rounded-2xl bg-app-elevated/70 ${plan.format === '9:16' ? 'mx-auto aspect-[9/16] max-w-[240px]' : 'aspect-video'}`}>
+                    <span className="sr-only">{t('working', lang)}</span>
+                  </div>
+                )}
                 {card && job && (
                   <PresenterCard scene={card} lang={lang} busy={slot?.busy} gender={presenter.gender}
                     onRegenerate={() => makeScene(s.index, { take: (slot?.take ?? 0) + 1 })}
