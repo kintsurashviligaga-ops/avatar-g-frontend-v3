@@ -172,6 +172,17 @@ describe('the browser wiring', () => {
     expect(chunk.miss).toBe('502 tts_failed · Google 400 INVALID_ARGUMENT: Voice is not supported');
   });
 
+  test('a trial chunk records its place in the read, which the player passes', async () => {
+    window.history.replaceState({}, '', '/ka/studio?tts=gemini-2.5-flash-preview-tts');
+    const rec = speechTrialRecorder();
+    rec.onState({ status: 'loading', owner: 'omni:c:6', index: 0 });
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => wav());
+    const deps = browserSpeechDeps(null);
+    await deps.synth('Second.', 'en', new AbortController().signal, 1);
+    await deps.synth('First.', 'en', new AbortController().signal, 0);
+    expect(rec.snapshot()!.chunks.map((c) => [c.index, c.chars])).toEqual([[0, 'First.'.length], [1, 'Second.'.length]]);
+  });
+
   test('no answer at all is said so', async () => {
     window.history.replaceState({}, '', '/ka/studio?tts=gemini-3.8-flash-tts');
     const rec = speechTrialRecorder();
@@ -221,7 +232,18 @@ describe('the trial recorder', () => {
     expect(r.snapshot()).toMatchObject({ firstSoundMs: null, waits: 0, done: false });
   });
 
-  test('chunks are kept in the order they answer, and not after the read ended', () => {
+  // GG's card 2026-11-06 listed the 61-character second chunk as #1: it had answered before the 43-character first one.
+  test('chunks that say their place are kept in the read\'s order, whatever order they answer in', () => {
+    const r = new SpeechTrialRecorder(() => 0);
+    r.onState(st('loading'), 'm');
+    r.onChunk({ index: 1, chars: 61, synthMs: 6_400, audioMs: 4_700 });
+    r.onChunk({ index: 0, chars: 43, synthMs: 7_900, audioMs: 4_600 });
+    r.onChunk({ index: 3, chars: 139, synthMs: 9_000, audioMs: 11_100 });
+    r.onChunk({ index: 2, chars: 127, synthMs: 9_400, audioMs: 9_300 });
+    expect(r.snapshot()!.chunks.map((x) => [x.index, x.chars])).toEqual([[0, 43], [1, 61], [2, 127], [3, 139]]);
+  });
+
+  test('chunks without a place are kept in the order they answer, and not after the read ended', () => {
     const r = new SpeechTrialRecorder(() => 0);
     r.onState(st('loading'), 'm');
     r.onChunk({ chars: 10, synthMs: 900, audioMs: 800 });
