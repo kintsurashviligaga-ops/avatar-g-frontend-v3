@@ -74,8 +74,12 @@ Live voice and the talking avatar are already on for everyone (`LIVE_AUDIENCE=ev
 ## Step 1. Check that the database is really back (free, Terminal)
 
 ```sh
-# 1a. Full health check. This one does touch the database. Expect 6/6.
-curl -s https://myavatar.ge/api/health | python3 -m json.tool | head -40
+# 1a. Full health check. Expect 6/6. It touches the database ONLY with the CRON_SECRET bearer (or an admin session):
+#     an anonymous call answers a bare {"ok":true} with no database check at all. Easiest: the GO script (Phase 8.23),
+#     which runs 1a, 1b and 1c and prints SUCCESS or FAIL:
+#       CRON_SECRET='<the value in Vercel>' scripts/launch/verify.sh
+#     By hand (the secret is read from the prompt, not typed on the command line):
+read -rs CRON_SECRET && printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" | curl -s --config - https://myavatar.ge/api/health | python3 -m json.tool | head -40
 
 # 1b. Supabase Auth answers. Expect HTTP 200, not ENOTFOUND or a timeout.
 curl -s -o /dev/null -w "%{http_code}\n" https://zwksnayknzggdcenqqxy.supabase.co/auth/v1/health
