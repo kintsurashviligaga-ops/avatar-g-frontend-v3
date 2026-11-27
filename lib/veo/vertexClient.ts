@@ -15,6 +15,7 @@ import 'server-only';
 import { veoModelRefusal } from './capabilities';
 import { buildVertexPayload, VeoPayloadError } from './payload';
 import { getVertexAccessToken, redactSecrets, VertexAuthError } from './vertexAuth';
+import { currentEndUser, withSafetyLabel } from '@/lib/ai/google/safetyIdentifier';
 import type {
   PersonGeneration,
   VeoClipRequest,
@@ -246,6 +247,8 @@ export interface SubmitVertexOptions {
   timeoutMs?: number;
   /** Transport default; else VEO_VERTEX_PERSON_GENERATION; else the payload's 'allow_adult'. A value on the request wins. */
   personGeneration?: PersonGeneration;
+  /** Account id for labels.safety_identifier (hashed; only when SAFETY_IDENTIFIER=1). Default: the request's end user. */
+  endUserId?: string | null;
 }
 
 function envPersonGeneration(): PersonGeneration | undefined {
@@ -296,6 +299,8 @@ export async function submitVertexVeo(req: VeoClipRequest, cfg: VertexConfig, op
         ...(personGeneration ? { personGeneration } : {}),
       }),
     );
+    // Phase 8.9: top-level labels.safety_identifier, next to instances/parameters (Google's Veo REST sample).
+    body = withSafetyLabel(body, opts.endUserId !== undefined ? opts.endUserId : currentEndUser()) as string;
   } catch (err) {
     // VeoPayloadError messages never carry media (payload.ts); anything else is not echoed.
     return failure('invalid_request', false, err instanceof VeoPayloadError ? err.message : 'the request could not be encoded');

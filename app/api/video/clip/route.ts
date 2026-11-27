@@ -43,6 +43,7 @@ import { OMNI_MODEL, submitOmniClip } from '@/lib/video/omniClip';
 import { clipAdvancedServerOn, mergeClipNegative, parseClipAdvanced, type ClipAdvanced } from '@/lib/video/clipAdvanced';
 import { clipLastFrameServerOn, parseClipLastFrame } from '@/lib/video/clipLastFrame';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
+import { setEndUser } from '@/lib/ai/google/safetyIdentifier';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     userId = null;
   }
   if (!userId || mustSignInToGenerate(userId)) return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+  setEndUser(userId); // Phase 8.9: hashed labels.safety_identifier on the Veo submit (flag off → no-op)
   // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
   const serviceOff = await serviceOffResponse('video');
   if (serviceOff) return serviceOff;
