@@ -105,15 +105,17 @@ export interface ResultCardProps {
   children?: React.ReactNode;
   /**
    * The visible AI label on the finished media (EU AI Act Art. 50; components/studio/ui/AiContentBadge). Every result
-   * this card shows is one we made, so it defaults to 'generated'; pass false only for something the user made.
+   * this card shows is one we made, so it defaults to 'generated' ('likeness' for an avatar, which shows a person:
+   * Art. 50(4)); pass false only for something the user made.
    */
   aiLabel?: AiLabelKind | false;
 }
 
 export function ResultCard({
   kind, aspect, state, locale, pct, stage, poster, media, error,
-  onCancel, onRetry, retryBlocked = false, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children, aiLabel = 'generated',
+  onCancel, onRetry, retryBlocked = false, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children, aiLabel: aiLabelProp,
 }: ResultCardProps) {
+  const aiLabel = aiLabelProp ?? (kind === 'avatar' ? 'likeness' : 'generated');
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
   const working = state === 'queued' || state === 'rendering' || state === 'finalizing';

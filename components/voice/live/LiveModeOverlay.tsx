@@ -35,6 +35,7 @@ import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
 import LiveActionCards from './LiveActionCards';
 import { LIVE_AVATAR_STRINGS, LiveAvatarCaption, LiveAvatarSlot, LiveAvatarThinking } from './LiveAvatarStage';
+import { AiContentBadge } from '@/components/studio/ui/AiContentBadge';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -194,6 +195,10 @@ export function LiveModeOverlay({
       {avatarOn && avatarVideo && <>
         <LiveAvatarSlot video={avatarVideo} className="absolute inset-0 z-0 bg-black sm:[&>video]:object-contain" />
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
+        {/* The avatar is a generated person: the deepfake label stays on screen for the whole call (EU AI Act Art. 50(4)). */}
+        <div className="pointer-events-none absolute inset-x-0 top-20 z-10 flex justify-center px-4">
+          <AiContentBadge kind="likeness" locale={locale} inline />
+        </div>
       </>}
 
       {/* კამერის ფონი (თუ კამერა ჩართულია) */}
