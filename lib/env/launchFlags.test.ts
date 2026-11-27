@@ -80,7 +80,9 @@ describe('docs and .env.example', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(want);
   });
   // These lines arrive with their own drafts (#392 plugins + connectors, #371 safety identifier).
-  const ADDED_BY_DRAFTS = new Set(['AGENT_PLUGINS', 'NEXT_PUBLIC_AGENT_PLUGINS', 'CONNECTORS_NOTION', 'CONNECTORS_GITHUB', 'NOTION_OAUTH_CLIENT_ID', 'NOTION_OAUTH_CLIENT_SECRET', 'GITHUB_OAUTH_CLIENT_ID', 'GITHUB_OAUTH_CLIENT_SECRET', 'SAFETY_IDENTIFIER']);
+  const ADDED_BY_DRAFTS = new Set(['AGENT_PLUGINS', 'NEXT_PUBLIC_AGENT_PLUGINS', 'CONNECTORS_NOTION', 'CONNECTORS_GITHUB', 'NOTION_OAUTH_CLIENT_ID', 'NOTION_OAUTH_CLIENT_SECRET', 'GITHUB_OAUTH_CLIENT_ID', 'GITHUB_OAUTH_CLIENT_SECRET', 'SAFETY_IDENTIFIER',
+    // #403 / #404 add their own .env.example lines; listing them here too would duplicate them after the merge.
+    'AI_PROVENANCE_META', 'NEXT_PUBLIC_AI_LABELS']);
   it('.env.example names every launch switch', () => {
     const example = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
     const missing = LAUNCH_FLAGS.filter((x) => !ADDED_BY_DRAFTS.has(x.name) && !new RegExp(`^#?\\s*${x.name}=`, 'm').test(example)).map((x) => x.name);
