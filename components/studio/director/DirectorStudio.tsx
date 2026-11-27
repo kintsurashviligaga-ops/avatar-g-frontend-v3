@@ -51,6 +51,10 @@ export function DirectorStudio({ locale, onClose, deps = fetchRunDeps, initial }
 }) {
   const [runs, setRuns] = useState<DwRuns>({});
   const [running, setRunning] = useState(false);
+  // Phase 8.24: the approve call (balance + price check) takes a moment before the film starts running. During that
+  // gap "Create film" used to stay pressable, so a double tap started the same film twice (two renders, two charges).
+  const [approving, setApproving] = useState(false);
+  const approvingRef = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const approved = useRef<DwProject | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -72,12 +76,22 @@ export function DirectorStudio({ locale, onClose, deps = fetchRunDeps, initial }
   }, [deps, runs]);
 
   const onApprove = useCallback(async (project: DwProject, quote: DwQuote) => {
+    if (approvingRef.current || running) return;
+    approvingRef.current = true;
+    setApproving(true);
     setNotice(null);
-    const res = await fetch('/api/video/director-workflow/approve', {
-      method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ project, expectedCredits: quote.totalCredits }),
-    }).catch(() => null);
-    const j = res ? await json(res) : {};
+    let res: Response | null;
+    let j: Record<string, unknown>;
+    try {
+      res = await fetch('/api/video/director-workflow/approve', {
+        method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ project, expectedCredits: quote.totalCredits }),
+      }).catch(() => null);
+      j = res ? await json(res) : {};
+    } finally {
+      approvingRef.current = false;
+      setApproving(false);
+    }
     if (!res?.ok) {
       setNotice(j.error === 'insufficient_credits'
         ? tr(locale, `ბალანსი არ კმარა: საჭიროა ✦${quote.totalCredits}.`, `Not enough credits: the film needs ✦${quote.totalCredits}.`, `Недостаточно кредитов: нужно ✦${quote.totalCredits}.`)
@@ -89,7 +103,7 @@ export function DirectorStudio({ locale, onClose, deps = fetchRunDeps, initial }
     approved.current = project;
     setRuns({});
     await go(project);
-  }, [go, locale]);
+  }, [go, locale, running]);
 
   const onRerun = useCallback((sceneId: string) => {
     const p = approved.current;
@@ -109,7 +123,7 @@ export function DirectorStudio({ locale, onClose, deps = fetchRunDeps, initial }
     : null;
 
   return (
-    <DirectorBoard locale={locale} onClose={onClose} initial={initial} onApprove={(p, q) => void onApprove(p, q)} runs={runs} running={running} notice={notice} onRerun={onRerun}
+    <DirectorBoard locale={locale} onClose={onClose} initial={initial} onApprove={(p, q) => void onApprove(p, q)} runs={runs} running={running} approving={approving} notice={notice} onRerun={onRerun}
       after={film && cutClips ? <FinalCutPanel locale={locale} project={film} clips={cutClips} /> : null} />
   );
 }

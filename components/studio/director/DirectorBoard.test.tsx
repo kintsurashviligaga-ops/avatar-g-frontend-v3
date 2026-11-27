@@ -53,3 +53,14 @@ test('removing a card re-prices the film', () => {
   expect(screen.getAllByTestId('dw-scene')).toHaveLength(1);
   expect(screen.getByTestId('dw-total').textContent).toContain(String(quoteProject(p).scenes[0]!.credits));
 });
+
+test('Phase 8.24: while the storyboard is written its shape shimmers, and the close button is a 44 px target', async () => {
+  (global as unknown as { fetch: unknown }).fetch = jest.fn(() => new Promise(() => {}));
+  render(<DirectorBoard locale="ru" onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText('Идея'), { target: { value: 'Лиса в снегу' } });
+  fireEvent.click(screen.getByTestId('dw-plan'));
+  const sk = await screen.findByTestId('dw-plan-skeleton');
+  expect(sk.getAttribute('role')).toBe('status');
+  expect(sk.textContent).toBe('Пишем раскадровку…');
+  expect(screen.getByLabelText('Закрыть').className).toContain('h-11 w-11');
+});

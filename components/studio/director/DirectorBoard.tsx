@@ -195,7 +195,7 @@ function SceneCard({ locale, project, scene, credits, engine, problems, run, onR
   );
 }
 
-export function DirectorBoard({ locale, onClose, onApprove, initial, runs, running, notice, onRerun, after }: {
+export function DirectorBoard({ locale, onClose, onApprove, initial, runs, running, approving, notice, onRerun, after }: {
   locale: Lang;
   /** Phase 8.3 PR D: shown under the cards (the final cut once every scene is delivered). */
   after?: ReactNode;
@@ -203,6 +203,8 @@ export function DirectorBoard({ locale, onClose, onApprove, initial, runs, runni
   runs?: DwRuns;
   /** A film is rendering: the approve button waits. */
   running?: boolean;
+  /** Phase 8.24: the approve check is in flight (balance + price); the button waits and says so. */
+  approving?: boolean;
   /** One line under the cards (approve refused, balance short…). */
   notice?: string | null;
   onRerun?: (sceneId: string) => void;
@@ -250,14 +252,14 @@ export function DirectorBoard({ locale, onClose, onApprove, initial, runs, runni
     edit((p) => (p.characters.length >= DW_MAX_CHARACTERS ? p : { ...p, characters: [...p.characters, { id: newId('c'), name: '', look: '', voice: 'female' }], status: 'draft', version: p.version + 1 }));
   const setFilmResolution = (r: DirectClipResolution) => edit((p) => ({ ...p, resolution: r, status: 'draft', version: p.version + 1 }));
 
-  const canApprove = !!project && !!quote && problems.length === 0 && !!onApprove && !running;
+  const canApprove = !!project && !!quote && problems.length === 0 && !!onApprove && !running && !approving;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" role="dialog" aria-modal="true" aria-label={tr(locale, 'რეჟისორის რეჟიმი', "Director's Workflow", 'Режим режиссёра')}>
+    <div data-ui-surface="" className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" role="dialog" aria-modal="true" aria-label={tr(locale, 'რეჟისორის რეჟიმი', "Director's Workflow", 'Режим режиссёра')}>
       <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-app-surface sm:max-h-[92vh] sm:rounded-3xl">
         <div className="flex items-center justify-between border-b border-app-border/10 px-4 py-3">
           <h2 className="text-[15px] font-semibold text-app-text">{tr(locale, 'რეჟისორის რეჟიმი', "Director's Workflow", 'Режим режиссёра')}</h2>
-          <button type="button" className="h-9 w-9 rounded-full text-app-muted" aria-label={tr(locale, 'დახურვა', 'Close', 'Закрыть')} onClick={onClose}>×</button>
+          <button type="button" className="-mr-2 h-11 w-11 rounded-full text-[20px] text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text" aria-label={tr(locale, 'დახურვა', 'Close', 'Закрыть')} onClick={onClose}>×</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -281,6 +283,13 @@ export function DirectorBoard({ locale, onClose, onApprove, initial, runs, runni
                 {(['720p', '1080p'] as const).map((r) => <button key={r} type="button" className={chip(resolution === r)} onClick={() => setResolution(r)}>{r}</button>)}
               </div>
               {error && <p className="text-[12.5px] text-amber-500" role="alert">{error}</p>}
+              {planning && (
+                // Phase 8.24: the storyboard's own shape while it is written (was only the button text changing).
+                <div role="status" data-testid="dw-plan-skeleton" className="space-y-2 pt-1">
+                  <span className="sr-only">{tr(locale, 'სცენარი იწერება…', 'Writing the storyboard…', 'Пишем раскадровку…')}</span>
+                  {[0, 1, 2].map((i) => <span key={i} aria-hidden="true" className="ag-shimmer block h-24 w-full rounded-2xl" />)}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -346,7 +355,8 @@ export function DirectorBoard({ locale, onClose, onApprove, initial, runs, runni
               </span>
               <button type="button" disabled={!canApprove} onClick={() => project && quote && onApprove?.(project, quote)}
                 className="ml-auto min-h-[44px] rounded-full bg-app-accent px-5 text-[13.5px] font-semibold text-app-bg disabled:opacity-50" data-testid="dw-approve">
-                {running ? tr(locale, 'ფილმი მზადდება…', 'Rendering the film…', 'Фильм рендерится…') : tr(locale, `ფილმის შექმნა ✦${quote?.totalCredits ?? 0}`, `Create film ✦${quote?.totalCredits ?? 0}`, `Создать фильм ✦${quote?.totalCredits ?? 0}`)}
+                {running ? tr(locale, 'ფილმი მზადდება…', 'Rendering the film…', 'Фильм рендерится…')
+                  : approving ? tr(locale, 'ბალანსი მოწმდება…', 'Checking your balance…', 'Проверяем баланс…') : tr(locale, `ფილმის შექმნა ✦${quote?.totalCredits ?? 0}`, `Create film ✦${quote?.totalCredits ?? 0}`, `Создать фильм ✦${quote?.totalCredits ?? 0}`)}
               </button>
             </>
           )}

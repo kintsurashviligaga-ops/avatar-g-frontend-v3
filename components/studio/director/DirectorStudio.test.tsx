@@ -89,3 +89,18 @@ test('once every scene is delivered: a free final cut, or one with a priced musi
   expect(cutCall.music).toEqual({ prompt: 'cinematic music' });
   expect(cutCall.expectedCredits).toBe(3);
 });
+
+test('Phase 8.24: a double tap on Create film starts the film once (the button waits while the balance is checked)', async () => {
+  let release: (v: unknown) => void = () => {};
+  fetchMock.mockImplementationOnce(() => new Promise((r) => { release = r; }));
+  const f = fakeDeps([]);
+  render(<DirectorStudio locale="ka" onClose={() => {}} deps={f.deps} initial={board()} />);
+  const btn = screen.getByTestId('dw-approve') as HTMLButtonElement;
+  fireEvent.click(btn);
+  fireEvent.click(btn);
+  expect(btn.disabled).toBe(true);
+  expect(btn.textContent).toBe('ბალანსი მოწმდება…');
+  await act(async () => { release({ ok: true, json: async () => ({ success: true, version: 1 }) }); });
+  await waitFor(() => expect(f.started).toEqual(['s1', 's2']));
+  expect(fetchMock.mock.calls.filter((c) => c[0] === '/api/video/director-workflow/approve')).toHaveLength(1);
+});
