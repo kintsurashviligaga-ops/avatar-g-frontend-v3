@@ -60,7 +60,18 @@ const DOWNLOAD_LINK = 'tap-44 relative inline-flex items-center text-[12px] font
 // OWN BOX — with no `loading` the panel showed nothing, then jumped by the canvas's height when the chunk landed.
 const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false, loading: () => <GlbViewerSkeleton /> });
 // Phase 8.8: the Google-first 3D Studio replaces the old 3D panel when STUDIO_3D_V2 is open (see ServiceParamsPanel below).
-const Studio3dCard = dynamic(() => import('@/components/studio3d/Studio3dCard'), { ssr: false, loading: () => <div className="h-24" /> });
+// While the chunk loads: a pulse block of the same height, announced to screen readers in the page language
+// (Phase 8.20; was a blank h-24 box).
+const Studio3dCardLoading = () => {
+  const lang = typeof document !== 'undefined' ? document.documentElement.lang : '';
+  const word = lang.startsWith('ka') ? 'იტვირთება…' : lang.startsWith('ru') ? 'Загрузка…' : 'Loading…';
+  return (
+    <div role="status" aria-busy="true" className="h-24 animate-pulse rounded-2xl bg-white/[0.04]">
+      <span className="sr-only">{word}</span>
+    </div>
+  );
+};
+const Studio3dCard = dynamic(() => import('@/components/studio3d/Studio3dCard'), { ssr: false, loading: Studio3dCardLoading });
 
 export type PanelService = 'dubbing' | 'presentation' | 'model3d';
 type Lang = 'ka' | 'en' | 'ru';
