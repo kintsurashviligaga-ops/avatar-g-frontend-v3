@@ -86,7 +86,7 @@ Two PRs are marked ready rather than draft: #264 and #274.
 | Two writes to **different** files | The bytes of both files are in storage, but the manifest the first writer wrote is overwritten, so its file disappears from the listing. It is recoverable by hand. |
 | Two writes to the **same** file | Both compute the same next version number `v`. The blob is uploaded with `upsert: true` (`lib/agent/workspace/live.ts`), so the second upload **replaces the first one's bytes** at `@v`. One version's content is lost, not just its listing. |
 
-The comment in `store.ts` named the first case but not the second. This PR corrects that comment. No code behaviour changes.
+The comment in `store.ts` on `main` names the first case but not the second. The fix PR #414 rewrites that comment along with the code.
 
 **Why it is accepted for now.** Writes come from one chat step at a time, and one user's Agent G run executes its steps in order. Two instances writing to the same workspace at once needs two tabs or two runs acting on the same workspace in the same second. None has been reported. It becomes a real risk when the engine runs steps **in parallel** (#310 `AGENT_ENGINE_MEDIA`, and work-mode lease jobs in #311), so the fix belongs before work-mode is wired (3.5c).
 
@@ -97,4 +97,4 @@ The comment in `store.ts` named the first case but not the second. This PR corre
    - **Why not a plain Postgres advisory lock.** `pg_advisory_xact_lock` is held only for the transaction of one RPC call. The storage writes happen outside that transaction, in the function, so the lock is already released when they run. Session-level `pg_advisory_lock` is unsafe behind the Supabase pooler, because the next call may run on another connection, which leaves the lock stuck or held by nobody. A lease row with an expiry gives the same "one writer" guarantee and survives the pooler.
 3. **If contention ever becomes normal** (many agents on one workspace): move the manifest itself into a Postgres row with a `version` column and write it with compare-and-set (`update … where version = $read_version`), keeping only the file bytes in Storage. Or route workspace writes through the existing `agent-work` lease-job queue from #311, so that one worker owns a workspace at a time.
 
-Steps 1 and 2 need a migration and tests on a staging database, so they wait for GREEN. Like every other change, each is its own PR with its own card.
+**Status (Phase 8.23, 2026-11-27):** steps 1 and 2 are built in draft **#414**, each behind its own switch, both off: `WORKSPACE_CREATE_ONLY=1` (step 1; on a clash after three tries it answers `busy`, HTTP 409) and `WORKSPACE_LOCKS=1` (step 2, needs SQL `20261127a_workspace_locks.sql`, not applied). If the lock cannot be reached, a write goes ahead as it does today. The migration was tested on a local PostgreSQL 16, not on Supabase. Each switch is its own card after #414 merges.

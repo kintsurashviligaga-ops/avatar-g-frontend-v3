@@ -15,17 +15,9 @@
  * Nothing the user had is lost by an agent's write or delete until it falls out of the WS_MAX_VERSIONS history.
  *
  * ⚠️ ONE WRITER AT A TIME PER WORKSPACE, PER INSTANCE. The manifest is read, changed and written back; two writes at
- * once on one instance are queued here (`serial`), but two serverless instances writing the same workspace in the same
- * second race, and the last manifest write wins:
- *   - different files: both blobs stay in storage, but one file drops out of the manifest (recoverable by hand);
- *   - the SAME file: both pick the same next version `v`, and live.ts uploads with `upsert: true`, so the second
- *     upload replaces the first one's bytes at `@v`. That version's content is lost.
- * A chat writes one step at a time, so this is accepted for v1 and named here, not hidden. It must be fixed before
- * engine steps write to one workspace in parallel (work-mode, #311). Plan (docs/agent-g-superapp/CURRENT_STATE.md §7):
- * (1) version blobs with `upsert: false`, re-read and retry on a clash; (2) a Postgres lease row per workspace
- * (`workspace_locks`, ~30 s TTL) taken by an RPC around each write. A plain pg advisory lock does not fit: the
- * transaction-scoped lock ends with the RPC call, before the storage writes run, and a session lock is unsafe behind
- * the Supabase pooler.
+ * once on one instance are queued here, but two serverless instances writing the same workspace in the same second
+ * can still lose one manifest update (the bytes stay in storage, the manifest misses them). A chat writes one step at
+ * a time, so this is accepted for v1 and named here, not hidden.
  *
  * Every effect is a BlobStore passed in: tests run on a Map; live.ts wires Supabase Storage.
  */
