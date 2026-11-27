@@ -36,7 +36,7 @@ export function makeQueryClient(): QueryClient {
           if (status && status >= 400 && status < 500) return false;
           return failureCount < 3;
         },
-        retryDelay: jitteredRetryDelay,
+        retryDelay: (attemptIndex) => jitteredRetryDelay(attemptIndex),
         // Refetch on window focus only in production
         refetchOnWindowFocus: process.env.NODE_ENV === 'production',
         // Refetch when reconnecting to network
