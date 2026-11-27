@@ -10,6 +10,17 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
+/**
+ * Exponential back-off with "equal jitter": half the step is fixed, half is random. Phase 8.21 ("thundering herd"): when
+ * the database comes back after an outage, every open tab's failed query used to retry at exactly 1 s, 2 s, 4 s, all in
+ * the same instant. Spreading each step over its second half keeps the retries apart without making any of them slower
+ * than half of what it was.
+ */
+export function jitteredRetryDelay(attemptIndex: number, random: () => number = Math.random): number {
+  const step = Math.min(1000 * 2 ** attemptIndex, 30_000);
+  return Math.round(step / 2 + random() * (step / 2));
+}
+
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -25,7 +36,7 @@ export function makeQueryClient(): QueryClient {
           if (status && status >= 400 && status < 500) return false;
           return failureCount < 3;
         },
-        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30_000),
+        retryDelay: jitteredRetryDelay,
         // Refetch on window focus only in production
         refetchOnWindowFocus: process.env.NODE_ENV === 'production',
         // Refetch when reconnecting to network
