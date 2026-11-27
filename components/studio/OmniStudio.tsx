@@ -244,7 +244,7 @@ import { musicEngineField } from '@/lib/studio/musicEnginePref';
 // The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
 import { imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
-import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
+import { describeGenerationFailure, refundNoticeOr, userFacingMessage, UserFacingError } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { DictationMetricsReadout } from '@/components/chat/composer/DictationMetricsReadout';
 import { typedSpeechLang } from '@/lib/voice/speechLang';
@@ -4380,7 +4380,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       throw new Error(locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.');
     } catch (e) {
       // Error lands in THIS job's bubble (never a shared panel slot); rethrow → tray shows failed.
-      updateBubble(bubbleId, { text: `⚠️ ${e instanceof Error ? e.message : (locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.')}` });
+      updateBubble(bubbleId, { text: `⚠️ ${userFacingMessage(e, locale, locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.')}` });
       throw e instanceof Error ? e : new Error('product ad failed');
     }
     } });
@@ -5015,9 +5015,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             updateTile(tileIdx, { status: 'failed', jobId, error: reason });
             // The catch below re-stamps the tile with the thrown message — throw the MAPPED line, not `j.error`
             // (a raw code such as `provider_unavailable` used to overwrite the sentence the tile had just shown).
-            throw new Error(reason);
+            throw new UserFacingError(reason);
           } catch (e) {
-            updateTile(tileIdx, { status: 'failed', jobId, error: e instanceof Error ? e.message : undefined });
+            updateTile(tileIdx, { status: 'failed', jobId, error: userFacingMessage(e, locale, locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.') });
             throw e;
           }
         },

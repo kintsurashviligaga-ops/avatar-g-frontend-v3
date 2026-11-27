@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import InlineMedia from '@/components/dashboard/command-center/InlineMedia';
+import { userFacingMessage } from '@/components/studio/ui/serviceError';
 
 type Personality = 'friendly' | 'professional' | 'funny' | 'custom';
 
@@ -134,12 +135,12 @@ export default function OnboardingWizard({ locale }: Props) {
           await audioRef.current.play().catch(() => undefined);
         }
       } catch (err) {
-        setPreviewError(err instanceof Error ? err.message : 'Preview failed');
+        setPreviewError(userFacingMessage(err, locale, locale === 'en' ? 'Preview failed. Try again.' : locale === 'ru' ? 'Не удалось прослушать. Попробуйте снова.' : 'მოსმენა ვერ ჩაირთო. სცადე ხელახლა.'));
       } finally {
         setPreviewingId(null);
       }
     },
-    [previewUrls],
+    [previewUrls, locale],
   );
 
   const finish = useCallback(
@@ -174,7 +175,7 @@ export default function OnboardingWizard({ locale }: Props) {
         router.push(target);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Save failed');
+        setError(userFacingMessage(err, locale, locale === 'en' ? 'Could not save. Try again.' : locale === 'ru' ? 'Не удалось сохранить. Попробуйте снова.' : 'შენახვა ვერ მოხერხდა. სცადე ხელახლა.'));
         setSubmitting(false);
       }
     },
