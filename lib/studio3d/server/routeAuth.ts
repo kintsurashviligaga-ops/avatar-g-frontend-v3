@@ -4,6 +4,7 @@
  *   not signed in → 401. Preview deployments refuse paid writes in the ledger itself (lib/env/previewIsolation).
  */
 import 'server-only';
+import type { RateLimitConfig } from '@/lib/api/rate-limit';
 import { NextResponse } from 'next/server';
 import type { User } from '@supabase/supabase-js';
 import { isAdminUserAsync } from '@/lib/admin/guard';
@@ -27,3 +28,10 @@ export async function studio3dContext(user: User | null): Promise<Studio3dRouteC
   if (!studio3dAllowed(await isAdminUserAsync(user))) return { ok: false, response: notFound() };
   return { ok: true, userId: user.id };
 }
+
+/**
+ * Phase 8.14: new jobs per USER per day, on top of the burst limit (which is now keyed on the user, not the IP, so a
+ * carrier's shared IP cannot lock strangers out and a changing IP cannot slip past it). One job at a time per user is
+ * still enforced by admit(); the site-wide STUDIO_3D_DAILY_CAP (default 200) and the 3 GPUs stay the outer bounds.
+ */
+export const STUDIO3D_USER_DAILY: RateLimitConfig = { maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:3d:user' };
