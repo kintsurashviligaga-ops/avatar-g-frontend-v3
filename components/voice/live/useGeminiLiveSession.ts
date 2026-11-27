@@ -367,6 +367,8 @@ export interface UseGeminiLiveSessionResult {
    * switch hidden; null = no answer yet (an older route, or before the first mint).
    */
   avatarAllowed: boolean | null;
+  /** How long this account's avatar may run, from the server (1 min on the free plan under v8 pricing); null = the default cap. */
+  avatarMaxMs: number | null;
 }
 
 export type LiveAvatarRefusal = 'disabled' | 'audience' | 'daily_limit';
@@ -652,6 +654,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarRefused, setAvatarRefused] = useState<LiveAvatarRefusal | null>(null);
   const [avatarAllowed, setAvatarAllowed] = useState<boolean | null>(null);
+  const [avatarMaxMs, setAvatarMaxMs] = useState<number | null>(null);
   const [activity, dispatchActivity] = useReducer(liveActivityReducer, [] as LiveActivityItem[]);
 
   // Lifecycle
@@ -1022,7 +1025,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown; avatarAllowed?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown; avatarAllowed?: unknown; avatarMaxMs?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -1046,6 +1049,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     setAvatar(avatarSessionRef.current);
     setAvatarRefused((AVATAR_REFUSALS as readonly unknown[]).includes(j.avatarRefused) ? (j.avatarRefused as LiveAvatarRefusal) : null);
     if (typeof j.avatarAllowed === 'boolean') setAvatarAllowed(j.avatarAllowed);
+    setAvatarMaxMs(typeof j.avatarMaxMs === 'number' && Number.isFinite(j.avatarMaxMs) && j.avatarMaxMs > 0 ? j.avatarMaxMs : null);
     return { ok: true };
   }, [deps]);
 
@@ -1962,7 +1966,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
     start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
-    avatar, avatarRefused, avatarAllowed, audioOutput,
+    avatar, avatarRefused, avatarAllowed, avatarMaxMs, audioOutput,
   };
 }
 

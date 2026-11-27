@@ -85,6 +85,22 @@ If a table is missing (e.g. `provider_costs` before #313's migration runs), the 
 
 Still worth watching once live: free and admin credits pull the realised margin under 65 % (the dashboard shows both numbers), and the live avatar minute (✦44) assumes a 40K-token context per minute until a real call trace confirms it.
 
-## 6. Next
+## 6. Wiring (draft PR, flag off)
 
-- Wiring PR: `PRICE_BOOK`, `lib/billing/tiers`, `bogCatalog`, the free avatar cap and the legacy pool move to v8 behind a flag (off). It is tested on a Preview once the database is back.
+One switch, `NEXT_PUBLIC_PRICING_V8=on` (off by default; it is inlined into the browser bundle, so a change needs a new deployment).
+
+| What | Where | With the flag on |
+|---|---|---|
+| Every price | `lib/credits/priceBook.ts`: `PRICE_BOOK` = `PRICE_BOOK_V8` or `PRICE_BOOK_TODAY` | All 38 callers (buttons, routes, toasts, admin) read the v8 numbers. `priceBookV8.test` recomputes each from the approved list and the 65 % rule |
+| Free live avatar | `lib/voice/liveAvatar.liveAvatarMaxMs`, `liveAudience`, `/api/voice/live`, the call screen | Free plan: 1 minute per session (1 session a day). Paid plans and admins keep 5 minutes. The plan lookup runs only with the flag on; a failed lookup counts as free |
+| `price_versions` rows (#313) | `lib/billing/v5/priceVersions.rowProblem` | A row under 65 % at the floor credit is refused (`minCreditsPerUnit`) |
+| 30-day legacy pool | `legacy.chargeFor`, `legacyPool.readLegacyState`, `sql/v8_legacy_pool.sql` (NOT applied) | Reads the pool; no table = every action at the v8 price |
+| Plans and top-ups | `lib/billing/margin/bogV8.ts` (data only) | Nothing yet: see below |
+
+Still needed, and each touches live BOG code or the ledger, so each waits for the DB-up test and GG's word:
+
+1. Run `sql/v8_legacy_pool.sql`, take the snapshot at launch, and have the charge path call `consume_legacy_pool` next to `deduct_credits` (legacy price when it returns true, v8 otherwise).
+2. BOG checkout sells `BOG_PLAN_OFFERS_V8`; the renewal cron uses `renewalAllowanceCredits(tier, amount_gel)` so a pre-launch subscription keeps its old allowance; top-up settlement grants `topupBonusCreditsV8` on top of what `credit_wallet_gel` books.
+3. Pro (129 ₾ / 1,550) needs a 4th tier value in `subscriptions.tier` before it can be sold.
+
+Until 2 lands, keep the flag off: the pricing page would show the v8 plans while checkout still charges today's.

@@ -18,7 +18,29 @@
 
 export type ClipTier = 'lite' | 'fast' | 'standard';
 
-export const PRICE_BOOK = {
+type OmniTable = { readonly '720p': { readonly 4: number; readonly 6: number; readonly 8: number; readonly 10: number }; readonly '1080p': { readonly 4: number; readonly 6: number; readonly 8: number; readonly 10: number } };
+
+/** The shape both books share (today's and v8), so every helper below reads either one. */
+export interface PriceBook {
+  readonly clip: Readonly<Record<ClipTier, number>>;
+  readonly shortClip: Readonly<Record<ClipTier, { readonly 4: number; readonly 6: number }>>;
+  readonly omniClip: OmniTable;
+  readonly omniEdit: OmniTable;
+  readonly filmScene: number;
+  readonly filmBase: number;
+  readonly musicVideoSongPerScene: number;
+  readonly image: number;
+  readonly interiorPlan: number;
+  readonly music: { readonly under60: number; readonly under90: number; readonly from90: number; readonly fullSong: number };
+  readonly remixVoiceover: number;
+  readonly remixMusic: number;
+  readonly research: number;
+  readonly dubbingPerMinute: number;
+  readonly presentationDeck: number;
+}
+
+/** Today's book (the 100 %-profit-over-cost rule). What Production charges while NEXT_PUBLIC_PRICING_V8 is off. */
+export const PRICE_BOOK_TODAY = {
   /** One 8 s Veo 3.1 clip at 1080p, by tier (priced at the with-sound rate); a shorter clip pays its seconds' share. */
   clip: { lite: 43, fast: 64, standard: 213 },
   /**
@@ -69,7 +91,41 @@ export const PRICE_BOOK = {
   dubbingPerMinute: 6,
   /** A deck of up to 12 illustrated slides. Runs only once the owner approves this number (OWNER_APPROVED_PRICING). */
   presentationDeck: 54,
-} as const;
+} as const satisfies PriceBook;
+
+/**
+ * The v8 book: 65 % gross margin at the 0.08 ₾ floor credit (Phase 8.1, APPROVED by GG 2026-11-14 10:26Z, e.g. 720p 8 s
+ * Omni ✦66). Literal numbers so this file stays client-safe; lib/billing/margin/priceBookV8.test recomputes every one from
+ * the approved price list and the 65 % rule (lib/billing/margin/priceBookV8.ts) and fails when one drifts.
+ */
+export const PRICE_BOOK_V8 = {
+  clip: { lite: 74, fast: 111, standard: 368 },
+  shortClip: { lite: { 4: 38, 6: 56 }, fast: { 4: 56, 6: 84 }, standard: { 4: 185, 6: 276 } },
+  omniClip: { '720p': { 4: 34, 6: 50, 8: 66, 10: 83 }, '1080p': { 4: 50, 6: 74, 8: 98, 10: 122 } },
+  omniEdit: { '720p': { 4: 43, 6: 59, 8: 75, 10: 91 }, '1080p': { 4: 59, 6: 83, 8: 107, 10: 131 } },
+  filmScene: 12,
+  filmBase: 6,
+  musicVideoSongPerScene: 3,
+  image: 8,
+  interiorPlan: 7,
+  music: { under60: 6, under90: 11, from90: 11, fullSong: 11 },
+  remixVoiceover: 9,
+  remixMusic: 1,
+  research: 345,
+  dubbingPerMinute: 11,
+  presentationDeck: 93,
+} as const satisfies PriceBook;
+
+/**
+ * NEXT_PUBLIC_PRICING_V8=on|1|true switches every price to the v8 book. Read LITERALLY from process.env so Next inlines it
+ * into the browser bundle too (the button and the route then show and charge the same number). Off by default.
+ */
+export function pricingV8Active(value: string | undefined = process.env.NEXT_PUBLIC_PRICING_V8): boolean {
+  return value === 'on' || value === '1' || value === 'true';
+}
+
+/** THE book every price reads: v8 when the flag is on, today's otherwise. */
+export const PRICE_BOOK: PriceBook = pricingV8Active() ? PRICE_BOOK_V8 : PRICE_BOOK_TODAY;
 
 /** Scenes in a film of `seconds` when the caller does not know its grid: one per started 8 s (Veo's longest clip). */
 export function filmScenes(seconds: number): number {
