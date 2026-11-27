@@ -6,7 +6,7 @@
  * result surfaces carry it only on finished media we made.
  */
 import { render, screen } from '@testing-library/react';
-import { AiContentBadge, AI_LABEL_COPY, aiLabelText, aiLabelsOn } from './AiContentBadge';
+import { AiContentBadge, AI_LABEL_COPY, aiLabelText, aiLabelsOn, showsLikeness } from './AiContentBadge';
 import { ResultCard } from './ResultCard';
 import { ChatAudioPlayer } from '../ChatAudioPlayer';
 
@@ -68,5 +68,22 @@ describe('on the result surfaces', () => {
     expect(screen.queryByTestId('ai-content-badge')).toBeNull();
     rerender(<ChatAudioPlayer src="https://x/a.mp3" locale="ka" variant="result" aiLabel="generated" />);
     expect(screen.getByTestId('ai-content-badge').textContent).toContain('AI-ით შექმნილი');
+  });
+});
+
+describe('the deepfake label (Art. 50(4))', () => {
+  it('a talking avatar or a clip from the user\'s photos shows a likeness; a text-only clip does not', () => {
+    expect(showsLikeness({ genKind: 'lipsync' })).toBe(true);
+    expect(showsLikeness({ avatarSpec: { prompt: 'hi', aspect: '9:16' } })).toBe(true);
+    expect(showsLikeness({ genKind: 'video', clipSpec: { photos: ['https://x/face.jpg'] } })).toBe(true);
+    expect(showsLikeness({ genKind: 'video', clipSpec: { photos: [] } })).toBe(false);
+    expect(showsLikeness({ genKind: 'video' })).toBe(false);
+  });
+  it('an avatar ResultCard carries the likeness label by default', () => {
+    on();
+    render(<ResultCard kind="avatar" aspect="9:16" state="ready" locale="en" media={{ type: 'video', url: 'https://x/a.mp4' }} />);
+    const b = screen.getByTestId('ai-content-badge');
+    expect(b.getAttribute('data-ai-label')).toBe('likeness');
+    expect(b.textContent).toContain('not a real recording');
   });
 });
