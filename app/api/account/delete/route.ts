@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
+import { accountDeleteV2Enabled, runAccountDeletion } from '@/lib/privacy/accountDeletion';
 
 /**
  * POST /api/account/delete — PERMANENT account deletion.
@@ -19,6 +20,10 @@ import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase
  *   4. Clear the local cookie session.
  *
  * Idempotent + fail-safe: returns 401 only when there is no authenticated caller.
+ *
+ * ACCOUNT_DELETE_V2=on (v5.1 Phase 6, GG R-1): files + personal rows are removed and the auth user is SOFT-deleted, so
+ * the ledger and BOG payment history (all ON DELETE CASCADE from auth.users) survive, keyed only by a UUID.
+ * See lib/privacy/accountDeletion.ts. Off by default: the legacy flow below is unchanged.
  */
 
 export const dynamic = 'force-dynamic';
@@ -51,6 +56,35 @@ export async function POST(req: Request) {
     admin = createServiceRoleClient();
   } catch {
     return NextResponse.json({ success: false, error: 'server_misconfigured' }, { status: 500 });
+  }
+
+  if (accountDeleteV2Enabled()) {
+    const result = await runAccountDeletion(uid, {
+      async listUserFiles(bucket, id) {
+        const out: string[] = [];
+        const walk = async (prefix: string, depth: number): Promise<boolean> => {
+          const { data, error } = await admin.storage.from(bucket).list(prefix, { limit: 1000 });
+          if (error) return false;
+          for (const item of data ?? []) {
+            const path = `${prefix}/${item.name}`;
+            if (item.id) out.push(path); // a file
+            else if (depth < 4 && !(await walk(path, depth + 1))) return false; // a folder
+          }
+          return true;
+        };
+        return (await walk(id, 0)) ? out : null;
+      },
+      removeFiles: async (bucket, paths) => admin.storage.from(bucket).remove(paths),
+      deleteRows: async (table, col, id) => admin.from(table).delete().eq(col, id),
+      softDeleteAuthUser: async (id) => admin.auth.admin.deleteUser(id, true),
+    });
+    if (result.problems.length) {
+      // eslint-disable-next-line no-console
+      console.warn('[account/delete] v2 problems', result.problems.map((p) => `${p.step}:${p.target}:${p.reason}`));
+    }
+    if (!result.ok) return NextResponse.json({ success: false, error: 'delete_failed' }, { status: 500 });
+    try { await supabase.auth.signOut(); } catch { /* ignore */ }
+    return NextResponse.json({ success: true });
   }
 
   // 2. Best-effort data purge — each isolated so a missing table/column can't block
