@@ -98,3 +98,16 @@ it.each([
   render(<Studio3dCard locale="en" job={view({ mode: 'image', step: 'failed', error }) as any} />);
   expect(screen.getByRole('alert').textContent).toContain(words);
 });
+
+it('8.24: a double tap on "Yes, build" sends one approve and shows the busy label', async () => {
+  let release: (r: Response) => void = () => {};
+  const fetchImpl = jest.fn((url: string) => (url.endsWith('0001') ? new Promise<Response>((r) => { release = r; }) : Promise.resolve(res(view({}))))) as unknown as typeof fetch;
+  render(<Studio3dCard locale="ka" job={view({}) as any} fetchImpl={fetchImpl} />);
+  const yes = document.querySelector('[data-studio3d-approve]') as HTMLButtonElement;
+  act(() => { fireEvent.click(yes); fireEvent.click(yes); });
+  expect((fetchImpl as unknown as jest.Mock).mock.calls.filter((c) => c[0].endsWith('0001'))).toHaveLength(1);
+  expect(yes.getAttribute('aria-busy')).toBe('true');
+  expect(yes.textContent).toContain('ბალანსი მოწმდება…');
+  await act(async () => { release(res(view({ step: 'shape' }))); });
+  expect(document.querySelector('[data-studio3d-approve]')).toBeNull();
+});
