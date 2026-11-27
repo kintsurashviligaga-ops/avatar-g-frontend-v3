@@ -42,7 +42,7 @@ import { agentAnalyzeOpenTo, agentMediaOpenTo, agentSandboxOpenTo } from '@/lib/
 import { MAX_FILES } from '@/lib/agent/media/montageAsk';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
-import { memoryContextOf } from '@/lib/memory/context';
+import { memoryContextOf, memoryContextWithin } from '@/lib/memory/context';
 import { browserEnabled } from '@/lib/agent/browser';
 
 export const dynamic = 'force-dynamic';
@@ -131,7 +131,8 @@ export async function POST(req: NextRequest) {
     } : {}),
   };
   // What the user told Agent G before (lib/memory/context): capped, their data, never instructions. Fail-open.
-  const memory = await memoryContextOf(user.id);
+  // Phase 8.10 (flag AGENT_G_CONTEXT_V2, off): wait at most AGENT_MEMORY_DEADLINE_MS, like the chat route does.
+  const memory = process.env.AGENT_G_CONTEXT_V2 === '1' ? await memoryContextWithin(user.id) : await memoryContextOf(user.id);
   // What the run used (tokens, cache hits, estimated provider cost) is logged by runLiveAgent and stays on the server.
   const { metrics: _metrics, ...result } = await runLiveAgent(goal, ctx, {
     maxSteps, deadlineMs, ...(memory ? { systemExtra: memory } : {}),

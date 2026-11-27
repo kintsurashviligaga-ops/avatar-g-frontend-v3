@@ -5705,7 +5705,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
-    })));
+    // Phase 8.10 (flag off): a long thread trimmed past its opening ask keeps that ask, so the core goal survives.
+    })), process.env.NEXT_PUBLIC_CHAT_PIN_GOAL === '1' ? { pinGoal: true } : undefined);
     // THE MODEL — read at send time too, exactly like the persona below: a switch in the header applies to the very
     // next turn (regenerate, edit-resend and the queued type-ahead included) without rebuilding streamChat, and it
     // travels as a MODE — the route maps it to its own model chain and never accepts a model id from a client.

@@ -25,7 +25,14 @@ const mockReport = jest.fn();
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReport(...a) }));
 
 const mockMemory = jest.fn(async (_userId: string): Promise<string | null> => null);
-jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string) => mockMemory(u) }));
+jest.mock('../../../../lib/memory/context', () => {
+  const actual = jest.requireActual('../../../../lib/memory/context');
+  return {
+    memoryContextOf: (u: string) => mockMemory(u),
+    // The real deadline logic, reading through the same mock.
+    memoryContextWithin: (u: string, ms?: number) => actual.memoryContextWithin(u, ms, mockMemory),
+  };
+});
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
@@ -219,5 +226,29 @@ it("gives the agent the session user's memory (PART 2, G4), and nothing when the
   expect(runOpts()).toMatchObject({ systemExtra: 'KNOWN FACTS ABOUT THIS USER:\n- I run a coffee shop' });
   await call({ goal: 'plan my week' });
   expect(runOpts()).not.toHaveProperty('systemExtra');
+});
+
+describe('Phase 8.10 flags (both off by default)', () => {
+  afterEach(() => { delete process.env.AGENT_G_CONTEXT_V2; delete process.env.AGENT_G_SHIELD; });
+
+  it('AGENT_G_CONTEXT_V2=1: a memory read slower than 500 ms is left out, and the run starts anyway', async () => {
+    process.env.AGENT_G_CONTEXT_V2 = '1';
+    mockMemory.mockImplementationOnce(() => new Promise((r) => setTimeout(() => r('LATE FACTS'), 2_000)));
+    const t0 = Date.now();
+    const res = await call({ goal: 'plan my week' });
+    expect(res.status).toBe(200);
+    expect(Date.now() - t0).toBeLessThan(1_500);
+    expect(runOpts()).not.toHaveProperty('systemExtra');
+    mockMemory.mockResolvedValueOnce('FAST FACTS');
+    await call({ goal: 'plan my week' });
+    expect(runOpts()).toMatchObject({ systemExtra: 'FAST FACTS' });
+  });
+
+  it('flag off: memory is awaited as on main, and no shield option is passed', async () => {
+    mockMemory.mockImplementationOnce(() => new Promise((r) => setTimeout(() => r('SLOW FACTS'), 700)));
+    await call({ goal: 'plan my week' });
+    expect(runOpts()).toMatchObject({ systemExtra: 'SLOW FACTS' });
+    expect(runOpts()).not.toHaveProperty('shield');
+  });
 });
 
