@@ -12,8 +12,14 @@
  * The same guards as ./script: http(s) only, one page (a popup's address is opened in the same page instead, so
  * "Log in with Google" windows still work), no downloads, service workers blocked.
  */
+import { NET_GUARD_JS, netGuardChromiumArgs } from './netGuard';
+
 export const LOGIN_VIEWPORT = { width: 1280, height: 800 } as const;
 export const LOGIN_KEYS = ['Enter', 'Tab', 'Backspace', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'] as const;
+
+// The same network guard as ./script (Phase 8.18, wired here in 8.20): the login browser is the one the person drives
+// by hand, so a typed address must never reach a private, loopback or link-local IPv4/IPv6 host either.
+const GUARD_ARGS = JSON.stringify(netGuardChromiumArgs(0)).replace('127.0.0.1:0', '127.0.0.1:" + __guardPort + "');
 
 export const LOGIN_SCRIPT = String.raw`
 import { createRequire } from 'node:module';
@@ -30,6 +36,7 @@ const say = (e) => String((e && e.message) || e).split('\n')[0].slice(0, 300);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const t0 = Date.now();
 
+${NET_GUARD_JS}
 let browser, page, ctx;
 async function show() {
   try { st.url = page.url(); st.title = (await page.title()).slice(0, 200); } catch {}
@@ -39,10 +46,12 @@ async function show() {
 
 try {
   await mkdir('inbox', { recursive: true });
+  const __guardPort = await startNetGuard(() => {});
   browser = await chromium.launch({
     headless: true,
     ...(process.env.PW_EXECUTABLE ? { executablePath: process.env.PW_EXECUTABLE } : {}),
-    args: ['--no-first-run', '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-default-apps'],
+    args: ['--no-first-run', '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-default-apps',
+      ...${GUARD_ARGS}],
   });
   ctx = await browser.newContext({
     viewport: { width: ${LOGIN_VIEWPORT.width}, height: ${LOGIN_VIEWPORT.height} },
@@ -124,5 +133,7 @@ try {
 } finally {
   await writeFile('status.json', JSON.stringify(st)).catch(() => {});
   if (browser) await browser.close().catch(() => {});
+  // The network guard's server would keep Node alive: the login is over, so end it.
+  process.exit(0);
 }
 `;

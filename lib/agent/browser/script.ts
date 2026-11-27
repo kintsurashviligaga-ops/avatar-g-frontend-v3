@@ -14,10 +14,16 @@
  *   - downloads are refused and service workers blocked;
  *   - when the person saved a login for the task's first site, its cookies are loaded (task.useState); the agent still
  *     never types a password;
- *   - each step has its own timeout, and text is cut to the server's limit.
+ *   - each step has its own timeout, and text is cut to the server's limit;
+ *   - every connection goes through ./netGuard's proxy, which refuses any private, loopback, link-local or otherwise
+ *     non-public IPv4 OR IPv6 address after resolving the name itself (Phase 8.18). If it cannot start, nothing runs.
  *
  * PW_CORE and PW_EXECUTABLE exist only for the offline test (./script.test), which runs this exact text on this machine.
  */
+import { NET_GUARD_JS, netGuardChromiumArgs } from './netGuard';
+
+const GUARD_ARGS = JSON.stringify(netGuardChromiumArgs(0)).replace('127.0.0.1:0', '127.0.0.1:" + __guardPort + "');
+
 export const BROWSER_SCRIPT = String.raw`
 import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -27,18 +33,21 @@ const { chromium } = require(process.env.PW_CORE || 'playwright-core');
 
 const task = JSON.parse(await readFile('task.json', 'utf8'));
 const L = task.limits;
-const out = { steps: [], finalUrl: '', error: null };
+const out = { steps: [], finalUrl: '', error: null, blocked: [] };
 const save = () => writeFile('result.json', JSON.stringify(out));
 const cut = (s) => (typeof s === 'string' && s.length > L.textMax ? s.slice(0, L.textMax) + '\n…[cut]' : s);
 const say = (e) => String((e && e.message) || e).split('\n')[0].slice(0, 300);
 
+${NET_GUARD_JS}
 let browser;
 try {
   await mkdir('shots', { recursive: true });
+  const __guardPort = await startNetGuard((what, why) => { if (out.blocked.length < 20) out.blocked.push(what + ' (' + why + ')'); });
   browser = await chromium.launch({
     headless: true,
     ...(process.env.PW_EXECUTABLE ? { executablePath: process.env.PW_EXECUTABLE } : {}),
-    args: ['--no-first-run', '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-default-apps'],
+    args: ['--no-first-run', '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-default-apps',
+      ...${GUARD_ARGS}],
   });
   const ctx = await browser.newContext({
     viewport: { width: 1280, height: 800 },
@@ -63,7 +72,8 @@ try {
     const r = { op: s.op, ok: true };
     try {
       if (s.op === 'goto') {
-        await page.goto(s.url, { waitUntil: 'domcontentloaded' });
+        const resp = await page.goto(s.url, { waitUntil: 'domcontentloaded' });
+        if (resp && resp.headers()['x-agent-g-guard'] === 'blocked') throw new Error('blocked: that address is not a public website');
         r.url = page.url();
         r.title = (await page.title()).slice(0, 200);
       } else if (s.op === 'click') {
@@ -120,5 +130,7 @@ try {
 } finally {
   await save();
   if (browser) await browser.close().catch(() => {});
+  // The network guard's server and its tunnels would keep Node alive: the task is over, so end it.
+  process.exit(0);
 }
 `;

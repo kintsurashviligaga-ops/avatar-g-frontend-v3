@@ -24,7 +24,8 @@ export const BROWSER_LIMITS = { cpus: 2, memoryMb: 4096, startSec: 30 } as const
 export const BROWSER_STEP_MS = 15_000;
 /**
  * Never reachable from the browser, whatever a page or a DNS answer says. IPv4 only: Vercel's policy refuses IPv6 CIDRs
- * ("Invalid CIDR ::1/128", 2026-11-06), and an IPv6 literal is already refused by ./policy publicUrl. Checked live from
+ * ("Invalid CIDR ::1/128", 2026-11-06). IPv6 (and IPv4 again, after DNS) is closed inside the sandbox instead: every
+ * connection Chromium makes goes through ./netGuard, which refuses any non-public address (Phase 8.18). Checked live from
  * the snapshot 2026-11-06: 169.254.169.254, 10.0.0.1, 192.168.1.1 and 127.0.0.1 all blocked, public sites open.
  */
 export const BROWSER_DENY_SUBNETS: readonly string[] = [

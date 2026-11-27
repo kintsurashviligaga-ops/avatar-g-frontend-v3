@@ -13,7 +13,8 @@
  *
  * Rules, fixed here so the host cannot loosen them:
  *   - only http/https URLs on a public host name: no IP literals, no localhost, no internal names, no user:pass@;
- *     the sandbox's network policy also denies every private and metadata range (runner BROWSER_DENY_SUBNETS);
+ *     the sandbox's network policy also denies every private and metadata IPv4 range (runner BROWSER_DENY_SUBNETS),
+ *     and inside the sandbox ./netGuard checks every connection (redirects, page requests, DNS answers, IPv6 too);
  *   - no credentials: a `type` into a password field is refused by the script, and nothing of the user's (cookies,
  *     sessions, keys) is ever put into the browser. Every task starts from an empty profile and the VM is destroyed;
  *   - at most BROWSER_MAX_STEPS steps, BROWSER_MAX_SHOTS screenshots, BROWSER_WALL_SEC seconds, BROWSER_TEXT_MAX

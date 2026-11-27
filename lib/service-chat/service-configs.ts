@@ -1092,7 +1092,7 @@ export const gameConfig: ServiceChatConfig = {
       options: [
         { id: 'environment', label: { en: 'Environment', ka: 'გარემო', ru: 'Окружение' }, type: 'chips', options: [
           { value: 'fantasy', label: { en: 'Fantasy', ka: 'ფენტეზი', ru: 'Фэнтези' } },
-          { value: 'sci-fi', label: { en: 'Sci-Fi', ka: 'სай-ფაი', ru: 'Научная фантастика' } },
+          { value: 'sci-fi', label: { en: 'Sci-Fi', ka: 'სამეცნიერო ფანტასტიკა', ru: 'Научная фантастика' } },
           { value: 'realistic', label: { en: 'Realistic', ka: 'რეალისტური', ru: 'Реалистичное' } },
           { value: 'abstract', label: { en: 'Abstract', ka: 'აბსტრაქტული', ru: 'Абстрактное' } },
         ], defaultValue: 'fantasy' },
