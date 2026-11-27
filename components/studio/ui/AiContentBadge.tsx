@@ -40,6 +40,14 @@ export function aiLabelText(kind: AiLabelKind, locale: string | undefined): stri
   return AI_LABEL_COPY[lang][kind];
 }
 
+/**
+ * Whether a delivered chat clip shows a person's face or likeness, so it carries the deepfake label (Art. 50(4)):
+ * a talking avatar (Veo avatar / lip-sync) or a clip made from photos the user gave (usually a real face).
+ */
+export function showsLikeness(m: { genKind?: string; avatarSpec?: unknown; clipSpec?: { photos?: readonly string[] } }): boolean {
+  return m.genKind === 'lipsync' || !!m.avatarSpec || (m.clipSpec?.photos?.length ?? 0) > 0;
+}
+
 export function AiContentBadge({
   kind = 'generated', locale, placement = 'top-left', inline = false, className = '',
 }: {
