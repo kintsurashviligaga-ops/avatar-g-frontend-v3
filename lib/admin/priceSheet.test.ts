@@ -2,7 +2,7 @@
 import { MIN_MARKUP, buildPlanRows, buildPriceRows, priceAssumptions } from './priceSheet';
 import { quoteCredits } from '@/lib/credits/quote';
 import { ECON, netGelPerCredit } from '@/lib/credits/unitEconomics';
-import { PAID_TIER_IDS } from '@/lib/billing/tiers';
+import { TODAY_SOLD_TIER_IDS } from '@/lib/billing/tiers';
 
 describe('buildPriceRows', () => {
   const rows = buildPriceRows();
@@ -45,7 +45,7 @@ describe('buildPriceRows', () => {
 describe('buildPlanRows / priceAssumptions', () => {
   it('lists every paid plan with a positive price', () => {
     const plans = buildPlanRows();
-    expect(plans.map((p) => p.tier)).toEqual([...PAID_TIER_IDS]);
+    expect(plans.map((p) => p.tier)).toEqual([...TODAY_SOLD_TIER_IDS]); // v8 Pro is not on sale before launch
     for (const p of plans) expect(p.priceGel).toBeGreaterThan(0);
   });
   it('states the 100% rule', () => {

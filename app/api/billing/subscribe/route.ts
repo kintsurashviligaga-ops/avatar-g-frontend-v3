@@ -20,7 +20,7 @@ import type { User } from '@supabase/supabase-js';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getStripe } from '@/lib/billing/stripe';
-import { PAID_TIER_IDS, isPaidTierId, priceIdForTier, type PaidTierId } from '@/lib/billing/tiers';
+import { TODAY_SOLD_TIER_IDS, isPaidTierId, priceIdForTier, type PaidTierId } from '@/lib/billing/tiers';
 import { resolveUserTierDetailed, type TierReader } from '@/lib/billing/resolveTier';
 
 export const dynamic = 'force-dynamic';
@@ -59,8 +59,9 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as { tier?: unknown } | null;
   const tier = body?.tier;
-  if (!isPaidTierId(tier)) {
-    return NextResponse.json({ error: 'invalid_tier', allowed: PAID_TIER_IDS }, { status: 400 });
+  // Stripe sells today's plans only; v8 Pro is a Bank of Georgia plan (it has no Stripe price).
+  if (!isPaidTierId(tier) || !TODAY_SOLD_TIER_IDS.includes(tier)) {
+    return NextResponse.json({ error: 'invalid_tier', allowed: TODAY_SOLD_TIER_IDS }, { status: 400 });
   }
 
   const priceId = priceIdForTier(tier, process.env);
