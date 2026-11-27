@@ -48,6 +48,18 @@ export function budgetReasonOf(value: unknown): string | undefined {
  */
 export function budgetRefusalMessage(locale: string | null | undefined, reason?: string | null): string {
   const l = loc(locale);
+  // Phase 8.21 hard caps (lib/billing/spendCaps). The Georgian daily line is the owner's own wording.
+  if (reason === 'global_daily_cap' || reason === 'user_daily_cap') {
+    if (l === 'en') return "Today's limit is used up. Please try again tomorrow. Nothing was taken from your balance.";
+    if (l === 'ru') return 'Дневной лимит исчерпан, попробуйте завтра. С баланса ничего не списано.';
+    return 'დღიური ლიმიტი ამოიწურა, სცადეთ ხვალ. ბალანსიდან არაფერი ჩამოგეჭრა.';
+  }
+  if (reason === 'user_concurrency') {
+    if (l === 'en') return 'You already have the most jobs running at once. Wait for one to finish, then try again. Nothing was taken from your balance.';
+    if (l === 'ru') return 'У вас уже запущено максимальное число задач одновременно. Дождитесь окончания одной и попробуйте снова. С баланса ничего не списано.';
+    return 'ერთდროულად მაქსიმალური რაოდენობის დავალება გაქვთ გაშვებული. დაელოდეთ ერთის დასრულებას და სცადეთ თავიდან. ბალანსიდან არაფერი ჩამოგეჭრა.';
+  }
+  if (reason === 'global_cap_unreadable') reason = 'guard_unavailable';
   if (reason === 'guard_unavailable') {
     // The guard could not read the spend, so it refused (MASTER TASK v3.1: billing fails closed). Not a limit, and
     // no reset time: it clears as soon as the ledger answers again.

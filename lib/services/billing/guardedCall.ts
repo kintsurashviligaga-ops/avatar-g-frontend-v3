@@ -15,6 +15,16 @@
 import 'server-only';
 import { canProceed, recordUsage } from './BillingGuard';
 import { estimateCost, type EstimateInput, type ServiceType } from './costModel';
+import {
+  LONG_JOB_SERVICES,
+  claimUserStart,
+  releaseGlobalSpend,
+  reserveGlobalSpend,
+  settleGlobalSpend,
+  type GlobalReservation,
+  type UserClaim,
+} from '@/lib/billing/spendCaps';
+import { alertCapReached, maybeAlertSpend } from '@/lib/billing/spendAlert';
 
 /** Thrown when the budget refuses the call. Carries the reason so the UI can say WHY. */
 export class BudgetExceededError extends Error {
@@ -61,7 +71,35 @@ export async function guardedCall<T>(opts: GuardedCallOptions, fn: () => Promise
   }
   if (!allowed) throw new BudgetExceededError(opts.service, reason);
 
-  const result = await fn();
+  // Phase 8.21 hard caps (lib/billing/spendCaps). Each is OFF until its env figure is set; off = nothing read or written.
+  // Per account first (cheap, and a refusal there must not eat the platform's reservation), then the platform ceiling.
+  let claim: UserClaim = { ok: true, release: async () => undefined };
+  if (opts.userId) {
+    claim = await claimUserStart(opts.userId, opts.service);
+    if (!claim.ok) throw new BudgetExceededError(opts.service, claim.reason);
+  }
+  const reservation: GlobalReservation = await reserveGlobalSpend(estimate.estimatedCost);
+  if (!reservation.ok) {
+    await claim.release(true);
+    void alertCapReached(
+      reservation.reason,
+      new Date().toISOString().slice(0, 10),
+      `This call: ${opts.service} $${estimate.estimatedCost}. Reserved today: $${reservation.totalUsd ?? '?'} of $${reservation.limitUsd}.`,
+    );
+    throw new BudgetExceededError(opts.service, reservation.reason);
+  }
+
+  let result: T;
+  try {
+    result = await fn();
+  } catch (err) {
+    // A provider error costs nothing (see below): the reservation, the lease and the day's start go back.
+    await releaseGlobalSpend(reservation);
+    await claim.release(true);
+    throw err;
+  }
+  // A quick call is over; a long job keeps its lease until LEASE_MS expires (it is still running and billing).
+  if (!LONG_JOB_SERVICES.has(opts.service)) await claim.release(false);
 
   // Booking happens after a SUCCESSFUL call: a provider error costs us nothing, and charging the budget for
   // it would slowly starve the envelope on a broken provider.
@@ -72,8 +110,13 @@ export async function guardedCall<T>(opts: GuardedCallOptions, fn: () => Promise
     } catch {
       usd = undefined;
     }
+    const booked = typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? { ...estimate, estimatedCost: usd } : estimate;
+    if (reservation.enforced) {
+      const total = await settleGlobalSpend(reservation, booked.estimatedCost);
+      if (total !== null) void maybeAlertSpend(total, new Date().toISOString().slice(0, 10));
+    }
     await recordUsage(
-      typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? { ...estimate, estimatedCost: usd } : estimate,
+      booked,
       { userId: opts.userId ?? null, ...(opts.promptSummary ? { promptSummary: opts.promptSummary } : {}) },
     );
   } catch (err) {
