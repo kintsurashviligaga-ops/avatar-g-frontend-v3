@@ -9,12 +9,13 @@ const GLB = 'https://zwksnayknzggdcenqqxy.supabase.co/storage/v1/object/sign/stu
 const PREVIEW = 'https://zwksnayknzggdcenqqxy.supabase.co/storage/v1/object/sign/studio3d/user-1/old/preview.png?token=c';
 const EXEC = 'projects/p/locations/europe-west4/jobs/studio3d/executions/e1';
 
-function mockDeps(over: Partial<{ safety: string | null; image: boolean; deduct: 'ok' | 'insufficient'; running: number; queued: number; today: number; active: number; engineStart: 'ok' | 'throw'; engineState: string; noEngine: boolean }> = {}) {
+function mockDeps(over: Partial<{ safety: string | null; photo: string | null | 'throw'; image: boolean; deduct: 'ok' | 'insufficient'; running: number; queued: number; today: number; active: number; engineStart: 'ok' | 'throw'; engineState: string; noEngine: boolean }> = {}) {
   const rows = new Map<string, JobRow>();
   const files = new Map<string, unknown>();
   const ledger: any[] = [];
   const debited = new Set<string>();
   const engineCalls: any[] = [];
+  const visionCalls: string[] = [];
   let n = 0;
   const deps: Studio3dDeps = {
     store: {
@@ -48,6 +49,11 @@ function mockDeps(over: Partial<{ safety: string | null; image: boolean; deduct:
     gemini: {
       image: async () => (over.image === false ? null : { base64: 'aGk=', mimeType: 'image/png' }),
       text: async () => (over.safety === undefined ? 'ALLOW' : over.safety),
+      vision: async (_p, url) => {
+        visionCalls.push(url);
+        if (over.photo === 'throw') throw new Error('vertex down');
+        return over.photo === undefined ? 'OBJECT' : over.photo;
+      },
     },
     engine: over.noEngine ? null : {
       start: async (spec) => {
@@ -60,7 +66,7 @@ function mockDeps(over: Partial<{ safety: string | null; image: boolean; deduct:
     newId: () => `00000000-0000-4000-8000-00000000000${++n}`,
     now: () => 1_700_000_000_000,
   };
-  return { deps, rows, files, ledger, engineCalls };
+  return { deps, rows, files, ledger, engineCalls, visionCalls };
 }
 
 describe('3D Studio service (mocked deps)', () => {
@@ -191,5 +197,42 @@ describe('3D Studio service (mocked deps)', () => {
     const r = await createJob(m.deps, UID, { mode: 'text', prompt: 'a lamp' });
     await actOnJob(m.deps, UID, (r as any).id, 'cancel');
     expect(m.ledger).toEqual([{ op: 'debit', uid: UID, credits: 8, ref: referenceRef((r as any).id) }]);
+  });
+
+  describe('D4: Gemini looks at the uploaded photo first', () => {
+    it('an object photo passes, and the check sees exactly the uploaded photo', async () => {
+      const m = mockDeps();
+      expect(await createJob(m.deps, UID, { mode: 'image', imageUrl: IMG })).toMatchObject({ ok: true, step: 'shape' });
+      expect(m.visionCalls).toEqual([IMG]);
+    });
+
+    it.each([
+      ['PERSON', false, 'blocked_person'],
+      ['MINOR', true, 'blocked_minor'],
+      ['UNSAFE', true, 'blocked'],
+      ['SELF', false, 'confirm_self'],
+      ['', true, 'blocked'],
+      [null, true, 'blocked'],
+      ['throw', true, 'blocked'],
+    ] as const)('Gemini says %p (selfie tick %p) → refused as %p, nothing charged, no GPU', async (photo, selfie, error) => {
+      const m = mockDeps({ photo });
+      expect(await createJob(m.deps, UID, { mode: 'image', imageUrl: IMG, selfie })).toMatchObject({ step: 'failed', error });
+      expect(m.ledger).toEqual([]);
+      expect(m.engineCalls).toEqual([]);
+    });
+
+    it('a selfie becomes a figurine when the user ticked "this photo is of me"', async () => {
+      const m = mockDeps({ photo: 'SELF' });
+      expect(await createJob(m.deps, UID, { mode: 'image', imageUrl: IMG, selfie: true })).toMatchObject({ ok: true, step: 'shape' });
+    });
+
+    it('words that are already refused skip the photo check; text mode never runs it', async () => {
+      const m = mockDeps({ safety: 'BLOCK' });
+      expect(await createJob(m.deps, UID, { mode: 'image', imageUrl: IMG, prompt: 'make it a weapon' })).toMatchObject({ step: 'failed', error: 'blocked' });
+      expect(m.visionCalls).toEqual([]);
+      const t = mockDeps();
+      await createJob(t.deps, UID, { mode: 'text', prompt: 'a lamp' });
+      expect(t.visionCalls).toEqual([]);
+    });
   });
 });
