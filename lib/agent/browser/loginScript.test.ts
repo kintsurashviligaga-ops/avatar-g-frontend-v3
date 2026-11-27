@@ -56,7 +56,8 @@ maybe('login driver on a real Chromium', () => {
     try {
       await writeFile(join(dir, 'login.mjs'), LOGIN_SCRIPT);
       await writeFile(join(dir, 'login.json'), JSON.stringify({ url: base, limits: { maxSec: 60, stepMs: 10_000, locale: 'ka-GE', userAgent: 'test' } }));
-      const env = { ...process.env, PW_CORE: require.resolve('playwright-core'), PW_EXECUTABLE: exe };
+      // The offline test has no internet: 127.0.0.1 plays a public website for the network guard (./netGuard), any port.
+      const env = { ...process.env, PW_CORE: require.resolve('playwright-core'), PW_EXECUTABLE: exe, PW_TEST_NET: JSON.stringify({ public: ['127.0.0.1'], anyPort: true }) };
       const child = spawn(process.execPath, ['login.mjs'], { cwd: dir, env, stdio: 'ignore' });
       const exited = new Promise<void>((r) => child.on('exit', () => r()));
       // Wait for the first picture, then send the actions one by one, as the server would.
@@ -83,4 +84,25 @@ maybe('login driver on a real Chromium', () => {
       await rm(dir, { recursive: true, force: true });
     }
   }, 90_000);
+
+  it('the login browser cannot reach a private address either (Phase 8.20: the #399 network guard)', async () => {
+    // A "private" service on 127.0.0.2: not on the test's public list, so the guard must refuse it.
+    const secret = createServer((_req, res) => { res.setHeader('content-type', 'text/html'); res.end('<html><head><title>secret</title></head></html>'); });
+    await new Promise<void>((r) => secret.listen(0, '127.0.0.2', () => r()));
+    const dir = await mkdtemp(join(tmpdir(), 'agl-'));
+    try {
+      await writeFile(join(dir, 'login.mjs'), LOGIN_SCRIPT);
+      const url = `http://127.0.0.2:${(secret.address() as AddressInfo).port}/`;
+      await writeFile(join(dir, 'login.json'), JSON.stringify({ url, limits: { maxSec: 8, stepMs: 5_000, locale: 'ka-GE', userAgent: 'test' } }));
+      const env = { ...process.env, PW_CORE: require.resolve('playwright-core'), PW_EXECUTABLE: exe, PW_TEST_NET: JSON.stringify({ public: ['127.0.0.1'], anyPort: true }) };
+      const child = spawn(process.execPath, ['login.mjs'], { cwd: dir, env, stdio: 'ignore' });
+      await Promise.race([new Promise<void>((r) => child.on('exit', () => r())), sleep(25_000)]);
+      child.kill();
+      const st = JSON.parse(await readFile(join(dir, 'status.json'), 'utf8'));
+      expect(st.title).not.toBe('secret');
+    } finally {
+      secret.closeAllConnections(); await new Promise<void>((r) => secret.close(() => r()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 40_000);
 });
