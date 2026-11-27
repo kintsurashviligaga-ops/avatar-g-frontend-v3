@@ -11,6 +11,7 @@ import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 import { firstUnreadableOwnUrl, resolveCallerMedia } from '@/lib/security/callerMedia';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
+import { coerceSmartLayers, smartOpenTo } from '@/lib/services/montage/smart/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,6 +108,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 413 },
     );
   }
+  // Smart Editor layers (Phase 8.7): read only when MONTAGE_SMART_EDITOR lets this user in (off by default); for anyone
+  // else the field is ignored and the render is exactly the old one. Laying them is free (GG D2) — the captions' words
+  // were paid for when /api/v2/montage/smart/captions recognised them.
+  const smartRaw = (body as { smart?: unknown } | null)?.smart;
+  const smart = smartRaw && (await smartOpenTo(user)) ? coerceSmartLayers(smartRaw, totalSec) : null;
+
   // A montage bills no credits (gap M4): the per-IP burst guard above does not stop one account on many IPs, so the
   // per-account daily ceiling (shared with Agent G's montage) bounds the encode minutes one person can take.
   const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.MONTAGE_USER);
@@ -134,7 +141,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // Both tiers for this service are 'ffmpeg-local' — no model is called. The guard still runs so the
       // platform's compute spend is booked in the same ledger as provider spend.
       { service: 'montage', model: 'ffmpeg-local', units: montageUnits() },
-      () => runMontage(request, { jobId }),
+      () => runMontage(request, { jobId, ...(smart ? { smart } : {}) }),
     );
 
     if (!outcome.ok) {
