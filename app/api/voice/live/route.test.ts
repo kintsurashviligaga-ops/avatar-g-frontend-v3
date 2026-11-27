@@ -452,6 +452,30 @@ describe('the mint', () => {
 describe('voice-to-action (lib/voice/liveTools.ts)', () => {
   const DECLS = { functionDeclarations: LIVE_FUNCTION_DECLARATIONS };
 
+  describe('Phase 8.10 voice planner (LIVE_AGENT_PLANNER)', () => {
+    afterEach(() => { delete process.env.LIVE_AGENT_PLANNER; });
+    test('flag on: the lock carries every action PLUS plan_agent_task, and the planning rule', async () => {
+      process.env.LIVE_AGENT_PLANNER = '1';
+      const res = await POST(post({ locale: 'ka', actions: true }));
+      expect(res.status).toBe(200);
+      const s = mintBody().bidiGenerateContentSetup;
+      const names = s.tools[0].functionDeclarations.map((d: { name: string }) => d.name);
+      expect(names).toEqual([...LIVE_FUNCTION_DECLARATIONS.map((d) => d.name), 'plan_agent_task']);
+      expect(lockedText()).toContain('PLANNING: when the user asks for two or more things');
+      expect(lockedText()).toContain(LIVE_ACTIONS_RULE);
+    });
+    test('flag on but no actions: no planner either', async () => {
+      process.env.LIVE_AGENT_PLANNER = '1';
+      await POST(post({ locale: 'ka' }));
+      expect(JSON.stringify(mintBody())).not.toContain('plan_agent_task');
+    });
+    test('flag off: exactly main', async () => {
+      await POST(post({ locale: 'ka', actions: true }));
+      expect(mintBody().bidiGenerateContentSetup.tools).toEqual([DECLS]);
+      expect(lockedText()).not.toContain('PLANNING:');
+    });
+  });
+
   test('actions: true → the locked setup carries the declarations and the instruction that explains them', async () => {
     const res = await POST(post({ locale: 'en', transcribe: true, compression: true, actions: true }));
     expect(res.status).toBe(200);

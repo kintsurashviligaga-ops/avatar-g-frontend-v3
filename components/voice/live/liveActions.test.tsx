@@ -37,6 +37,18 @@ function spyEnv(receipt = true, canvasReceipt = true) {
 const call = (id: string, name: string, args: unknown = {}) => ({ id, name, args });
 
 describe('executeLiveToolCall', () => {
+  test('plan_agent_task (Phase 8.10): answers a plan and a spoken line, dispatches NOTHING and shows no card', () => {
+    const { env, actions, artifacts } = spyEnv(true);
+    const out = executeLiveToolCall(call('p1', 'plan_agent_task', { request: 'ჯერ სურათი გააკეთე კაფეზე, მერე მისგან ვიდეო' }), env);
+    expect(actions).toEqual([]);
+    expect(artifacts).toEqual([]);
+    expect(out.card).toBeUndefined();
+    expect(out.response).toMatchObject({ id: 'p1', name: 'plan_agent_task', response: { ok: true } });
+    const r = out.response.response as { steps: Array<{ studio: string }>; speak: string };
+    expect(r.steps.map((x) => x.studio)).toEqual(['image', 'video']);
+    expect(r.speak).toMatch(/^გეგმა ასეთია: ჯერ სურათი, შემდეგ ვიდეო\./);
+  });
+
   test('prepare_generation: dispatches the typed action; a studio receipt → ok:true, prepare-only summary, a card', () => {
     const { env, actions } = spyEnv(true);
     const out = executeLiveToolCall(call('c1', 'prepare_generation', { tool: 'video', prompt: 'A cat surfing', aspectRatio: '9:16', durationSec: 24 }), env);
