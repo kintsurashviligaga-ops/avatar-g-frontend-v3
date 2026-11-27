@@ -12,6 +12,8 @@ export interface ScriptedAttempt {
   /** Fail this attempt (retryable or not); default succeed. */
   fail?: { error: string; retryable: boolean };
   credits?: number;
+  /** Of `credits`, what the executor gives back for a failed attempt (its own refund of a miss). */
+  refunded?: number;
   outputs?: string[];
 }
 
@@ -72,7 +74,7 @@ export function simulate(
       const span = spans[f.stepId]!.find((s) => s.end === null);
       if (span) span.end = now;
       results.push(f.attempt.fail
-        ? { stepId: f.stepId, attemptId, ok: false, error: f.attempt.fail.error, retryable: f.attempt.fail.retryable, credits: f.attempt.credits ?? 0 }
+        ? { stepId: f.stepId, attemptId, ok: false, error: f.attempt.fail.error, retryable: f.attempt.fail.retryable, credits: f.attempt.credits ?? 0, ...(f.attempt.refunded ? { refunded: f.attempt.refunded } : {}) }
         : { stepId: f.stepId, attemptId, ok: true, outputs: f.attempt.outputs ?? [`${f.stepId}/out.txt`], credits: f.attempt.credits ?? 1 });
     }
     const commands: EngineCommand[] = [];
@@ -98,7 +100,7 @@ export function simulate(
         const attempt = list[Math.min(n, list.length) - 1]!;
         inFlight.set(e.attemptId, { stepId: e.stepId, endsAt: now + attempt.ms, attempt });
         (spans[e.stepId] ??= []).push({ start: now, end: null });
-      } else {
+      } else if (e.type === 'stop') {
         inFlight.delete(e.attemptId);
         const span = spans[e.stepId]?.find((s) => s.end === null);
         if (span) span.end = now;
