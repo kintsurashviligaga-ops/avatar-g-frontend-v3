@@ -62,6 +62,28 @@ function client(): ReturnType<typeof createServiceRoleClient> | null {
  *   ok:false reason:'skipped'      → RPC not provisioned (Saga proceeds).
  */
 export async function deductCredits(userId: string, amount: number, ref: string): Promise<LedgerResult> {
+  return failClosed(await deductCreditsRaw(userId, amount, ref));
+}
+
+/**
+ * Phase 8.20 (flag LEDGER_FAIL_CLOSED=1, off by default): in production a debit that comes back 'skipped' is
+ * treated as 'error', so the route refuses before its provider call.
+ *
+ * Why: several routes render on `!debit.ok && debit.reason === 'skipped'` (lib/chat/providerRouter.ts,
+ * app/api/video/assemble, app/api/video/remix). 'skipped' is meant for a dev database without the RPC, but
+ * classifyLedgerError also gives it for "Could not find the function", which a stale PostgREST schema cache
+ * answers in production right after a restore. Without this flag that window renders paid work for free.
+ * Outside production, or with the flag off, nothing changes.
+ */
+export function ledgerFailClosed(): boolean {
+  return process.env.LEDGER_FAIL_CLOSED === '1' && process.env.NODE_ENV === 'production';
+}
+
+function failClosed<T extends { ok: boolean; reason?: string }>(r: T): T {
+  return !r.ok && r.reason === 'skipped' && ledgerFailClosed() ? { ...r, reason: 'error' } : r;
+}
+
+async function deductCreditsRaw(userId: string, amount: number, ref: string): Promise<LedgerResult> {
   // A Preview shares Production's database until it proves otherwise (lib/env/previewIsolation): no debit from here,
   // so every paid route refuses before its provider call. 'error', not 'skipped' — skipped would let dev bypasses run.
   if (paidWritesBlockedOnPreview()) return { ok: false, reason: 'error' };
@@ -115,6 +137,10 @@ export type OnceResult = Omit<LedgerResult, 'reason'> & { reason?: LedgerReason 
  * produce rate limit bound that).
  */
 export async function deductCreditsOnce(userId: string, amount: number, ref: string): Promise<OnceResult> {
+  return failClosed(await deductCreditsOnceRaw(userId, amount, ref));
+}
+
+async function deductCreditsOnceRaw(userId: string, amount: number, ref: string): Promise<OnceResult> {
   if (paidWritesBlockedOnPreview()) return { ok: false, reason: 'error' }; // see deductCredits
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
