@@ -219,7 +219,7 @@ import { onSiteTaskResult, startSiteTask } from '@/components/agent/SiteAgentHos
 import { siteAsk } from '@/lib/agent/site/siteAsk';
 import { ConnectorsButton } from '@/components/studio/ConnectorsButton';
 import { envFlagReader } from '@/lib/agent/router/subAgents';
-import { planChatTurn, routerV2Step, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
+import { commandStep, planChatTurn, routerV2Step, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
@@ -9799,6 +9799,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       analyzeOn: agentAnalyzeOn,
       // Agent G Router v2 (Phase 8.10, draft): off unless NEXT_PUBLIC_AGENT_G_ROUTER_V2=1. Sub-agent flags a client can see.
       routerV2: process.env.NEXT_PUBLIC_AGENT_G_ROUTER_V2 === '1',
+      // „How many credits?" / „undo" (Phase 8.10, draft): off unless NEXT_PUBLIC_AGENT_G_COMMANDS=1. The chip's own balance.
+      commandsOn: process.env.NEXT_PUBLIC_AGENT_G_COMMANDS === '1',
+      balance: typeof creditsBalance === 'number' ? creditsBalance : null,
       subAgentOpen: envFlagReader({
         NEXT_PUBLIC_IMAGE_ART_DIRECTOR: process.env.NEXT_PUBLIC_IMAGE_ART_DIRECTOR,
         NEXT_PUBLIC_STUDIO_3D_V2: process.env.NEXT_PUBLIC_STUDIO_3D_V2,
@@ -9827,7 +9830,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // never one guessed from the word count or the scenes named, and nothing makes it a music video.
     const autoAspect: "9:16" | "16:9" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : /(?:16:9|ჰორიზონტალ|landscape)/iu.test(text) ? "16:9" : undefined;
     // Router v2 reads first (when on): „3D … და მერე ვიდეო" must not be taken by the video shortcut below.
-    const step = routerV2Step(text, snapshot) ?? (isVideoCreationAsk
+    const step = commandStep(text, snapshot) ?? routerV2Step(text, snapshot) ?? (isVideoCreationAsk
       ? { kind: "open" as const, aspect: autoAspect, durationSec: undefined as number | undefined }
       : planChatTurn(text, snapshot));
     if (step.kind === 'pass') return false;
