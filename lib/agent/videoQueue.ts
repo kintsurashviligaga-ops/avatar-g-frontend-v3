@@ -195,8 +195,8 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
       if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
     }
 
-    // ⚠️ WATERMARK LAST. Anything that crops or scales must happen before it — stripVeoWatermark crops
-    // the bottom of the frame and would cut off a mark applied earlier. Fail-open: an unmarked clip is
+    // ⚠️ WATERMARK LAST. Anything that crops or scales must happen before it, or it would cut off a mark
+    // applied earlier. Fail-open: an unmarked clip is
     // better than losing a render the user has already paid for.
     //
     // ⚠️ THE SERVER DECIDES, NOT THE ROW. This used to read `item.watermark`, which came straight from
