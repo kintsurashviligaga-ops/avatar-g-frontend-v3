@@ -162,8 +162,9 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'Provider policy B6; not changed here.',
   },
   {
-    id: 'vfx', service: null, tools: ['vfx'], capabilities: ['video.vfx'],
-    entry: 'the VFX tool: one-tap effects (remix route ops)',
+    // REMOVED (GG 2026-11-13): no tool opens it and /api/genjutsu/{quote,generate} answer 410 (lib/genjutsu/removed).
+    id: 'vfx', service: null, tools: [], capabilities: ['video.vfx'],
+    entry: 'the VFX tool (removed): one-tap effects (remix route ops)',
     routes: ['app/api/video/remix/route.ts'], modules: ['lib/video/remixOps.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'per-op',
     refusals: ['duplicate_request', 'insufficient_credits'], status: 'UNVERIFIED', tier: 'NOT RUN',
