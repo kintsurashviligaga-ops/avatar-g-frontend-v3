@@ -78,6 +78,7 @@ import {
 } from './clip/editOrder';
 import { OMNI_EDIT_PROMPT_MAX, omniEditCredits, omniEditInputCheck, omniEditOpFromWords, omniSourceOfJob } from '@/lib/video/omniEdit';
 import { withoutMadeUpResults } from '@/lib/chat/madeUpResults';
+import { AiContentBadge } from './ui/AiContentBadge';
 import { DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_PROMPT_MAX, OMNI_DEFAULT_RESOLUTION, OMNI_SPEECH_DEFAULT_RESOLUTION, directClipCredits, snapDirectClipSeconds, type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech } from '@/lib/video/directClip';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import { promptSpeaksGeorgian } from '@/lib/video/clipPrompt';
@@ -9868,6 +9869,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         frame with bars down both sides, and two "send to video" buttons (a 🎬 badge AND a 🎬 pill)
                         sat on top. Now the frame is the picture (docs/DESIGN.md §8), with one quiet action on it. */}
                     <div className="group relative w-fit max-w-full">
+                      <AiContentBadge locale={locale} />
                       <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block cursor-zoom-in" aria-label={locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა'}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={m.imageUrl} alt={locale === 'en' ? 'Generated image' : locale === 'ru' ? 'Созданное изображение' : 'შექმნილი სურათი'} loading="lazy" decoding="async"
@@ -9992,6 +9994,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <ChatVideoPlayer
                       src={m.videoUrl}
                       locale={locale}
+                      aiLabel="generated"
                       {...(m.coverUrl ? { poster: m.coverUrl } : {})}
                       onMeta={({ duration: d, width: w, height: h }) => {
                         if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d }));

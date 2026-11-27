@@ -11,6 +11,7 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Maximize2, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { AiContentBadge, type AiLabelKind } from './ui/AiContentBadge';
 
 const fmt = (s: number) => (!isFinite(s) || s < 0 ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
@@ -24,7 +25,7 @@ const L: Record<Lang, { play: string; pause: string; mute: string; unmute: strin
 export interface VideoMeta { duration: number; width: number; height: number }
 
 export const ChatVideoPlayer = memo(function ChatVideoPlayer({
-  src, poster, locale = 'ka', variant = 'result', className = '', label, onMeta,
+  src, poster, locale = 'ka', variant = 'result', className = '', label, onMeta, aiLabel,
 }: {
   src: string;
   poster?: string;
@@ -35,6 +36,8 @@ export const ChatVideoPlayer = memo(function ChatVideoPlayer({
   /** The accessible name of the video. */
   label?: string;
   onMeta?: (m: VideoMeta) => void;
+  /** The visible AI label over the clip (EU AI Act Art. 50). Set it only on a clip we made; a user's own file has none. */
+  aiLabel?: AiLabelKind;
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
@@ -149,6 +152,7 @@ export const ChatVideoPlayer = memo(function ChatVideoPlayer({
       className={`group/player relative overflow-hidden bg-black ring-1 ring-app-border/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [&:fullscreen]:rounded-none ${small ? 'h-24 max-w-full rounded-xl sm:h-28' : 'rounded-2xl'} ${className}`}
       style={tileStyle}
     >
+      {aiLabel && <AiContentBadge kind={aiLabel} locale={lang} />}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={ref}

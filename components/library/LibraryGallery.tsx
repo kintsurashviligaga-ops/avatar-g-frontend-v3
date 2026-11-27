@@ -37,6 +37,7 @@ import {
 import { PooledVideo } from '@/components/library/PooledVideo';
 import { videoKey } from '@/lib/library/videoPool';
 import { readLibraryView, saveLibraryView, useKeptScroll } from '@/lib/library/libraryView';
+import { AiContentBadge } from '@/components/studio/ui/AiContentBadge';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'documents' | 'favorites';
@@ -358,7 +359,11 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                     </button>
                   )}
                   <div className="flex items-center justify-between gap-1 p-2">
-                    <span className="truncate text-[10.5px] text-app-muted">{fmtDate(it.createdAt, lang)}</span>
+                    <span className="flex min-w-0 flex-col gap-1">
+                      {/* Every Library item but a PDF is media we generated: the visible AI label (EU AI Act Art. 50). */}
+                      {!isDoc && <AiContentBadge locale={lang} inline className="self-start" />}
+                      <span className="truncate text-[10.5px] text-app-muted">{fmtDate(it.createdAt, lang)}</span>
+                    </span>
                     <div className="flex shrink-0 items-center gap-0.5">
                       <button type="button" onClick={() => void download(it)} disabled={saving.has(it.id)} aria-busy={saving.has(it.id) || undefined}
                         aria-label={t.download} title={t.download} data-testid="library-download"

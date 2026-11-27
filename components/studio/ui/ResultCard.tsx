@@ -5,6 +5,7 @@ import { AlertTriangle, Download, Film, Image as ImageIcon, ImagePlus, Maximize2
 import { LoadingLoop } from './LoadingLoop';
 import { useRisingPct } from './GenerationProgress';
 import { fromResultState, primaryAction } from '@/lib/studio/cardState';
+import { AiContentBadge, type AiLabelKind } from './AiContentBadge';
 
 /**
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
@@ -102,11 +103,16 @@ export interface ResultCardProps {
   errorFull?: boolean;
   /** A service's own detail (the film crew console), tucked under the tile. */
   children?: React.ReactNode;
+  /**
+   * The visible AI label on the finished media (EU AI Act Art. 50; components/studio/ui/AiContentBadge). Every result
+   * this card shows is one we made, so it defaults to 'generated'; pass false only for something the user made.
+   */
+  aiLabel?: AiLabelKind | false;
 }
 
 export function ResultCard({
   kind, aspect, state, locale, pct, stage, poster, media, error,
-  onCancel, onRetry, retryBlocked = false, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children,
+  onCancel, onRetry, retryBlocked = false, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children, aiLabel = 'generated',
 }: ResultCardProps) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
@@ -172,6 +178,8 @@ export function ResultCard({
             {state !== 'error' && <Icon aria-hidden="true" size={size === 'tile' ? 18 : 22} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-app-text/20" />}
           </>
         )}
+
+        {state === 'ready' && media && aiLabel && <AiContentBadge kind={aiLabel} locale={lang} />}
 
         {/* Ready: open · download · use as reference — on hover/focus with a pointer, always on touch. */}
         {state === 'ready' && media && (onOpen || onUseAsRef || media.url) && (

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { MusicParticleVisualizer } from './MusicParticleVisualizer';
 import { loadBeatTrack, type BeatTrack } from './beatAnalysis';
+import { AiContentBadge, type AiLabelKind } from '../ui/AiContentBadge';
 
 interface MusicPreviewPlayerProps {
   src: string;
@@ -13,6 +14,8 @@ interface MusicPreviewPlayerProps {
   durationSec?: number;
   coverUrl?: string;
   compact?: boolean;
+  /** The visible AI label in the card's corner (EU AI Act Art. 50). Set it only on a track we made. */
+  aiLabel?: AiLabelKind;
 }
 
 const copy = {
@@ -27,7 +30,7 @@ function formatTime(value: number): string {
 }
 
 export function MusicPreviewPlayer({
-  src, locale = 'ka', title, durationSec, compact = false,
+  src, locale = 'ka', title, durationSec, compact = false, aiLabel,
 }: MusicPreviewPlayerProps) {
   const t = copy[locale.startsWith('ka') ? 'ka' : locale.startsWith('ru') ? 'ru' : 'en'];
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -104,6 +107,7 @@ export function MusicPreviewPlayer({
   return (
     <section data-testid="music-preview-card" aria-label={t.label} className="relative mx-auto w-full min-w-0 max-w-[520px] overflow-hidden rounded-[24px] border border-[#263044]/70 bg-[radial-gradient(ellipse_at_50%_32%,#101725_0%,#0a0f19_66%,#080c13_100%)] px-3 pb-4 pt-2 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.22)] sm:px-5">
       {accessibleTitle && <span className="sr-only">{accessibleTitle}</span>}
+      {aiLabel && <AiContentBadge kind={aiLabel} locale={locale} placement="top-right" />}
       <audio
         ref={audioRef}
         src={src}
