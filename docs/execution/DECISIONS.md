@@ -1,11 +1,23 @@
 # Decisions (v5.1)
 
-Updated 2026-11-12. "Taken" = recorded founder decisions this audit relies on. "Open" = founder decisions required.
+Updated 2026-11-12 (Phase 1). "Taken" = recorded founder decisions this audit relies on. "Open" = founder decisions required.
 
 ## Taken (carried from project records; still in force)
 
 | Date | Decision | Source |
 |---|---|---|
+| 2026-11-12 09:24Z | Phase 0 approved. D-01 YES: Phase 1 = documents only (spec §22), stop for review | founder message |
+| 2026-11-12 09:24Z | D-02 YES: read-aloud → `gemini-3.8-flash-tts` now + paid Georgian probe (~$0.05) | founder message → PR #288 |
+| 2026-11-12 09:24Z | D-03 YES: free `models.list`/`countTokens` probes with prod creds, no generation | founder message → plan-3 |
+| 2026-11-12 09:24Z | D-04 keep Interactions `store=true` for now (Vertex window = 7 days, C4) | founder message |
+| 2026-11-12 09:24Z | D-05 NO Developer API (Vertex-only) | founder message |
+| 2026-11-12 09:24Z | D-06 no Carbon/Argon until versioned pricing + timeout-cost rules (Phase 5) | founder message |
+| 2026-11-12 09:24Z | D-07 YES Omni 1.1 → 1.2 in Phase 2, paid test ~$2 | founder message |
+| 2026-11-12 09:24Z | D-08 code run + browser admin-only until E2E proof | founder message |
+| 2026-11-12 09:24Z | D-09 evaluate Computer Use vs Playwright in Phase 1, no build | founder message → `docs/architecture/v5.1/12` |
+| 2026-11-12 09:24Z | D-10 YES remake browser snapshot before 11-13 | founder message → done 09:35Z |
+| 2026-11-12 09:24Z | B-02: do not touch legacy ledger code until owner's `01_introspect.sql` result; B-03 BOG creds at Phase 5; B-05 keep UNKNOWN, retry in Phase 1 | founder message |
+| 2026-11-12 09:44Z | Retire `gemini-3.6-flash` now (small PR) | founder card → PR #289 |
 | 2026-11-12 | v5.1 supersedes V4.0; this session = Phase 0 read-only only; stop for approval | founder message 2026-11-12 07:19Z |
 | 2026-10-22 | Image engine = `gemini-3.1-flash-image`; server-side Cloud TTS allowed | v3.1 Phase 0 decisions |
 | 2026-10-26 | A Georgian line → Gemini Omni at every length; Veo only without a Georgian line | founder card 10:55Z |
@@ -14,17 +26,14 @@ Updated 2026-11-12. "Taken" = recorded founder decisions this audit relies on. "
 | 2026-11-06 | Browser egress = public sites (deny private/metadata) | founder card 17:36Z |
 | 2026-11-07 | Agent G autonomy with Google connectors; Premiere = XML export + cloud-browser login | founder cards 07:53Z, 08:02Z |
 
-## Open — founder decisions required
+## Open — founder decisions required (Phase 1 review)
 
 | ID | Question | Recommended |
 |---|---|---|
-| D-01 | Approve Phase 1 (target architecture and migration plan, documents only)? | Yes |
-| D-02 | Fix read-aloud now (B-01) as a small approved change before Phase 2, with one paid Georgian probe (~$0.05)? | Yes, it is dated (2026-11-17) |
-| D-03 | Allow a free entitlement probe (`models.list` / `countTokens`, no generation) with production credentials for Carbon, Argon, Omni 1.2, Nano Banana 2.1, 3.8 TTS? | Yes |
-| D-04 | Interactions retention policy: keep default `store=true` (55 days) for Omni continuation, or set a shorter retention / `store=false` where continuation is not needed? | Shortest retention that keeps „გააგრძელე" working |
-| D-05 | Allow a Developer-API call path for Gemini Decision (it is not on Vertex)? | No for now; revisit if Vertex lists it |
-| D-06 | Adopt Gemini 4 Argon/Carbon for Agent G deep tasks, given Argon ×2 price from 2026-12-01 and Carbon Vertex price unpublished? | Not before versioned pricing + timeout-cost rule (Phase 5) |
-| D-07 | Plan Omni 1.1 preview → 1.2 Flash GA migration with a paid test (~$2)? | Yes, in Phase 2 |
-| D-08 | Keep code run / browser admin-only until E2E proof? | Yes |
-| D-09 | Use Google Computer Use (GA 2026-10-30) instead of / beside our Playwright browser? | Evaluate in Phase 1, no build before approval |
-| D-10 | Remake the browser snapshot (B-04) before it lapses ~2026-11-13? | Yes |
+| D-11 | Approve Phase 1 deliverables (`docs/architecture/v5.1/`)? | Yes |
+| D-12 | Live relay → `gemini-3.8-live` (M-2) before 2026-12-06, with a small paid Live budget? | Yes, dated (2.5 native-audio retires 2026-12-13) |
+| D-13 | Confirm lifecycle tail `VERIFY → DELIVER → SETTLE → RECONCILE` (PDF clipped)? | Yes |
+| D-14 | Second Supabase project for staging (M-6)? | Yes, before Phase 5 money work |
+| D-15 | Charge users for Google-billed failures? | No (we absorb, record as loss) |
+| D-16 | Computer Use measurement pilot (10 tasks, < $1, admin-only)? | Yes, after Phase 2 |
+| D-17 | Phase grouping in `09` §3 (Phase 2 = M-0c, M-1, M-2, M-3, M-14)? | Yes |
