@@ -218,7 +218,8 @@ import { AutoTaskCard, startsByItself } from '@/components/agent/AutoTaskCard';
 import { onSiteTaskResult, startSiteTask } from '@/components/agent/SiteAgentHost';
 import { siteAsk } from '@/lib/agent/site/siteAsk';
 import { ConnectorsButton } from '@/components/studio/ConnectorsButton';
-import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
+import { envFlagReader } from '@/lib/agent/router/subAgents';
+import { planChatTurn, routerV2Step, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
@@ -9796,6 +9797,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       runOn: agentMontageOn,
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
+      // Agent G Router v2 (Phase 8.10, draft): off unless NEXT_PUBLIC_AGENT_G_ROUTER_V2=1. Sub-agent flags a client can see.
+      routerV2: process.env.NEXT_PUBLIC_AGENT_G_ROUTER_V2 === '1',
+      subAgentOpen: envFlagReader({
+        NEXT_PUBLIC_IMAGE_ART_DIRECTOR: process.env.NEXT_PUBLIC_IMAGE_ART_DIRECTOR,
+        NEXT_PUBLIC_STUDIO_3D_V2: process.env.NEXT_PUBLIC_STUDIO_3D_V2,
+        NEXT_PUBLIC_MONTAGE_SMART_EDITOR: process.env.NEXT_PUBLIC_MONTAGE_SMART_EDITOR,
+      }),
     };
     // „გახსენი youtube" (GG 2026-11-07 06:58Z): the chat model has no browser, so an open-site ask goes to Agent G, which
     // plans the steps and puts its Start card here. Only for whoever the browser is open to; nothing opens before Start.
@@ -9818,9 +9826,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // A video ask is ONE clip (GG 2026-10-25 16:10Z): its length is the one the words name (4 · 6 · 8 · 10 s) or the panel's,
     // never one guessed from the word count or the scenes named, and nothing makes it a music video.
     const autoAspect: "9:16" | "16:9" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : /(?:16:9|ჰორიზონტალ|landscape)/iu.test(text) ? "16:9" : undefined;
-    const step = isVideoCreationAsk
+    // Router v2 reads first (when on): „3D … და მერე ვიდეო" must not be taken by the video shortcut below.
+    const step = routerV2Step(text, snapshot) ?? (isVideoCreationAsk
       ? { kind: "open" as const, aspect: autoAspect, durationSec: undefined as number | undefined }
-      : planChatTurn(text, snapshot);
+      : planChatTurn(text, snapshot));
     if (step.kind === 'pass') return false;
 
     const clearComposer = () => { setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho(); };
@@ -9840,6 +9849,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // owner's uploads (2026-10-11 11:37Z). Only the words go.
         if (!step.keepComposer) { setInput(''); inputSourceRef.current = 'text'; stopDictationEcho(); }
         say(step.text);
+        // Router v2's chained ask: step 1 waits in the box for the user's own Send (nothing is sent for them).
+        if (step.composer) setInput(step.composer);
         return true;
       case 'open': {
         // Chat → ONE clip's card, here in the chat (GG 2026-10-25 16:10Z: „like Gemini's Veo"): the words as typed, the
