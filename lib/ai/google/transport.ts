@@ -22,6 +22,7 @@ import {
 } from '@/lib/contracts/geminiTransport';
 import { getVertexAccessToken, vertexAiConfig, vertexAiConfigProblems } from '@/lib/veo/vertexAuth';
 import { normalizeModelId } from './models';
+import { breakerAbandonProbe, breakerPermit, breakerRecord, breakerResponse, vertexBreakerOn } from './breaker';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -143,7 +144,21 @@ function vertexTransport(): GoogleRestTransport {
     const extra = init.headers
       ? Object.fromEntries([...new Headers(init.headers).entries()].filter(([name]) => !own.has(name)))
       : {};
-    return fetch(url, { ...init, headers: { ...extra, ...headers }, redirect: 'manual' });
+    // Phase 8.21: VERTEX_BREAKER=1 fails fast with a Google-shaped 503 while this model is in an outage (./breaker).
+    if (!vertexBreakerOn()) return fetch(url, { ...init, headers: { ...extra, ...headers }, redirect: 'manual' });
+    const key = `${modelId(model)}:${method}`;
+    const permit = breakerPermit(key);
+    if (!permit.ok) return breakerResponse(key, permit.retryAfterMs);
+    try {
+      const res = await fetch(url, { ...init, headers: { ...extra, ...headers }, redirect: 'manual' });
+      breakerRecord(key, res.status);
+      return res;
+    } catch (err) {
+      // A caller's own abort is not an outage.
+      if (!(init.signal?.aborted)) breakerRecord(key, null);
+      else if (permit.probe) breakerAbandonProbe(key);
+      throw err;
+    }
   };
   return {
     kind: 'vertex',
