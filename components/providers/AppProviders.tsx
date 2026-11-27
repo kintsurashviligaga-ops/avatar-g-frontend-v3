@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { Toaster } from 'sonner';
 import CursorGlow from '@/components/ui/CursorGlow';
+import { clientReportsEnabled, installClientErrorReports } from '@/lib/observability/clientErrorReports';
 
 // Screen readers announce the toast area by this name; sonner's default is the English „Notifications".
 const TOASTS_LABEL: Record<string, string> = { ka: 'შეტყობინებები', en: 'Notifications', ru: 'Уведомления' };
@@ -19,6 +20,9 @@ export function AppProviders({ children, locale = 'ka' }: { children: React.Reac
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Errors no component caught → /api/log-error (NEXT_PUBLIC_CLIENT_ERROR_REPORTS=1; off by default).
+  useEffect(() => (clientReportsEnabled() ? installClientErrorReports(window) : undefined), []);
 
   return (
     <>
