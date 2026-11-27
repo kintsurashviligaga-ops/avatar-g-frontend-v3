@@ -1,7 +1,6 @@
 'use client';
 
 import { Sparkles } from 'lucide-react';
-import { isTruthyFlag } from '@/lib/env/flag';
 
 /**
  * AiContentBadge — the visible "AI-generated" label on a finished result (EU AI Act Art. 50, GG 2026-11-27).
@@ -14,8 +13,10 @@ import { isTruthyFlag } from '@/lib/env/flag';
  * - `likeness`: it shows a person's face or likeness ("AI-generated, not a real recording", Art. 50(4) deepfake
  *   disclosure). Always shown in full, never shortened to an icon.
  *
- * Off unless NEXT_PUBLIC_AI_LABELS=1 (or true/on). It sits in a corner, ignores the pointer, and has an accessible
- * name, so it never blocks a control or hides behind one.
+ * OFF FOR THE PUBLIC SITE (GG 2026-11-27): myavatar.ge shows clean results, like Google AI Studio / Gemini. Compliance
+ * there is the invisible layer only (SynthID + IPTC/XMP metadata). This badge is an opt-in for a deployment whose client
+ * legally demands visible labels: it renders only when NEXT_PUBLIC_AI_LABELS is exactly "1". Unset, "true", "on" or
+ * anything else keeps it off, so a typo can never switch it on. It never touches the file itself.
  */
 export type AiLabelKind = 'generated' | 'edited' | 'likeness';
 type Lang = 'ka' | 'en' | 'ru';
@@ -26,9 +27,12 @@ export const AI_LABEL_COPY: Record<Lang, Record<AiLabelKind, string>> = {
   ru: { generated: 'Создано ИИ', edited: 'Обработано ИИ', likeness: 'Создано ИИ — не реальная запись' },
 };
 
-/** Inlined at build time: Next replaces `process.env.NEXT_PUBLIC_*` literally, so it must be read by its full name. */
+/**
+ * Strictly opt-in: exactly "1" and nothing else. Inlined at build time (Next replaces `process.env.NEXT_PUBLIC_*`
+ * literally, so it must be read by its full name).
+ */
 export function aiLabelsOn(value: string | undefined = process.env.NEXT_PUBLIC_AI_LABELS): boolean {
-  return isTruthyFlag(value);
+  return value === '1';
 }
 
 export function aiLabelText(kind: AiLabelKind, locale: string | undefined): string {

@@ -18,11 +18,14 @@ afterEach(() => {
 const on = () => { process.env.NEXT_PUBLIC_AI_LABELS = '1'; };
 
 describe('the switch', () => {
-  it('is off by default and for falsy values; on for 1/true/on', () => {
-    expect(aiLabelsOn(undefined)).toBe(false);
-    expect(aiLabelsOn('0')).toBe(false);
+  it('is strictly opt-in: only exactly "1" turns it on (the public site stays clean, GG 2026-11-27)', () => {
+    for (const v of [undefined, '', '0', 'true', 'on', 'yes', 'TRUE', ' 1', '1 ']) expect(aiLabelsOn(v)).toBe(false);
     expect(aiLabelsOn('1')).toBe(true);
-    expect(aiLabelsOn('true')).toBe(true);
+  });
+  it('with the flag unset, no result surface shows any label', () => {
+    delete process.env.NEXT_PUBLIC_AI_LABELS;
+    render(<ResultCard kind="avatar" aspect="9:16" state="ready" locale="en" media={{ type: 'video', url: 'https://x/a.mp4' }} />);
+    expect(screen.queryByTestId('ai-content-badge')).toBeNull();
   });
   it('renders nothing while off', () => {
     delete process.env.NEXT_PUBLIC_AI_LABELS;
