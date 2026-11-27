@@ -25,6 +25,7 @@ import { resolveTemplateContext } from '@/lib/studio/templateContext';
 import { resolveShootDirective } from '@/lib/studio/shootContext';
 import { DEFAULT_MODEL, RETIRED_IMAGE_MODEL_IDS, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, type DeploymentProbe } from '@/lib/providers/catalogue';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
+import { setEndUser } from '@/lib/ai/google/safetyIdentifier';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -196,6 +197,7 @@ export async function POST(req: NextRequest) {
     // sending; this stops a direct POST. FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment.
     // (applyApiGuards above already resolved a cookie session; the full resolver covers the Bearer path.)
     const sessionUserId = gate.auth ? gate.auth.userId : ((await authedClientFromRequest(req)).user?.id ?? null);
+    setEndUser(sessionUserId); // Phase 8.9: hashed labels.safety_identifier (flag off → no-op)
     if (mustSignInToGenerate(sessionUserId)) {
       return NextResponse.json(signInToGenerateBody(), { status: 401 });
     }
