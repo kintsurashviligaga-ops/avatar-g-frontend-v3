@@ -7,11 +7,12 @@
  * be rendered and whether the balance covers the whole film (…/approve, nothing charged), then the runner
  * (lib/video/directorsWorkflow/runner) starts each scene through …/scene — charged when it starts — and polls the shared
  * status route, which refunds a failed scene. Each card shows its own state and preview; a failed scene re-renders alone.
- * The final cut (joining the clips) is PR D.
+ * Once every scene is delivered, the final cut (FinalCutPanel, PR D) joins the clips, with an optional whole-film music bed.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { quoteProject, runFilm, type DwPollResult, type DwProject, type DwQuote, type DwRuns, type DwScene, type DwStartResult } from '@/lib/video/directorsWorkflow';
+import { deliveredClips, quoteProject, runFilm, type DwPollResult, type DwProject, type DwQuote, type DwRuns, type DwScene, type DwStartResult } from '@/lib/video/directorsWorkflow';
 import { DirectorBoard } from './DirectorBoard';
+import { FinalCutPanel } from './FinalCutPanel';
 
 type Lang = string;
 const tr = (locale: Lang, ka: string, en: string, ru: string): string => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
@@ -101,5 +102,14 @@ export function DirectorStudio({ locale, onClose, deps = fetchRunDeps, initial }
     void go(p, ids);
   }, [go, running, runs]);
 
-  return <DirectorBoard locale={locale} onClose={onClose} initial={initial} onApprove={(p, q) => void onApprove(p, q)} runs={runs} running={running} notice={notice} onRerun={onRerun} />;
+  // The final cut appears once every scene of the approved board has a clip (and nothing is rendering).
+  const film = approved.current;
+  const cutClips = film && !running && deliveredClips(film, runs)
+    ? [...film.scenes].sort((a, b) => a.order - b.order).map((s) => ({ sceneId: s.id, url: runs[s.id]!.videoUrl! }))
+    : null;
+
+  return (
+    <DirectorBoard locale={locale} onClose={onClose} initial={initial} onApprove={(p, q) => void onApprove(p, q)} runs={runs} running={running} notice={notice} onRerun={onRerun}
+      after={film && cutClips ? <FinalCutPanel locale={locale} project={film} clips={cutClips} /> : null} />
+  );
 }
