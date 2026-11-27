@@ -241,7 +241,7 @@ export const ChatVideoPlayer = memo(function ChatVideoPlayer({
       </div>
       {small ? (
         <button type="button" onClick={fullscreen} aria-label={t.full}
-          className={`absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-opacity duration-200 focus-visible:opacity-100 ${showBar ? 'opacity-100' : 'opacity-0 [@media(hover:hover)]:group-hover/player:opacity-100'}`}>
+          className={`absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-opacity duration-200 focus-visible:opacity-100 ${showBar ? 'opacity-100' : 'opacity-0 [@media(hover:hover)]:group-hover/player:opacity-100'} ag-hit`}>
           <Maximize2 size={12} aria-hidden="true" />
         </button>
       ) : null}

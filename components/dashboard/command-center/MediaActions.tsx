@@ -5,6 +5,7 @@ import { Download, Share2, RefreshCw, Bookmark, Check, Copy, X, Scissors } from 
 import { motion, AnimatePresence } from 'framer-motion';
 import { shareOrDownload } from '@/lib/share/nativeShare';
 import { recordFeedback } from '@/lib/agent/feedbackClient';
+import { a11y, docLang } from '@/lib/i18n/a11yLabels';
 
 interface MediaActionsProps {
   kind: 'image' | 'video' | 'audio' | 'avatar' | 'text';
@@ -90,7 +91,7 @@ function ShareModal({ shareUrl, mediaUrl, mediaKind, mediaTitle, onClose }: Shar
       >
         <div className="ma-modal-header">
           <span>გაზიარება</span>
-          <button className="ma-modal-close" onClick={onClose}><X size={16} /></button>
+          <button type="button" className="ma-modal-close" onClick={onClose} aria-label={a11y('close', docLang())}><X size={16} aria-hidden="true" /></button>
         </div>
         <div className="ma-modal-body">
           <div className="ma-share-row">
@@ -233,11 +234,11 @@ function SaveCharModal({ imageUrl, prompt, onSave, onClose }: SaveCharModalProps
       >
         <div className="ma-modal-header">
           <span>პერსონაჟად შენახვა</span>
-          <button className="ma-modal-close" onClick={onClose}><X size={16} /></button>
+          <button type="button" className="ma-modal-close" onClick={onClose} aria-label={a11y('close', docLang())}><X size={16} aria-hidden="true" /></button>
         </div>
         <div className="ma-modal-body">
           {imageUrl && (
-            <img src={imageUrl} alt="character preview" className="ma-char-preview" />
+            <img src={imageUrl} alt={a11y('characterPreview', docLang())} className="ma-char-preview" />
           )}
           <label className="ma-label">სახელი *</label>
           <input

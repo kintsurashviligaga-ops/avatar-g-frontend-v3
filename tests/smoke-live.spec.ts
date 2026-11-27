@@ -10,14 +10,14 @@ import { test, expect } from '@playwright/test';
  * the studio composer exists — never brittle marketing copy.
  */
 
-const ERROR_FALLBACK = 'System Interruption'; // ClientErrorBoundary fallback heading
+const ERROR_FALLBACK = '[data-testid="client-error-fallback"]'; // ClientErrorBoundary fallback (any language)
 
 test.describe('myavatar.ge production smoke', () => {
   test('landing renders (not the crash fallback)', async ({ page }) => {
     const res = await page.goto('/ka', { waitUntil: 'domcontentloaded' });
     expect(res?.ok(), 'landing should return a 2xx').toBeTruthy();
     await expect(page.locator('body')).toBeVisible();
-    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
+    await expect(page.locator(ERROR_FALLBACK)).toHaveCount(0);
   });
 
   // /studio (the „Studio Beta" second studio) is retired: it goes home, to the one studio, whose composer a guest reaches.
@@ -25,7 +25,7 @@ test.describe('myavatar.ge production smoke', () => {
     await page.goto('/ka/studio', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/ka\/dashboard/);
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
+    await expect(page.locator(ERROR_FALLBACK)).toHaveCount(0);
   });
 
   test('service worker serves a current, versioned build', async ({ page }) => {
@@ -46,7 +46,7 @@ test.describe('myavatar.ge production smoke', () => {
     await page.goto('/ka/privacy?embed=1', { waitUntil: 'networkidle' });
     // The legal content itself renders (a heading is present)…
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
+    await expect(page.locator(ERROR_FALLBACK)).toHaveCount(0);
     // …and the app-shell chrome is stripped (no global nav landmark) so it sits
     // cleanly inside the studio slide-over rather than rendering a page-in-a-page.
     await expect(page.locator('nav')).toHaveCount(0);
@@ -65,7 +65,7 @@ test.describe('myavatar.ge production smoke', () => {
     // One-window default: the assistant chatbox IS the landing — its composer
     // textarea is present immediately, with no card-selection step in between.
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
+    await expect(page.locator(ERROR_FALLBACK)).toHaveCount(0);
   });
 
   // The „Choose a service" grid (#hub) and the old Film Studio (#film) are retired (2026-10-09): an old link opens the
