@@ -18,6 +18,7 @@ import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Rese
 import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
 import { extractPersonaDirective } from '@/lib/orchestrator/avatar';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
         if (buf.length === 0) { emit({ stage: 'failed', error: 'empty_audio' }); return; }
 
         emit({ stage: 'uploading', pct: 80, ticker: '[Mastering + publishing track…]' });
-        const url = await uploadAndSign('renders', `voice/${Date.now()}.mp3`, buf.toString('base64'), 'audio/mpeg');
+        const url = await uploadAndSign('renders', `voice/${Date.now()}.mp3`, buf.toString('base64'), 'audio/mpeg', undefined, { aiMark: AI_GENERATED });
         if (!url) { emit({ stage: 'failed', error: 'upload_failed' }); return; }
 
         emit({ stage: 'completed', pct: 100, url, expression: persona.expression });

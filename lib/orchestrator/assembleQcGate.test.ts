@@ -137,7 +137,7 @@ describe('the route and the assembler, on the source (T2)', () => {
 
   test('the assembler throws MasterQaRejected on a failed gate BEFORE the master is hosted', () => {
     const gate = assembler.indexOf('throw new MasterQaRejected(qa);');
-    const host = assembler.indexOf("const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800);");
+    const host = assembler.indexOf("const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800, { aiMark: AI_GENERATED });");
     expect(gate).toBeGreaterThan(0);
     expect(host).toBeGreaterThan(gate);
     expect(assembler).toMatch(/if \(!qa\.pass\) \{[\s\S]{0,400}throw new MasterQaRejected\(qa\);/);

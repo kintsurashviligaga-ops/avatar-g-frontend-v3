@@ -20,6 +20,7 @@ import { renderPhotoMusicVideo } from '@/lib/pipeline/photoMusicVideo';
 import { isAllowedAudioUrl, fetchAllowlistedAudio, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { randomUUID } from 'node:crypto';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     const { mp4, durationSec } = await renderPhotoMusicVideo(imageBuffer, audioBuffer, EXT[mime]);
 
     const objectPath = `${user.id}/music-video-${Date.now()}.mp4`;
-    const url = await uploadBufferAndSign(process.env.RENDER_BUCKET ?? 'renders', objectPath, mp4, 'video/mp4', 604_800);
+    const url = await uploadBufferAndSign(process.env.RENDER_BUCKET ?? 'renders', objectPath, mp4, 'video/mp4', 604_800, { aiMark: AI_GENERATED });
     if (!url) return NextResponse.json({ error: 'upload failed' }, { status: 500 });
 
     // ⚠️ RENDERED, UPLOADED, AND THEN FORGOTTEN. This route never wrote a generation_jobs row, and the

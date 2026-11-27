@@ -36,6 +36,7 @@ import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pip
 import { resolveDialogueCastPlan, buildDialoguePremixFilter, DIALOGUE_DUCK_DB } from './dialogueCastPlan';
 import { parseScript, scriptMixWindows } from '@/lib/pipeline/script/scriptSchema';
 import { getFeatureFlag } from '@/lib/server/feature-flags';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const exec = promisify(execFile);
 
@@ -674,7 +675,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // held twice in memory (string + buffer) was failing the upload on larger films,
     // surfacing as the misleading "Storage not configured" error. uploadBufferAndSign
     // streams the Buffer and retries once on a transient failure.
-    const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800);
+    const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800, { aiMark: AI_GENERATED });
     if (!url) {
       // The operator's hint stays in the log; the film's error card shows the sentence below (lib/ui/opFailure).
       console.error(`[assemble] master upload failed: ${(data.byteLength / 1048576).toFixed(1)} MB to ${RENDER_BUCKET} (storage refused the file or is unavailable: check the service-role key and the project upload size limit)`);

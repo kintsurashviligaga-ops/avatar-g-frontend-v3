@@ -46,6 +46,7 @@ import type {
   ReserveOutcome,
   SubmitResult,
 } from './tick';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const exec = promisify(execFile);
 const BUCKET = 'renders';
@@ -129,7 +130,7 @@ const fetchableClip = (url: string | null | undefined): url is string => !!url &
 
 async function hostVideoBuffer(buf: Buffer, path: string): Promise<{ url: string; bytes: number } | null> {
   if (buf.byteLength < MIN_CLIP_BYTES) return null;
-  const url = await uploadBufferAndSign(BUCKET, path, buf, 'video/mp4', WEEK_SEC);
+  const url = await uploadBufferAndSign(BUCKET, path, buf, 'video/mp4', WEEK_SEC, { aiMark: AI_GENERATED });
   return url ? { url, bytes: buf.byteLength } : null;
 }
 
@@ -301,7 +302,7 @@ export function createFfmpegLongformStitcher(opts: { maxUploadBytes?: number } =
         const size = (await stat(plan.outPath)).size;
         if (size > maxUploadBytes) return { ok: false, reason: `needs_resumable_upload: the film is ${size} bytes`, retryable: false };
         const path = `longform/${job.id}/film.mp4`;
-        const url = await uploadBufferAndSign(BUCKET, path, await readFile(plan.outPath), 'video/mp4', WEEK_SEC);
+        const url = await uploadBufferAndSign(BUCKET, path, await readFile(plan.outPath), 'video/mp4', WEEK_SEC, { aiMark: AI_GENERATED });
         return url ? { ok: true, url, path, bytes: size } : { ok: false, reason: 'upload failed', retryable: true };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message.slice(0, 300) : 'stitch failed', retryable: true };

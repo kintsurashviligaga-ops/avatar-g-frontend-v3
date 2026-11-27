@@ -6,6 +6,7 @@ import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } fr
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import type { OutputFormat, VeoDuration, VeoPollOutcome, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 /**
  * Render ONE Veo clip and return a hosted URL — blocking, for routes that render inside a single request.
@@ -138,7 +139,7 @@ async function deliver(video: VeoVideo | undefined, folder: string): Promise<str
   if (video.kind !== 'bytes') return null;
   const buf = Buffer.from(video.base64, 'base64');
   if (buf.byteLength < MIN_CLIP_BYTES) return null;
-  return uploadBufferAndSign('renders', `${folder}/${Date.now()}.mp4`, buf, 'video/mp4', DELIVERY_TTL_SEC);
+  return uploadBufferAndSign('renders', `${folder}/${Date.now()}.mp4`, buf, 'video/mp4', DELIVERY_TTL_SEC, { aiMark: AI_GENERATED });
 }
 
 export async function renderVeoClipSync(args: VeoSyncArgs): Promise<VeoSyncResult | null> {

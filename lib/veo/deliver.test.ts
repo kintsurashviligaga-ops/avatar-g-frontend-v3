@@ -44,7 +44,7 @@ describe('hostGcsVideo — a Vertex clip the Library can keep playing', () => {
     upload.mockResolvedValue('https://x.supabase.co/sign/renders/veo/session/new.mp4?token=t');
     await expect(hostGcsVideo(VIDEO, PATH)).resolves.toBe('https://x.supabase.co/sign/renders/veo/session/new.mp4?token=t');
     expect(signedGcs).toHaveBeenCalledWith(VIDEO, 604_800);
-    expect(upload).toHaveBeenCalledWith('renders', PATH, expect.any(Buffer), 'video/mp4', 604_800);
+    expect(upload).toHaveBeenCalledWith('renders', PATH, expect.any(Buffer), 'video/mp4', 604_800, { aiMark: { source: 'generated' } });
     expect((upload.mock.calls[0]![2] as Buffer).byteLength).toBe(4_096);
   });
 

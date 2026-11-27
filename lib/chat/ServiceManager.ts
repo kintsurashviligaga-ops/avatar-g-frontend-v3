@@ -23,6 +23,7 @@ import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, Veo
 import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withColorScience } from '@/lib/video/colorScience';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
@@ -313,7 +314,7 @@ export class ServiceManager {
       });
       if (!img) return null;
       const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
-      const url = await uploadAndSign('renders', `gemini-image/${request.sessionId}/${Date.now()}.${ext}`, img.base64, img.mimeType, 604_800).catch(() => null);
+      const url = await uploadAndSign('renders', `gemini-image/${request.sessionId}/${Date.now()}.${ext}`, img.base64, img.mimeType, 604_800, { aiMark: AI_GENERATED }).catch(() => null);
       if (!url) return null;
       return {
         success: true,
@@ -647,7 +648,7 @@ export class ServiceManager {
     const buf = Buffer.from(video.base64, 'base64');
     if (buf.byteLength < 1_024) return null;
     // Inline bytes come from Vertex, which stamps no visible mark: hosted as-is at the fixed path.
-    return uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800);
+    return uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800, { aiMark: AI_GENERATED });
   }
 
   /**

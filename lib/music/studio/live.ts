@@ -23,6 +23,7 @@ import { MusicError } from './errors';
 import { e2eFakeLyriaEnabled, e2eFakeTrack } from './e2eProvider';
 import type { MusicDeps } from './engine';
 import type { EditDeps } from './edit';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 export const MUSIC_BUCKET = 'renders';
 /** A signed link lives an hour; status and Library reads mint a fresh one. */
@@ -42,7 +43,7 @@ export async function signTrack(t: SavedTrack): Promise<SavedTrack> {
 export async function storeTrack(userId: string, name: string, bytes: Buffer, mime: string, qc: SavedTrack['qc']): Promise<SavedTrack> {
   const fmt = formatOfMime(mime) ?? 'mp3';
   const path = `music-studio/${userId}/${name}.${fmt}`;
-  const url = await uploadBufferAndSign(MUSIC_BUCKET, path, bytes, FORMAT_MIME[fmt], SIGNED_TTL_SEC);
+  const url = await uploadBufferAndSign(MUSIC_BUCKET, path, bytes, FORMAT_MIME[fmt], SIGNED_TTL_SEC, { aiMark: AI_GENERATED });
   if (!url) throw new MusicError('storage_failed', 'The track could not be stored.', 503);
   return { bucket: MUSIC_BUCKET, path, url, mime: FORMAT_MIME[fmt], bytes: bytes.byteLength, digest: createHash('sha256').update(bytes).digest('hex'), qc };
 }

@@ -35,6 +35,7 @@ import {
   mapWithConcurrency, clipDispatchConcurrency, clipDispatchJitterMs, clipRetryBackoffMs,
   MAX_CLIP_DISPATCH_ATTEMPTS,
 } from '@/lib/chat/filmClipRetry';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
@@ -68,7 +69,7 @@ async function genClip(origin: string, pipelineId: string, idx: number, seg: Scr
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.length === 0) return null;
-    return uploadAndSign('renders', `${pipelineId}/clip${idx}.mp4`, buf.toString('base64'), 'video/mp4');
+    return uploadAndSign('renders', `${pipelineId}/clip${idx}.mp4`, buf.toString('base64'), 'video/mp4', undefined, { aiMark: AI_GENERATED });
   } catch { return null; }
 }
 
@@ -101,7 +102,7 @@ async function genVoice(origin: string, pipelineId: string, segments: ScriptSegm
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.length === 0) return null;
-    return uploadAndSign('renders', `${pipelineId}/voice.mp3`, buf.toString('base64'), 'audio/mpeg');
+    return uploadAndSign('renders', `${pipelineId}/voice.mp3`, buf.toString('base64'), 'audio/mpeg', undefined, { aiMark: AI_GENERATED });
   } catch { return null; }
 }
 
