@@ -55,6 +55,7 @@
  * code don't fall back to an arbitrary system font.
  */
 
+import { copyText } from '@/lib/clipboard/copyText';
 import {
   Children,
   createContext,
@@ -542,32 +543,8 @@ function languageOf(className: string | undefined): string {
   return m ? m[1]!.toLowerCase() : '';
 }
 
-/** Clipboard write with the legacy fallback. Shared with the artifact canvas. */
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch (_err) {
-    /* denied: try the legacy path */
-  }
-  // Insecure origins and some in-app webviews have no async clipboard.
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
-  } catch (_err) {
-    return false;
-  }
-}
+/** Clipboard write with the legacy fallback (lib/clipboard/copyText). Shared with the artifact canvas and the chat's Copy. */
+export { copyText };
 
 function CodeBlock({ className, children }: { className?: string; children?: ReactNode }) {
   const locale = useContext(MarkdownLocaleContext) ?? 'en';
