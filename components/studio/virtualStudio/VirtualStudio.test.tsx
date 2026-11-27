@@ -88,6 +88,30 @@ describe('VirtualStudio panel', () => {
     return s.credits;
   };
 
+  it('8.24: while a scene records it shows a placeholder; a double tap charges it once', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const posted: number[] = [];
+    const api: StudioApi = {
+      post: jest.fn(async (_url: string, body: unknown) => {
+        posted.push((body as { sceneIndex: number }).sceneIndex);
+        await gate;
+        return { status: 200, data: { ok: true, job: job() } };
+      }),
+      get: jest.fn(async () => ({ status: 500, data: {} })),
+    };
+    render(<VirtualStudio lang="ka" book="today" api={api} pollMs={0} />);
+    fireEvent.change(screen.getByTestId('vs-script'), { target: { value: SCRIPT } });
+    const make = screen.getByTestId('vs-make-0');
+    await act(async () => { fireEvent.click(make); fireEvent.click(make); });
+    expect(screen.getByTestId('vs-recording-0').getAttribute('role')).toBe('status');
+    expect(make.getAttribute('aria-busy')).toBe('true');
+    await act(async () => { release(); });
+    expect(await screen.findByTestId('vs-card-0')).toBeTruthy();
+    expect(screen.queryByTestId('vs-recording-0')).toBeNull();
+    expect(posted).toEqual([0]);
+  });
+
   it('script → storyboard → Make (sends the shown price) → card → Regenerate → Join → final + SRT', async () => {
     const { api, calls } = mockApi({
       scene: (body) => ({ status: 200, data: { ok: true, job: job({ id: `job-${body.take}`, take: body.take }) } }),

@@ -37,6 +37,7 @@ export const L10N = {
   make: { ka: 'შექმნა', en: 'Make', ru: 'Создать' },
   makeAll: { ka: 'ყველას შექმნა', en: 'Make all', ru: 'Создать все' },
   working: { ka: 'იქმნება…', en: 'Recording…', ru: 'Запись…' },
+  sec: { ka: 'წმ', en: 's', ru: 'с' },
   join: { ka: 'პრეზენტაციად გაერთიანება', en: 'Join into one presentation', ru: 'Собрать презентацию' },
   joining: { ka: 'ერთიანდება…', en: 'Joining…', ru: 'Собирается…' },
   regenerate: { ka: 'სცენის თავიდან შექმნა', en: 'Regenerate scene', ru: 'Пересоздать сцену' },

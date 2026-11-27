@@ -40,7 +40,7 @@ export function PresenterLibrary({ value, onChange, lang, book }: { value: strin
               : <div className="flex aspect-[3/4] w-full items-center justify-center bg-gradient-to-b from-app-accent/30 to-app-bg text-[28px] font-semibold text-app-text">{p.label[lang].slice(0, 1)}</div>}
             <div className="px-2 py-1.5">
               <div className="truncate text-[12px] font-semibold text-app-text">{p.label[lang]}</div>
-              <div className="text-[11px] text-app-muted">{p.engine === 'live' ? t('live', lang) : t('omni', lang)}</div>
+              <div className="truncate text-[11px] text-app-muted">{p.engine === 'live' ? t('live', lang) : t('omni', lang)}</div>
             </div>
           </button>
         ))}

@@ -84,7 +84,7 @@ export function PresenterCard({ scene, lang, busy, gender, onRegenerate, onChang
       <div className="space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-app-muted">
           <span className="font-semibold text-app-text">{t('scene', lang)} {scene.sceneIndex + 1}</span>
-          {scene.durationSec ? <span>{scene.durationSec.toFixed(1)} s</span> : null}
+          {scene.durationSec ? <span>{scene.durationSec.toFixed(1)} {t('sec', lang)}</span> : null}
           {scene.voiceId ? <span>· {scene.voiceId}</span> : null}
         </div>
         {editing ? (
