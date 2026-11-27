@@ -4,8 +4,8 @@
  *
  * ⚠️ It has no Google engine, so every request is refused with 503 google_only BEFORE the session, the limit, the charge,
  * the reference image, the upload or Replicate, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The charge, refund and
- * settle rules it used to pin went with the code; /api/v2/model3d/status stays open and keeps its own tests, so a
- * reconstruction started before the change still finishes and a failed one is still refunded.
+ * settle rules it used to pin went with the code; /api/v2/model3d/status stays open and keeps its own tests, so an old
+ * job is still delivered from our hosted copy or refunded. The Replicate client itself is gone (v5.1 M-14 cleanup).
  * Every collaborator is mocked so any call is caught — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
@@ -14,10 +14,6 @@ jest.mock('../../../../../lib/supabase/server', () => ({ createSupabaseServerCli
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
   RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } },
-}));
-jest.mock('../../../../../lib/services/model3d/replicate3dClient', () => ({
-  submitReconstruction: jest.fn(async () => ({ ok: true, predictionId: 'pred123' })),
-  hasReplicate3dProvider: jest.fn(() => true),
 }));
 jest.mock('../../../../../lib/orchestrator/storage-adapter', () => ({ uploadBufferAndSign: jest.fn() }));
 jest.mock('../../../../../lib/services/resolveUpload', () => ({ resolveUploadRef: jest.fn() }));
@@ -28,7 +24,6 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { createSupabaseServerClient } from '../../../../../lib/supabase/server';
 import { checkRateLimit } from '../../../../../lib/api/rate-limit';
-import { submitReconstruction } from '../../../../../lib/services/model3d/replicate3dClient';
 import { uploadBufferAndSign } from '../../../../../lib/orchestrator/storage-adapter';
 import { resolveUploadRef } from '../../../../../lib/services/resolveUpload';
 import { createJob, recordJobSettle } from '../../../../../lib/orchestrator/jobs';
@@ -72,7 +67,6 @@ describe.each([
     expect(refundDebitByRef).not.toHaveBeenCalled();
     expect(resolveUploadRef).not.toHaveBeenCalled();
     expect(uploadBufferAndSign).not.toHaveBeenCalled();
-    expect(submitReconstruction).not.toHaveBeenCalled();
     expect(createJob).not.toHaveBeenCalled();
     expect(recordJobSettle).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();

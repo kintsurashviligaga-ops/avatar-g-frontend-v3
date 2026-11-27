@@ -10,9 +10,7 @@
  */
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { pollReconstruction, fetchGlbBuffer } from '@/lib/services/model3d/replicate3dClient';
-import { isTerminal } from '@/lib/services/model3d/model3dPlan';
-import { uploadBufferAndSign, storageObjectExists, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { storageObjectExists, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { completeJob, failJob } from '@/lib/orchestrator/jobs';
 import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import type { SettleDeps, SettleRecord, SettleRow, SettleVerdict } from './unpolledSettle';
@@ -21,40 +19,31 @@ const WEEK_SEC = 604_800;
 const MODEL3D_BUCKET = 'renders';
 const model3dPath = (predictionId: string) => `models3d/${predictionId}.glb`;
 
+/**
+ * 3D is retired (v5.1 M-14) and its Replicate client removed, so the verdict comes from OUR storage only, the same rule
+ * the status route uses: a hosted copy means it WAS delivered; a copy confirmed absent means nothing ever was (refund);
+ * storage that cannot say means ask again later — never refund on a guess.
+ */
 async function pollSettle(rec: SettleRecord): Promise<SettleVerdict> {
   switch (rec.kind) {
     case 'model3d': {
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(rec.job)) return { state: 'processing' };
-      const p = await pollReconstruction(`https://api.replicate.com/v1/predictions/${rec.job}`);
-      if (p.status === 'failed') return { state: 'failed', reason: p.error || 'replicate reported failure' };
-      if (!isTerminal(p.status)) return { state: 'processing' };
-      if (p.glbUrl) return { state: 'succeeded', url: p.glbUrl };
-      // Terminal with no mesh — the status route's own rule: our hosted copy means it WAS delivered (deliver hands that
-      // copy over); `data_removed: false`, or a copy confirmed absent, means no tick ever had a model to deliver.
       const stored = await storageObjectExists(MODEL3D_BUCKET, model3dPath(rec.job));
       if (stored === true) return { state: 'succeeded', url: '' };
-      if (p.dataRemoved === false || stored === false) return { state: 'failed', reason: 'finished without a usable model file' };
-      return { state: 'processing' }; // storage cannot say — never refund on a guess
+      if (stored === false) return { state: 'failed', reason: '3D generation was retired before this model was delivered' };
+      return { state: 'processing' };
     }
   }
 }
 
-async function deliverSettle(row: SettleRow, rec: SettleRecord, url: string): Promise<boolean> {
+async function deliverSettle(row: SettleRow, rec: SettleRecord): Promise<boolean> {
   switch (rec.kind) {
     case 'model3d': {
       const path = model3dPath(rec.job);
-      // An earlier poll may already have stored it — hand THAT over rather than download again.
-      if ((await storageObjectExists(MODEL3D_BUCKET, path)) === true) {
-        const signed = await createSignedAssetUrl(MODEL3D_BUCKET, path, WEEK_SEC);
-        if (!signed) return false;
-        await completeJob(row.id, { signedUrl: signed, result: { subtype: 'model3d', glbUrl: signed, predictionId: rec.job } });
-        return true;
-      }
-      if (!url) return false;
-      const buf = await fetchGlbBuffer(url).catch(() => null);
-      const hosted = buf ? await uploadBufferAndSign(MODEL3D_BUCKET, path, buf, 'model/gltf-binary', WEEK_SEC) : null;
-      if (!hosted) return false;
-      await completeJob(row.id, { signedUrl: hosted, result: { subtype: 'model3d', glbUrl: hosted, predictionId: rec.job } });
+      if ((await storageObjectExists(MODEL3D_BUCKET, path)) !== true) return false;
+      const signed = await createSignedAssetUrl(MODEL3D_BUCKET, path, WEEK_SEC);
+      if (!signed) return false;
+      await completeJob(row.id, { signedUrl: signed, result: { subtype: 'model3d', glbUrl: signed, predictionId: rec.job } });
       return true;
     }
   }
