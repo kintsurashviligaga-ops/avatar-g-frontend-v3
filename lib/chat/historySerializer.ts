@@ -106,7 +106,17 @@ export interface SerializeHistoryOptions {
    * URL's base64 is ≈ 1.33 × its bytes). `Infinity` turns it off. Default `DEFAULT_HISTORY_MEDIA_CHARS`.
    */
   maxHistoryMediaChars?: number;
+  /**
+   * Phase 8.10 (flag NEXT_PUBLIC_CHAT_PIN_GOAL): when the budget trims the thread's FIRST user turn, keep its text
+   * (up to `PINNED_GOAL_CHARS`, media dropped) as a leading user turn plus a one-character model turn, so the model
+   * never loses the task the thread was opened for. The latest user turn is untouched, so reply-language detection
+   * reads the same text as before. Off by default.
+   */
+  pinGoal?: boolean;
 }
+
+/** The most of the thread's opening ask that `pinGoal` keeps. */
+export const PINNED_GOAL_CHARS = 1_200;
 
 /**
  * About 30k tokens of English. Long enough that an ordinary thread (up to 80 turns are kept locally) is
@@ -579,9 +589,12 @@ export function serializeHistory(msgs: readonly HistoryMsgInput[], opts?: Serial
     if (merged[i]?.role === 'user') { lastUser = i; break; }
   }
   let start = 0;
+  // The opening ask, for `pinGoal`: its text only, capped. Its cost is reserved before older turns are added back.
+  const firstUser = merged.findIndex((t) => t.role === 'user');
+  const goalText = opts?.pinGoal === true && firstUser >= 0 && firstUser < lastUser ? openingAsk(merged[firstUser] as WireMessage) : '';
   if (maxChars !== Infinity && lastUser >= 0) {
     start = lastUser;
-    let used = 0;
+    let used = goalText ? goalText.length + 1 : 0;
     for (let i = lastUser; i < merged.length; i++) used += estimateWireChars(merged[i] as WireMessage);
     for (let i = lastUser - 1; i >= 0; i--) {
       const cost = estimateWireChars(merged[i] as WireMessage);
@@ -593,7 +606,18 @@ export function serializeHistory(msgs: readonly HistoryMsgInput[], opts?: Serial
 
   // 5. Never start with an assistant turn (a greeting bubble, or the reply whose question was trimmed).
   while (start < merged.length && merged[start]?.role === 'assistant') start++;
-  return merged.slice(start);
+  const kept = merged.slice(start);
+  if (goalText && start > firstUser) return [{ role: 'user', content: goalText }, { role: 'assistant', content: '…' }, ...kept];
+  return kept;
+}
+
+/** The text of the thread's first user turn, for `pinGoal`: text parts only, whitespace kept, capped. */
+function openingAsk(t: WireMessage): string {
+  const text = typeof t.content === 'string'
+    ? t.content
+    : t.content.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map((p) => p.text).join('\n');
+  const trimmed = text.trim();
+  return trimmed.length > PINNED_GOAL_CHARS ? `${trimmed.slice(0, PINNED_GOAL_CHARS)}…` : trimmed;
 }
 
 // ─── Wire → history (server-side re-validation) ─────────────────────────────────────────────────────────
