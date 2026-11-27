@@ -65,7 +65,7 @@ function ShootChips({ ids, aspect, count, photos, copy, locale, onAspect, onCoun
 
 const FOOTER_CHIPS: readonly ShootChipId[] = ['aspect', 'count'];
 
-export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, canGenerate, needSomething, onAspect, onCount, onGenerate, testId, service }: {
+export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, canGenerate, needSomething, onAspect, onCount, onGenerate, testId, service, generateLabel, summary }: {
   copy: ShootCopy; locale: string;
   form: { photos: readonly { w: number; h: number }[]; aspect: AspectChoice; count: ShootCount };
   tiles: number; credits: number;
@@ -74,6 +74,10 @@ export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, 
   onGenerate: () => void; testId: string;
   /** The catalog service (image.photoshoot / image.interior), for the quote-shown event. */
   service?: string;
+  /** Phase 7.6 I1 (NEXT_PUBLIC_INTERIOR_UX_V2): „Redesign" when a room photo is being changed. */
+  generateLabel?: string;
+  /** Phase 7.6 I4: one "You will get" line in place of the tiles hint. */
+  summary?: string;
 }) {
   return (
     <footer data-testid={`${testId}-footer`}
@@ -83,14 +87,14 @@ export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, 
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
       <ShootChips ids={FOOTER_CHIPS} aspect={form.aspect} count={form.count} photos={form.photos} copy={copy} locale={locale}
         onAspect={onAspect} onCount={onCount} testId={testId} />
-      {tiles > 1 && (
+      {summary ? <Hint testId={`${testId}-summary`}>{summary}</Hint> : tiles > 1 && (
         <Hint testId={`${testId}-tiles`}>
           {copy.tilesLine(form.photos.length, form.count, tiles)} · {creditsLabel(credits, locale)}
         </Hint>
       )}
       {!canGenerate && <Hint testId={`${testId}-need`}>{needSomething}</Hint>}
       <GenerateButton
-        label={copy.generate} credits={credits} insufficient={insufficient} disabled={!canGenerate} locale={locale}
+        label={generateLabel ?? copy.generate} credits={credits} insufficient={insufficient} disabled={!canGenerate} locale={locale}
         onClick={onGenerate} testId={`${testId}-generate`} service={service}
       />
     </footer>
