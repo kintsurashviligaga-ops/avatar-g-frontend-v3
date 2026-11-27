@@ -70,7 +70,7 @@ const runId = (kind: string) => `${kind}_${Date.now().toString(36)}${Math.random
 
 export type ActionResult = { status: number; body: Record<string, unknown> };
 
-const STATUS: Record<WsError, number> = { bad_input: 400, not_found: 404, too_large: 413, too_many: 409, storage_failed: 503 };
+const STATUS: Record<WsError, number> = { bad_input: 400, not_found: 404, too_large: 413, too_many: 409, storage_failed: 503, busy: 409 };
 const bad = (message: string): ActionResult => ({ status: 400, body: { ok: false, error: 'bad_input', message } });
 function out<T extends Record<string, unknown>>(r: ({ ok: true } & T) | { ok: false; error: WsError; message: string }): ActionResult {
   return r.ok ? { status: 200, body: r } : { status: STATUS[r.error], body: r };
