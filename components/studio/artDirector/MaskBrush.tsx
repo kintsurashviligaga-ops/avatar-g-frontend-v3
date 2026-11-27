@@ -19,6 +19,7 @@ const T = {
   invert: { ka: 'ინვერსია', en: 'Invert', ru: 'Инвертировать' },
   size: { ka: 'ზომა', en: 'Size', ru: 'Размер' },
   apply: { ka: 'რედაქტირება', en: 'Apply edit', ru: 'Применить' },
+  cancel: { ka: 'გაუქმება', en: 'Cancel', ru: 'Отмена' },
 } as const;
 
 export function MaskBrush({ imageUrl, width, height, lang, price, onSubmit, onCancel }: {
@@ -38,6 +39,9 @@ export function MaskBrush({ imageUrl, width, height, lang, price, onSubmit, onCa
   const [prompt, setPrompt] = useState('');
   const [keepRest, setKeepRest] = useState(true);
   const [painted, setPainted] = useState(false);
+  // Phase 8.24: toBlob is async, so a quick double tap on Apply used to submit (and charge) the same edit twice.
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
 
   const ctx = () => canvas.current?.getContext('2d') ?? null;
   useEffect(() => { const c = ctx(); if (c) c.clearRect(0, 0, width, height); }, [width, height]);
@@ -73,11 +77,14 @@ export function MaskBrush({ imageUrl, width, height, lang, price, onSubmit, onCa
   };
 
   const submit = () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
     if (!painted || !canvas.current) { onSubmit({ prompt, mask: null, keepRest }); return; }
     canvas.current.toBlob((b) => onSubmit({ prompt, mask: b, keepRest }), 'image/png');
   };
 
-  const tool = (on: boolean) => `inline-flex min-h-[36px] items-center gap-1 rounded-full border px-3 text-[13px] ${on ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border/25 text-app-muted'}`;
+  const tool = (on: boolean) => `inline-flex min-h-[40px] items-center gap-1 rounded-full border px-3 text-[13px] transition-colors active:scale-[0.97] ${on ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border/25 text-app-muted hover:border-app-border/50 hover:text-app-text'}`;
   return (
     <div data-testid="art-mask-brush" className="space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/45 p-3">
       <div className="relative w-full overflow-hidden rounded-xl" style={{ aspectRatio: `${width} / ${height}` }}>
@@ -99,16 +106,16 @@ export function MaskBrush({ imageUrl, width, height, lang, price, onSubmit, onCa
           <input type="range" min={4} max={Math.max(64, Math.round(Math.max(width, height) / 4))} value={size} onChange={(e) => setSize(Number(e.target.value))} />
         </label>
       </div>
-      <input data-testid="art-mask-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={artLabel('brushPrompt', lang)}
-        className="w-full rounded-xl border border-app-border/25 bg-transparent px-3 py-2 text-[14px] text-app-text" />
+      <input data-testid="art-mask-prompt" aria-label={artLabel('brushPrompt', lang)} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={artLabel('brushPrompt', lang)}
+        className="w-full rounded-xl border border-app-border/25 bg-transparent px-3 py-2 text-[14px] text-app-text focus:border-app-accent/60 focus:outline-none focus:ring-2 focus:ring-app-accent/25" />
       <label className="flex items-center gap-2 text-[13px] text-app-text">
         <input type="checkbox" data-testid="art-keep-rest" checked={keepRest} onChange={(e) => setKeepRest(e.target.checked)} />
         {artLabel('keepRest', lang)}
       </label>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="inline-flex min-h-[40px] items-center rounded-full border border-app-border/30 px-4 text-[13px] text-app-text">✕</button>
-        <button type="button" data-testid="art-mask-apply" disabled={!prompt.trim()} onClick={submit}
-          className="inline-flex min-h-[40px] items-center rounded-full bg-app-accent px-4 text-[13px] font-semibold text-app-bg disabled:opacity-50">
+        <button type="button" onClick={onCancel} aria-label={T.cancel[lang]} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-app-border/30 px-4 text-[13px] text-app-text transition-colors hover:bg-app-elevated">✕</button>
+        <button type="button" data-testid="art-mask-apply" disabled={!prompt.trim() || sending} aria-busy={sending} onClick={submit}
+          className="inline-flex min-h-[44px] items-center rounded-full bg-app-accent px-4 text-[13px] font-semibold text-app-bg transition active:scale-[0.97] disabled:opacity-50">
           {T.apply[lang]}{price != null ? ` ✦${price}` : ''}
         </button>
       </div>

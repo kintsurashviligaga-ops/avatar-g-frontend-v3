@@ -5,7 +5,7 @@
  * variation grid, and the brush editor. Talks only to /api/image/art-director (404 unless IMAGE_ART_DIRECTOR allows the
  * user). Every press shows its price on the button first; the server charges only images that arrive.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ControlPanel, DEFAULT_ART_SETTINGS, type ArtSettings } from './ControlPanel';
 import { ReferenceTray, type TrayRef } from './ReferenceTray';
 import { VariationGrid, type GridTile, type TileAction } from './VariationGrid';
@@ -23,6 +23,7 @@ const T = {
   create: { ka: 'შექმნა', en: 'Create', ru: 'Создать' },
   busy: { ka: 'იხატება…', en: 'Drawing…', ru: 'Рисуется…' },
   base: { ka: 'საფუძველი', en: 'Base', ru: 'Основа' },
+  clearBase: { ka: 'საფუძვლის მოხსნა', en: 'Remove the base', ru: 'Убрать основу' },
   error: { ka: 'ვერ შეიქმნა. ჩამოჭრა არ მომხდარა.', en: 'Could not create it. Nothing was charged.', ru: 'Не удалось. Ничего не списано.' },
 } as const;
 
@@ -42,7 +43,14 @@ export function ArtDirectorPanel({ lang, upload, fetcher = fetch }: { lang: Lang
   const price = (size: ArtSize) => imageCredits({ size, references: refs.length, book });
   const prices = { '2K': sizes.includes('2K') ? price('2K') : null, '4K': sizes.includes('4K') ? price('4K') : null };
 
-  async function run(operation: ArtOperation, extra: { basePath?: string; maskPath?: string; size?: ArtSize; count?: 1 | 2 | 4; prompt?: string; keepRest?: boolean } = {}) {
+  // Phase 8.24: one paid run at a time. `busy` disables the buttons on the next render, but a mask edit uploads its
+  // mask first (busy was false meanwhile, so Create stayed live) and tile actions fire from the grid; a second run
+  // replaced the first one's tiles while both were charged. The ref closes the gap between a press and the render.
+  const inFlight = useRef(false);
+
+  async function run(operation: ArtOperation, extra: { basePath?: string; maskPath?: string; size?: ArtSize; count?: 1 | 2 | 4; prompt?: string; keepRest?: boolean } = {}, held = false) {
+    if (inFlight.current && !held) return;
+    inFlight.current = true;
     const count = extra.count ?? (operation === 'generate' || operation === 'vary' ? settings.count : 1);
     setBusy(true);
     setError(null);
@@ -67,6 +75,7 @@ export function ArtDirectorPanel({ lang, upload, fetcher = fetch }: { lang: Lang
       setTiles([]);
       setError(T.error[lang]);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -98,37 +107,47 @@ export function ArtDirectorPanel({ lang, upload, fetcher = fetch }: { lang: Lang
   }
 
   async function onMask(m: MaskSubmit) {
-    if (!editing?.path) return;
+    if (!editing?.path || inFlight.current) return;
     const basePath = editing.path;
     setEditing(null);
     if (!m.mask) { void run('edit', { basePath, prompt: m.prompt }); return; }
-    const up = await upload(new File([m.mask], 'mask.png', { type: 'image/png' }));
-    if (!('path' in up)) { setError(T.error[lang]); return; }
-    void run('mask_edit', { basePath, maskPath: up.path, prompt: m.prompt, keepRest: m.keepRest });
+    // Hold the run (and the buttons) while the mask uploads, so nothing else can start in between.
+    inFlight.current = true;
+    setBusy(true);
+    const up = await upload(new File([m.mask], 'mask.png', { type: 'image/png' })).catch(() => ({ error: 'upload' }));
+    if (!('path' in up)) { inFlight.current = false; setBusy(false); setError(T.error[lang]); return; }
+    void run('mask_edit', { basePath, maskPath: up.path, prompt: m.prompt, keepRest: m.keepRest }, true);
   }
 
   const per = price(settings.size);
   const pressCount = base ? 1 : settings.count;
   return (
-    <section data-testid="art-director" className="mx-auto w-full max-w-[44rem] space-y-3 px-4">
+    <section data-testid="art-director" data-ui-surface="" className="mx-auto w-full max-w-[44rem] space-y-3 px-4">
       <ReferenceTray refs={refs} onChange={setRefs} onAdd={(f) => void addRefs(f)} lang={lang} busy={busy} />
-      {base ? <p className="text-[12px] text-app-muted">{T.base[lang]}: ✓ <button type="button" onClick={() => setBase(null)} className="underline">✕</button></p> : null}
+      {base ? (
+        <p className="flex items-center gap-1 text-[12px] text-app-muted">{T.base[lang]}: ✓
+          <button type="button" onClick={() => setBase(null)} aria-label={T.clearBase[lang]} data-testid="art-base-clear"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[14px] text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">✕</button>
+        </p>
+      ) : null}
       <div className="flex items-end gap-2">
-        <textarea data-testid="art-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} placeholder={T.placeholder[lang]}
-          className="min-h-[52px] flex-1 resize-none rounded-2xl border border-app-border/25 bg-app-elevated/45 px-4 py-3 text-[15px] text-app-text" />
-        <button type="button" data-testid="art-create" disabled={busy || !prompt.trim() || per == null}
+        <textarea data-testid="art-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} placeholder={T.placeholder[lang]} aria-label={T.placeholder[lang]}
+          className="min-h-[52px] flex-1 resize-none rounded-2xl border border-app-border/25 bg-app-elevated/45 px-4 py-3 text-[15px] text-app-text transition-colors focus:border-app-accent/60 focus:outline-none focus:ring-2 focus:ring-app-accent/25" />
+        <button type="button" data-testid="art-create" disabled={busy || !prompt.trim() || per == null} aria-busy={busy}
           onClick={() => void (base ? run('edit', { basePath: base.path }) : run('generate'))}
-          className="inline-flex min-h-[52px] items-center rounded-2xl bg-app-accent px-5 text-[14px] font-semibold text-app-bg disabled:opacity-50">
+          className="inline-flex min-h-[52px] items-center rounded-2xl bg-app-accent px-5 text-[14px] font-semibold text-app-bg transition active:scale-[0.97] disabled:opacity-50">
           {busy ? T.busy[lang] : `${T.create[lang]} ✦${(per ?? 0) * pressCount}`}
         </button>
       </div>
-      <ControlPanel value={settings} onChange={setSettings} book={book} references={refs.length} lang={lang} sizes={sizes} />
+      {/* Phase 8.24: the result sits right under the prompt. Below the (long) settings it landed off-screen on a
+          phone, so a press looked like nothing happened. */}
       {error ? <p role="alert" data-testid="art-error" className="text-[13px] text-red-400">{error}</p> : null}
       {editing?.url ? (
         <MaskBrush imageUrl={editing.url} width={editing.meta?.width ?? 1024} height={editing.meta?.height ?? 1024} lang={lang}
           price={price(settings.size)} onSubmit={(m) => void onMask(m)} onCancel={() => setEditing(null)} />
       ) : null}
       {tiles.length ? <VariationGrid tiles={tiles} lang={lang} prices={prices} onAction={onAction} ratio={ratioValue(settings.aspectRatio)} /> : null}
+      <ControlPanel value={settings} onChange={setSettings} book={book} references={refs.length} lang={lang} sizes={sizes} />
     </section>
   );
 }

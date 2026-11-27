@@ -55,10 +55,13 @@ export function VariationGrid({ tiles, lang, prices, onAction, ratio = 1 }: {
             ) : t.status === 'failed' ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 p-2 text-center text-[12px] text-app-muted">
                 <span data-testid={`art-failed-${t.index}`}>{t.refunded ? `${artLabel('refunded', lang)} ✦${t.refunded}` : NOT_CHARGED[lang]}</span>
-                <button type="button" className={act} onClick={() => onAction(t.index, 'retry')}><RotateCcw size={12} /> {RETRY[lang]}</button>
+                <button type="button" className={act} data-testid={`art-retry-${t.index}`} onClick={() => onAction(t.index, 'retry')}><RotateCcw size={12} /> {RETRY[lang]}</button>
               </div>
             ) : (
-              <div role="status" className="flex h-full items-center justify-center text-[12px] text-app-muted motion-safe:animate-pulse">{WORKING[lang]}</div>
+              // Phase 8.24: the tile shimmers at its final size (was pulsing text on a flat block).
+              <div role="status" data-testid={`art-working-${t.index}`} className="ag-shimmer flex h-full items-end justify-center pb-3 text-[12px] text-app-muted">
+                <span className="relative">{WORKING[lang]}</span>
+              </div>
             )}
           </div>
         ))}
