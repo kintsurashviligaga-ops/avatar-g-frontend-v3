@@ -174,6 +174,40 @@ test('Gemini TTS: the read-aloud route sends the planned Georgian 3.8 request (v
   expect(sent).toEqual([{ url: plannedUrl(c), method: 'POST', body: c.body }]);
 });
 
+const PLAN4 = JSON.parse(readFileSync(path.join(__dirname, '../../../scripts/certify/vertex-contract-plan-4-lite-tts-ka.json'), 'utf8')) as {
+  capUsd: number;
+  calls: PlanCall[];
+};
+
+test('the Phase 8.9 lite-TTS plan stays under $0.05, is Vertex only, and bills only the three Georgian lines', () => {
+  const { total, cap } = validatePlan(PLAN4);
+  expect(cap).toBeLessThanOrEqual(0.05);
+  expect(total).toBeLessThanOrEqual(cap);
+  for (const c of PLAN4.calls) expect(c.url).not.toContain('generativelanguage');
+  expect(PLAN4.calls.filter((c) => c.estimateUsd > 0).map((c) => c.id)).toEqual(['tts-38-lite-ka-aoede', 'tts-38-lite-ka-algieba', 'tts-38-ka-algieba-ref']);
+  for (const c of PLAN4.calls.filter((x) => x.estimateUsd === 0)) expect(c.kind === 'get' || c.url.endsWith(':countTokens')).toBe(true);
+});
+
+test('Gemini TTS backup: with GEMINI_TTS_MODEL=gemini-3.8-flash-lite-tts the read-aloud route sends the planned Georgian request', async () => {
+  const c = PLAN4.calls.find((x) => x.id === 'tts-38-lite-ka-aoede') as PlanCall;
+  const prev = process.env.GEMINI_TTS_MODEL;
+  process.env.GEMINI_TTS_MODEL = 'gemini-3.8-flash-lite-tts';
+  try {
+    expect(ttsModel()).toBe(c.model);
+    answers.push(json({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;codec=pcm;rate=24000', data: Buffer.alloc(48_000).toString('base64') } }] } }] }));
+    const res = await readAloud(new NextRequest('https://myavatar.ge/api/tts/gemini', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'გამარჯობა, ეს არის ხმის მოკლე შემოწმება.', locale: 'ka' }),
+    }));
+    expect(res.status).toBe(200);
+    expect(sent).toEqual([{ url: plannedUrl(c), method: 'POST', body: c.body }]);
+  } finally {
+    if (prev === undefined) delete process.env.GEMINI_TTS_MODEL;
+    else process.env.GEMINI_TTS_MODEL = prev;
+  }
+});
+
 test('Cloud TTS, Georgian: synthesizeGoogleTts reads with Gemini-TTS as planned', async () => {
   const c = call('cloud-tts-ka');
   expect(GEMINI_TTS_MODEL).toBe(c.model);
