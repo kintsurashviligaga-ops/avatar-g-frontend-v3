@@ -6,7 +6,7 @@ jest.mock('./google/transport', () => ({ googleImageModelFetch: jest.fn(), googl
 
 import { googleImageModelFetch } from './google/transport';
 import { fetchPublicBytes } from '../web/publicFetch';
-import { generateGeminiImage, retryAfterMs, RATE_LIMIT_BACKOFF_MS } from './geminiImage';
+import { buildGeminiImageBody, generateGeminiImage, retryAfterMs, RATE_LIMIT_BACKOFF_MS } from './geminiImage';
 
 const fetchMock = googleImageModelFetch as jest.Mock;
 const image = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }] } }] }), { status: 200 });
@@ -72,5 +72,34 @@ describe('generateGeminiImage — a retired model is refused before any I/O (MAS
     fetchMock.mockResolvedValueOnce(image());
     expect(await generateGeminiImage({ prompt: 'a frame' })).not.toBeNull();
     expect(fetchMock.mock.calls[0]![0]).toBe('gemini-3.1-flash-image');
+  });
+});
+
+describe('Phase 7.5 — extra ratios and up to 14 references (both flags off by default)', () => {
+  const prev = { r: process.env.IMAGE_EXTRA_RATIOS };
+  afterEach(() => { if (prev.r === undefined) delete process.env.IMAGE_EXTRA_RATIOS; else process.env.IMAGE_EXTRA_RATIOS = prev.r; fetchMock.mockReset(); });
+
+  test('1:8 reaches Google only with IMAGE_EXTRA_RATIOS on; today\'s ratios always do', () => {
+    delete process.env.IMAGE_EXTRA_RATIOS;
+    expect(buildGeminiImageBody('x', [], '1:8').generationConfig).not.toHaveProperty('imageConfig');
+    expect(buildGeminiImageBody('x', [], '16:9').generationConfig).toMatchObject({ imageConfig: { aspectRatio: '16:9' } });
+    process.env.IMAGE_EXTRA_RATIOS = '1';
+    expect(buildGeminiImageBody('x', [], '1:8').generationConfig).toMatchObject({ imageConfig: { aspectRatio: '1:8' } });
+    expect(buildGeminiImageBody('x', [], '7:3').generationConfig).not.toHaveProperty('imageConfig');
+  });
+
+  const refs = (n: number) => Array.from({ length: n }, () => 'data:image/png;base64,AAAA');
+  const sentParts = () => (JSON.parse(String((fetchMock.mock.calls[0][2] as { body: string }).body)).contents[0].parts as unknown[]).length - 1;
+
+  test('three references by default, as today', async () => {
+    fetchMock.mockResolvedValue(image());
+    await generateGeminiImage({ prompt: 'p', referenceImages: refs(10) });
+    expect(sentParts()).toBe(3);
+  });
+
+  test('maxReferences raises the cap, never past 14', async () => {
+    fetchMock.mockResolvedValue(image());
+    await generateGeminiImage({ prompt: 'p', referenceImages: refs(20), maxReferences: 99 });
+    expect(sentParts()).toBe(14);
   });
 });
