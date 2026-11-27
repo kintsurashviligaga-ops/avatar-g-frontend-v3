@@ -98,3 +98,51 @@ describe('ArtDirectorPanel (mocked route)', () => {
     expect(onSubmit).toHaveBeenCalledWith({ prompt: 'make her jacket red', mask: null, keepRest: true });
   });
 });
+
+describe('Phase 8.24: one paid run at a time, shimmering tiles', () => {
+  const slots = [0, 1, 2, 3].map((index) => ({ index, status: 'done', url: `https://x/${index}.png`, path: `u1/o${index}.png`, id: `i${index}`, charged: 3 }));
+  it('the working tiles shimmer at their final size, one status each (ka)', async () => {
+    const fetcher = jest.fn(() => new Promise(() => {}));
+    render(<ArtDirectorPanel lang="ka" upload={jest.fn()} fetcher={fetcher as unknown as typeof fetch} />);
+    fireEvent.change(screen.getByTestId('art-prompt'), { target: { value: 'კატა თბილისში' } });
+    fireEvent.click(screen.getByTestId('art-create'));
+    const tile = await screen.findByTestId('art-working-0');
+    expect(tile).toHaveAttribute('role', 'status');
+    expect(tile.className).toContain('ag-shimmer');
+    expect(screen.getByTestId('art-create')).toHaveAttribute('aria-busy', 'true');
+  });
+  it('a mask edit holds every button while its mask uploads, so Create cannot start a second paid run', async () => {
+    let finishUpload: (v: { path: string }) => void = () => {};
+    const upload = jest.fn(() => new Promise<{ path: string }>((r) => { finishUpload = r; }));
+    const fetcher = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, slots }) }).mockImplementation(() => new Promise(() => {}));
+    const blob = new Blob(['x'], { type: 'image/png' });
+    HTMLCanvasElement.prototype.toBlob = function (cb: BlobCallback) { cb(blob); };
+    HTMLCanvasElement.prototype.getContext = jest.fn(() => ({ clearRect: jest.fn(), getImageData: jest.fn(() => ({ data: new Uint8ClampedArray(4) })), beginPath: jest.fn(), arc: jest.fn(), fill: jest.fn(), putImageData: jest.fn() })) as never;
+    render(<ArtDirectorPanel lang="en" upload={upload as never} fetcher={fetcher as unknown as typeof fetch} />);
+    fireEvent.change(screen.getByTestId('art-prompt'), { target: { value: 'a cat' } });
+    fireEvent.click(screen.getByTestId('art-create'));
+    await waitFor(() => expect(screen.getByTestId('art-tile-0')).toHaveAttribute('data-status', 'done'));
+    fireEvent.click(screen.getByTestId('art-edit-0'));
+    const canvas = screen.getByTestId('art-mask-canvas');
+    fireEvent.pointerDown(canvas, { clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(canvas);
+    fireEvent.change(screen.getByTestId('art-mask-prompt'), { target: { value: 'make it blue' } });
+    fireEvent.click(screen.getByTestId('art-mask-apply'));
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('art-create')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('art-create'));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    finishUpload({ path: 'u1/mask.png' });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({ operation: 'mask_edit', maskPath: 'u1/mask.png' });
+  });
+  it('Apply edit submits once, even on a double tap', () => {
+    const onSubmit = jest.fn();
+    render(<MaskBrush imageUrl="https://x/1.png" width={64} height={64} lang="ru" price={3} onSubmit={onSubmit} onCancel={jest.fn()} />);
+    fireEvent.change(screen.getByTestId('art-mask-prompt'), { target: { value: 'синий' } });
+    fireEvent.click(screen.getByTestId('art-mask-apply'));
+    fireEvent.click(screen.getByTestId('art-mask-apply'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Отмена')).toBeInTheDocument();
+  });
+});
