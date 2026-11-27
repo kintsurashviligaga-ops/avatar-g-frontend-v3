@@ -58,3 +58,31 @@ test('a task that is not the caller’s is gone', async () => {
   const text = await (await GET(req(`?id=${ID}`))).text();
   expect(text).toBe('event: gone\ndata: {"error":"not_found"}\n\n');
 });
+
+describe('TASK_RELAY_TICKET', () => {
+  const ENV = { ...process.env };
+  afterEach(() => { process.env = { ...ENV }; });
+  const headersOfFirstRead = async () => {
+    mockUser = { id: 'u1' };
+    const calls: Array<RequestInit | undefined> = [];
+    global.fetch = jest.fn(async (_u: string | URL | Request, init?: RequestInit) => {
+      calls.push(init);
+      return new Response(JSON.stringify({ ok: true, task: TASK }), { status: 200 });
+    }) as typeof fetch;
+    await (await GET(req(`?id=${ID}`, { cookie: 'sb=abc' }))).text();
+    return calls[0]!.headers as Record<string, string>;
+  };
+  test('off: the reads carry only the session', async () => {
+    delete process.env.TASK_RELAY_TICKET;
+    expect((await headersOfFirstRead())['x-task-relay']).toBeUndefined();
+  });
+  test('on: the reads carry a pass for this task and still the session', async () => {
+    process.env.TASK_RELAY_TICKET = '1';
+    process.env.TASK_RELAY_SECRET = 'a-test-secret-long-enough';
+    const h = await headersOfFirstRead();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { verifyRelayTicket } = require('../../../../lib/tasks/relayTicket') as typeof import('../../../../lib/tasks/relayTicket');
+    expect(verifyRelayTicket(h['x-task-relay'], ID, Date.now())).toMatchObject({ userId: 'u1', taskId: ID });
+    expect(h.cookie).toBe('sb=abc');
+  });
+});
