@@ -25,6 +25,7 @@ import { resolveTemplateContext } from '@/lib/studio/templateContext';
 import { resolveShootDirective } from '@/lib/studio/shootContext';
 import { DEFAULT_MODEL, RETIRED_IMAGE_MODEL_IDS, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, type DeploymentProbe } from '@/lib/providers/catalogue';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -354,7 +355,7 @@ export async function POST(req: NextRequest) {
     }
     if (img) {
       const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
-      providerUrl = await uploadAndSign('uploads', `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800).catch(() => null);
+      providerUrl = await uploadAndSign('uploads', `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800, { aiMark: AI_GENERATED }).catch(() => null);
       alreadyHosted = !!providerUrl;
       if (!providerUrl) providerText = 'google image: storage upload failed';
     } else {
@@ -403,7 +404,7 @@ export async function POST(req: NextRequest) {
         if (buf.byteLength <= 18 * 1024 * 1024) {
           const b64 = buf.toString('base64');
           const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-          const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
+          const signed = await uploadAndSign('uploads', path, b64, ct, 604800, { aiMark: AI_GENERATED }); // 7-day signed URL
           if (signed) hostedUrl = signed;
         }
       }

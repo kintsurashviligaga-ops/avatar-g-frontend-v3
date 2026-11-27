@@ -35,6 +35,7 @@ import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 import { MUSIC_VIDEO_PERSON_CLAUSE, REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 
 export const runtime = 'nodejs';
@@ -272,7 +273,7 @@ export async function POST(req: NextRequest) {
       if (!img) return null;
       frameSourceTally.gemini += 1;
       const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
-      return await uploadAndSign('uploads', `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800);
+      return await uploadAndSign('uploads', `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800, { aiMark: AI_GENERATED });
     } catch {
       return null;
     }

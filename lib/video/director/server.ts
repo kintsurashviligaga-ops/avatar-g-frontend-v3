@@ -31,6 +31,7 @@ import { createVideoDirector, type GoogleVideoDirector } from './director';
 import { GoogleVeoProvider, veoWireFields, type VeoDeliveryContext, type VeoEnginePort } from './googleVeoProvider';
 import { createGeminiStoryboardPlanner } from './planner';
 import type { StoryboardPlanner } from './types';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 /** 7 days — like every other clip URL the assembler and the Library receive (and V4 signing's own maximum). */
 const DELIVERY_TTL_SEC = 604_800;
@@ -96,7 +97,7 @@ async function deliverClip(video: VeoVideo, ctx: VeoDeliveryContext): Promise<st
     if (video.kind !== 'bytes') return null;
     const buf = Buffer.from(video.base64, 'base64');
     if (buf.byteLength < MIN_CLIP_BYTES) return null;
-    return await uploadBufferAndSign('renders', path, buf, video.mimeType || 'video/mp4', DELIVERY_TTL_SEC);
+    return await uploadBufferAndSign('renders', path, buf, video.mimeType || 'video/mp4', DELIVERY_TTL_SEC, { aiMark: AI_GENERATED });
   } catch {
     return null;
   }

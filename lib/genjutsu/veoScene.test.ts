@@ -141,7 +141,7 @@ test('a finished inline (bytes) clip is hosted at the FIXED path, uncropped', as
   const path = scenePath('u1', VERTEX_OP);
   expect(r).toEqual({ state: 'ready', url: `https://signed.example/${path}` });
   expect(uploadBufferAndSign).toHaveBeenCalledTimes(1);
-  expect(uploadBufferAndSign).toHaveBeenCalledWith('renders', path, expect.any(Buffer), 'video/mp4', 604_800);
+  expect(uploadBufferAndSign).toHaveBeenCalledWith('renders', path, expect.any(Buffer), 'video/mp4', 604_800, { aiMark: { source: 'generated' } });
 });
 
 test('Vertex (gcs) clips are copied into our storage — and never cropped (Vertex stamps no mark)', async () => {

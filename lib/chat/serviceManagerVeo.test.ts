@@ -330,7 +330,7 @@ describe('poll() → deliver a finished Veo clip', () => {
     expect(res.assetUrl).toBe('https://x.supabase.co/final.mp4');
     const fixedPath = signedMock.mock.calls[0]![1];
     expect(uploadBufMock).toHaveBeenCalledTimes(1);
-    expect(uploadBufMock).toHaveBeenCalledWith('renders', fixedPath, bytes, 'video/mp4', 604_800);
+    expect(uploadBufMock).toHaveBeenCalledWith('renders', fixedPath, bytes, 'video/mp4', 604_800, { aiMark: { source: 'generated' } });
   });
 
   it('a Developer API file is never fetched (v3.1): post-processing failed, nothing re-signed or hosted', async () => {

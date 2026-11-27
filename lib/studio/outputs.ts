@@ -11,6 +11,7 @@ import 'server-only';
 import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { createSignedAssetUrl, uploadBufferAndSign, SIGNED_URL_TTL_SEC } from '@/lib/orchestrator/storage-adapter';
 import type { StoredOutput, StudioJob } from '@/lib/studio/store';
+import { AI_GENERATED } from '@/lib/provenance/aiMarking';
 
 export const STUDIO_BUCKET = 'studio';
 const MAX_OUTPUT_BYTES = 250 * 1024 * 1024; // the storage-adapter bucket cap is 256 MB
@@ -46,7 +47,7 @@ export async function copyOutputsToStorage(job: StudioJob, urls: string[]): Prom
     if (!buf || buf.byteLength === 0) return null;
     const contentType = (res.headers.get('content-type') ?? 'application/octet-stream').split(';')[0]!.trim();
     const path = `${job.user_id}/${job.id}/${i}.${extFor(contentType, url)}`;
-    const signed = await uploadBufferAndSign(STUDIO_BUCKET, path, buf, contentType);
+    const signed = await uploadBufferAndSign(STUDIO_BUCKET, path, buf, contentType, undefined, { aiMark: AI_GENERATED });
     if (!signed) return null;
     stored.push({ bucket: STUDIO_BUCKET, path, contentType });
   }

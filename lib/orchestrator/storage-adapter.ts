@@ -13,6 +13,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { WORKSPACE_BUCKET } from '@/lib/agent/workspace/paths';
 import { isTwinBucket } from '@/lib/avatar/twinStorage';
 import { storageContentType } from '@/lib/uploads/policy';
+import { maybeMarkAiOutput, type AiMark } from '@/lib/provenance/aiMarking';
 
 export const SIGNED_URL_TTL_SEC = 900; // 15 minutes
 
@@ -414,6 +415,15 @@ export async function provenOwnSignedLink(
 }
 
 /**
+ * Optional upload settings. `aiMark` is passed only where the bytes are an AI generation or AI edit
+ * we made; user uploads never get it. It writes IPTC/XMP "AI-generated" metadata into the file
+ * (EU AI Act Art. 50(2)) when AI_PROVENANCE_META=1; otherwise the bytes are uploaded unchanged.
+ */
+export interface UploadOpts {
+  aiMark?: AiMark;
+}
+
+/**
  * Upload a base64 fragment + return its signed URL.
  *
  * `expiresSec` defaults to the 15-minute internal-fragment TTL, but callers
@@ -426,6 +436,7 @@ export async function uploadAndSign(
   base64: string,
   contentType: string,
   expiresSec: number = SIGNED_URL_TTL_SEC,
+  opts?: UploadOpts,
 ): Promise<string | null> {
   const sb = client();
   if (!sb) return null;
@@ -433,7 +444,8 @@ export async function uploadAndSign(
   // bucket" step; see ensureBucket for why the result is now actually read.
   await ensureBucket(sb as unknown as BucketApi, bucket);
   try {
-    const bytes = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
+    const raw = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
+    const bytes = maybeMarkAiOutput(raw, contentType, opts?.aiMark);
     const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType: storageContentType(contentType, path), upsert: true });
     if (error) {
       // eslint-disable-next-line no-console
@@ -461,10 +473,12 @@ export async function uploadAndSign(
 export async function uploadBufferAndSign(
   bucket: string,
   path: string,
-  buffer: Buffer,
+  input: Buffer,
   contentType: string,
   expiresSec: number = SIGNED_URL_TTL_SEC,
+  opts?: UploadOpts,
 ): Promise<string | null> {
+  const buffer = maybeMarkAiOutput(input, contentType, opts?.aiMark);
   const sb = client();
   if (!sb) return null;
   // Video masters are tens of MB (a 60s 1080×1920 cut ≈ 32MB); a bucket created
