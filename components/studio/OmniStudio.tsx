@@ -106,8 +106,7 @@ import { serializeHistory } from '@/lib/chat/historySerializer';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
-// VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
-const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
+// VFX (Genjutsu) is removed (GG 2026-11-13): its panel is gone; lib/studio/tools.ts keeps `vfx` out of every menu.
 import { isSpeaking, speechPlayer } from '@/lib/speech/player';
 import { useSpeechState } from '@/lib/speech/useSpeech';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -11372,16 +11371,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             )}
 
-            {videoTab === 'vfx' && (
-              <GenjutsuPanel
-                locale={locale}
-                onDelivered={(videoUrl, aspect) => {
-                  const label = serviceLabel('vfx', locale);
-                  const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
-                  setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation: aspect === '9:16' ? 'vertical' : 'landscape' }]);
-                }}
-              />
-            )}
           </div>
         )}
 

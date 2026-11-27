@@ -94,10 +94,11 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'video.vfx': c({
     id: 'video.vfx', serviceId: 'video.vfx', does: 'One-tap VFX effects for a photo',
-    routes: ['/api/genjutsu/generate', '/api/genjutsu/status'], engine: 'Veo scene',
+    // REMOVED (GG 2026-11-13): /api/genjutsu/generate answers 410 service_removed, so nothing runs it.
+    routes: ['/api/genjutsu/generate', '/api/genjutsu/status'], engine: 'removed (410 service_removed)',
     pricing: { key: 'vfx', charge: 'charged' }, approval: 'panel-button', timeoutSec: 120, retry: 'refund-on-miss',
     idempotency: 'one generation per press', cancel: 'none', qc: null, artifact: 'video', library: 'filed',
-    label: 'BUILT_NOT_PROVEN',
+    label: 'DEPRECATED',
   }),
   'video.remix': c({
     id: 'video.remix', serviceId: 'video.remix', does: 'Edit a video the user has: trim, captions, colour, speed, music, voice, style',
