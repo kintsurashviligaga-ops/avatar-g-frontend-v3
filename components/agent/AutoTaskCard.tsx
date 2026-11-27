@@ -188,17 +188,17 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
   const usd = envelopeUsd(first.plan);
   return (
     <div data-testid="auto-task-card" style={{ border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.05)', borderRadius: 14, padding: 16 }}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', letterSpacing: '0.04em', marginBottom: 6 }}>{t.title}</div>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgb(var(--app-accent))', letterSpacing: '0.04em', marginBottom: 6 }}>{t.title}</div>
       {t0 !== null && (
-        <div data-testid="auto-task-clock" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: phase === 'done' ? '#38bdf8' : 'rgba(255,255,255,0.85)', marginBottom: 4 }}>
+        <div data-testid="auto-task-clock" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: phase === 'done' ? 'rgb(var(--app-accent))' : 'rgb(var(--app-text) / 0.85)', marginBottom: 4 }}>
           {phase === 'running' ? <Loader2 size={15} className="animate-spin" aria-hidden /> : phase === 'done' ? <Check size={15} aria-hidden /> : null}
           {phase === 'running' ? `${t.working} ${clock(now - t0)}` : phase === 'done' ? t.took(clock((t1 ?? now) - t0)) : clock((t1 ?? now) - t0)}
         </div>
       )}
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{t.limits(AUTO_TASK_LIMITS.rounds, AUTO_TASK_LIMITS.wallMs / 60_000, usd)}</div>
+      <div style={{ fontSize: 12, color: 'rgb(var(--app-text) / 0.5)' }}>{t.limits(AUTO_TASK_LIMITS.rounds, AUTO_TASK_LIMITS.wallMs / 60_000, usd)}</div>
       {phase === 'quoted' && firstSteps.length > 0 && (
         <ol data-testid="auto-task-first-steps" style={{ margin: '10px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {firstSteps.map((st, i) => <li key={i} style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)' }}>{i + 1}. {browserStepLabel(st, lang)}</li>)}
+          {firstSteps.map((st, i) => <li key={i} style={{ fontSize: 12.5, color: 'rgb(var(--app-text) / 0.7)' }}>{i + 1}. {browserStepLabel(st, lang)}</li>)}
         </ol>
       )}
       {rounds.length > 0 && (
@@ -206,21 +206,21 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
           {rounds.map((r) => {
             const steps: PlannedStep[] = r.kind === 'browser' && Array.isArray((r.plan.request as { steps?: unknown })?.steps) ? (r.plan.request as { steps: PlannedStep[] }).steps : [];
             const res = r.result;
-            const icon = !res ? <Loader2 size={14} className="animate-spin" aria-label={t.running} /> : res.ok ? <Check size={14} color="#38bdf8" aria-hidden /> : <X size={14} color="#fca5a5" aria-hidden />;
+            const icon = !res ? <Loader2 size={14} className="animate-spin" aria-label={t.running} /> : res.ok ? <Check size={14} color="rgb(var(--app-accent))" aria-hidden /> : <X size={14} color="rgb(var(--app-danger))" aria-hidden />;
             const ws = res && res.ok ? (res as { workspace?: { id: string; written: Array<{ path: string }>; error?: string } }).workspace : undefined;
             return (
               <li key={r.round} data-testid="auto-task-round" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgb(var(--app-text) / 0.85)', fontWeight: 600 }}>
                   {icon}{t.round} {r.round} · {r.kind === 'browser' ? t.browser : t.code}
-                  {res && res.ok && r.kind === 'browser' && (res as { finalUrl?: string }).finalUrl && <span style={{ fontWeight: 400, color: 'rgba(255,255,255,0.5)' }}> · {new URL((res as { finalUrl: string }).finalUrl).host}</span>}
+                  {res && res.ok && r.kind === 'browser' && (res as { finalUrl?: string }).finalUrl && <span style={{ fontWeight: 400, color: 'rgb(var(--app-text) / 0.5)' }}> · {new URL((res as { finalUrl: string }).finalUrl).host}</span>}
                 </div>
                 {steps.length > 0 && (
                   <ul data-testid="auto-task-steps" style={{ margin: 0, padding: '0 0 0 20px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {steps.map((st, i) => {
                       const done = res && res.ok ? (res as BrowserOut & { ok: true }).steps?.[i] : !res ? r.live?.steps[i] : undefined;
                       return (
-                        <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: done ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.5)' }}>
-                          {done ? (done.ok ? <Check size={12} color="#38bdf8" aria-hidden /> : <X size={12} color="#fca5a5" aria-hidden />) : !res && i === (r.live?.steps.length ?? 0) ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <span style={{ width: 12 }} />}
+                        <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: done ? 'rgb(var(--app-text) / 0.75)' : 'rgb(var(--app-text) / 0.5)' }}>
+                          {done ? (done.ok ? <Check size={12} color="rgb(var(--app-accent))" aria-hidden /> : <X size={12} color="rgb(var(--app-danger))" aria-hidden />) : !res && i === (r.live?.steps.length ?? 0) ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <span style={{ width: 12 }} />}
                           {browserStepLabel(st, lang)}
                         </li>
                       );
@@ -228,8 +228,8 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
                   </ul>
                 )}
                 {!res && r.live && (r.live.url || r.live.picture) && (
-                  <div data-testid="auto-task-live" style={{ marginLeft: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', background: '#0b0f17', maxWidth: 520 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 11.5, color: 'rgba(255,255,255,0.6)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div data-testid="auto-task-live" style={{ marginLeft: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid rgb(var(--app-text) / 0.12)', background: '#0b0f17', maxWidth: 520 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 11.5, color: 'rgb(var(--app-text) / 0.6)', borderBottom: '1px solid rgb(var(--app-text) / 0.08)' }}>
                       <span style={{ width: 7, height: 7, borderRadius: 999, background: '#ef4444' }} aria-hidden />LIVE
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.live.url}</span>
                     </div>
@@ -248,18 +248,18 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
         </ol>
       )}
       {thinking && phase === 'running' && (
-        <div data-testid="auto-task-thinking" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+        <div data-testid="auto-task-thinking" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 13, color: 'rgb(var(--app-text) / 0.7)' }}>
           <Loader2 size={14} className="animate-spin" aria-hidden />{t.thinking}
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
         {phase === 'quoted' && (
-          <button type="button" onClick={() => void start()} style={{ padding: '8px 18px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', background: 'linear-gradient(135deg,#0ea5e9,#7c3aed)' }}>{t.start}</button>
+          <button type="button" className="ag-card-btn" onClick={() => void start()} style={{ padding: '8px 18px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', background: 'linear-gradient(135deg, rgb(var(--app-accent)), rgb(var(--app-accent-deep)))' }}>{t.start}</button>
         )}
         {phase === 'running' && (
-          <button type="button" onClick={() => abort.current?.abort()} style={{ padding: '8px 18px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.15)', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', background: 'transparent' }}>{t.stop}</button>
+          <button type="button" className="ag-card-btn" onClick={() => abort.current?.abort()} style={{ padding: '8px 18px', borderRadius: 999, border: '1px solid rgb(var(--app-text) / 0.15)', fontSize: 13, fontWeight: 600, color: 'rgb(var(--app-text))', cursor: 'pointer', background: 'transparent' }}>{t.stop}</button>
         )}
-        {end && <span data-testid="auto-task-end" style={{ fontSize: 13, color: phase === 'done' ? '#38bdf8' : 'rgba(255,255,255,0.6)' }}>{end}</span>}
+        {end && <span data-testid="auto-task-end" style={{ fontSize: 13, color: phase === 'done' ? 'rgb(var(--app-accent))' : 'rgb(var(--app-text) / 0.6)' }}>{end}</span>}
       </div>
     </div>
   );

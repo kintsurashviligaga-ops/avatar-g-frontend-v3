@@ -41,8 +41,8 @@ const T = {
 const card: React.CSSProperties = { border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.05)', borderRadius: 14, padding: 16 };
 const mono = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 const btn = (primary: boolean): React.CSSProperties => ({
-  padding: '8px 18px', borderRadius: 999, border: primary ? 'none' : '1px solid rgba(255,255,255,0.15)', fontSize: 13, fontWeight: 600,
-  color: '#fff', cursor: 'pointer', background: primary ? 'linear-gradient(135deg,#0ea5e9,#7c3aed)' : 'transparent',
+  padding: '8px 18px', borderRadius: 999, border: primary ? 'none' : '1px solid rgb(var(--app-text) / 0.15)', fontSize: 13, fontWeight: 600,
+  color: primary ? '#fff' : 'rgb(var(--app-text))', cursor: 'pointer', background: primary ? 'linear-gradient(135deg, rgb(var(--app-accent)), rgb(var(--app-accent-deep)))' : 'transparent',
 });
 
 async function openWorkspaceFile(workspaceId: string, path: string): Promise<void> {
@@ -73,11 +73,11 @@ export function ShotImage({ workspaceId, path }: { workspaceId: string; path: st
     }).catch(() => {});
     return () => { live = false; };
   }, [workspaceId, path]);
-  if (!url) return <div data-testid="browser-shot-loading" style={{ height: 120, borderRadius: 10, background: 'rgba(255,255,255,0.05)' }} />;
+  if (!url) return <div data-testid="browser-shot-loading" style={{ height: 120, borderRadius: 10, background: 'rgb(var(--app-text) / 0.05)' }} />;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" data-testid="browser-shot">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt={path.split('/').pop() ?? 'screenshot'} style={{ width: '100%', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)' }} />
+      <img src={url} alt={path.split('/').pop() ?? 'screenshot'} style={{ width: '100%', borderRadius: 10, border: '1px solid rgb(var(--app-text) / 0.1)' }} />
     </a>
   );
 }
@@ -145,42 +145,42 @@ export function PlanStartCard({ kind, plan, locale, onDone }: { kind: PlanKind; 
   const hosts = Array.isArray(q.hosts) ? (q.hosts as string[]) : [];
   return (
     <div style={card} data-plan-card={kind}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', letterSpacing: '0.04em', marginBottom: 8 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgb(var(--app-accent))', letterSpacing: '0.04em', marginBottom: 8 }}>
         {kind === 'browser' ? t.browser : t.code}
       </div>
-      <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>
+      <div style={{ fontSize: 13.5, color: 'rgb(var(--app-text) / 0.8)', lineHeight: 1.6 }}>
         {kind === 'browser'
           ? <>{t.sites}: <b>{hosts.join(', ')}</b> · {String(q.steps)} {t.steps} · {String(q.screenshots)} {t.shots} · ≤ {String(q.wallSec)} {t.seconds} · {t.free}</>
           : <>{t.lang}: <b>{String(q.language)}</b> · ≤ {String(q.wallSec)} {t.seconds} · {q.workspaceId ? 'workspace' : 'no network'} · {t.free}</>}
       </div>
       {kind === 'code' && typeof (plan.request as { code?: unknown })?.code === 'string' && (
-        <pre style={{ margin: '10px 0 0', fontFamily: mono, fontSize: 12, color: '#93c5fd', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, overflow: 'auto', maxHeight: 220 }}>
+        <pre style={{ margin: '10px 0 0', fontFamily: mono, fontSize: 12, color: 'rgb(var(--app-accent))', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, overflow: 'auto', maxHeight: 220 }}>
           {(plan.request as { code: string }).code}
         </pre>
       )}
       {planned.length > 0 && state.phase !== 'done' && (
         <ol data-testid="browser-planned-steps" style={{ margin: '10px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
           {planned.map((st, i) => (
-            <li key={i} style={{ fontSize: 12.5, color: state.phase === 'running' ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.55)', display: 'flex', gap: 6 }}>
-              <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 16 }}>{i + 1}.</span>{browserStepLabel(st, lang)}
+            <li key={i} style={{ fontSize: 12.5, color: state.phase === 'running' ? 'rgb(var(--app-text) / 0.75)' : 'rgb(var(--app-text) / 0.55)', display: 'flex', gap: 6 }}>
+              <span style={{ color: 'rgb(var(--app-text) / 0.35)', minWidth: 16 }}>{i + 1}.</span>{browserStepLabel(st, lang)}
             </li>
           ))}
         </ol>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        {state.phase === 'quoted' && <button type="button" style={btn(true)} onClick={() => void start()}>{t.start}</button>}
+        {state.phase === 'quoted' && <button type="button" className="ag-card-btn" style={btn(true)} onClick={() => void start()}>{t.start}</button>}
         {state.phase === 'running' && <>
-          <span data-testid="plan-running" style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span data-testid="plan-running" style={{ fontSize: 13, color: 'rgb(var(--app-text) / 0.75)', alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Loader2 size={14} className="animate-spin" aria-hidden />{t.running} {clock}
           </span>
-          <button type="button" style={btn(false)} onClick={() => abort.current?.abort()}>{t.stop}</button>
+          <button type="button" className="ag-card-btn" style={btn(false)} onClick={() => abort.current?.abort()}>{t.stop}</button>
         </>}
       </div>
-      {state.phase === 'failed' && <p style={{ color: '#fca5a5', fontSize: 13, marginTop: 10 }}>{t.failed}: {state.message}</p>}
+      {state.phase === 'failed' && <p style={{ color: 'rgb(var(--app-danger))', fontSize: 13, marginTop: 10 }}>{t.failed}: {state.message}</p>}
       {state.phase === 'done' && (
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {state.steps?.map((s, i) => (
-            <div key={i} style={{ fontFamily: mono, fontSize: 12, color: s.ok ? 'rgba(255,255,255,0.7)' : '#fca5a5' }}>
+            <div key={i} style={{ fontFamily: mono, fontSize: 12, color: s.ok ? 'rgb(var(--app-text) / 0.7)' : 'rgb(var(--app-danger))' }}>
               {s.ok ? '✓' : '✗'} {s.op}{s.url ? ` ${s.url}` : ''}{s.title ? ` — ${s.title}` : ''}{s.error ? ` — ${s.error}` : ''}
               {s.text && <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6 }}>{s.text}</pre>}
             </div>
@@ -188,17 +188,17 @@ export function PlanStartCard({ kind, plan, locale, onDone }: { kind: PlanKind; 
           {kind === 'browser' && state.workspace && !state.workspace.error && state.workspace.written
             .filter((f) => /\.png$/i.test(f.path))
             .map((f) => <ShotImage key={f.path} workspaceId={state.workspace!.id} path={f.path} />)}
-          {typeof state.exitCode === 'number' && <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)' }}>{t.exit} {state.exitCode}</div>}
-          {state.stdout && <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: 'rgba(255,255,255,0.8)', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, maxHeight: 220, overflow: 'auto' }}>{state.stdout}</pre>}
-          {state.stderr && <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: '#fca5a5', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, maxHeight: 160, overflow: 'auto' }}>{state.stderr}</pre>}
+          {typeof state.exitCode === 'number' && <div style={{ fontSize: 12.5, color: 'rgb(var(--app-text) / 0.5)' }}>{t.exit} {state.exitCode}</div>}
+          {state.stdout && <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: 'rgb(var(--app-text) / 0.8)', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, maxHeight: 220, overflow: 'auto' }}>{state.stdout}</pre>}
+          {state.stderr && <pre style={{ margin: 0, fontFamily: mono, fontSize: 12, color: 'rgb(var(--app-danger))', background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8, maxHeight: 160, overflow: 'auto' }}>{state.stderr}</pre>}
           {state.workspace && (
             <div style={{ fontSize: 12.5 }}>
               {state.workspace.error
-                ? <p style={{ color: '#fca5a5' }}>{state.workspace.error}</p>
-                : <p style={{ color: 'rgba(255,255,255,0.5)' }}>{state.workspace.written.length ? t.saved : t.none}</p>}
+                ? <p style={{ color: 'rgb(var(--app-danger))' }}>{state.workspace.error}</p>
+                : <p style={{ color: 'rgb(var(--app-text) / 0.5)' }}>{state.workspace.written.length ? t.saved : t.none}</p>}
               {state.workspace.written.map((f) => (
                 <button key={f.path} type="button" onClick={() => void openWorkspaceFile(state.workspace!.id, f.path)}
-                  style={{ display: 'block', marginTop: 4, background: 'rgba(0,0,0,0.2)', border: 'none', color: '#e2e8f0', borderRadius: 8, padding: '5px 10px', fontFamily: mono, fontSize: 12, cursor: 'pointer', textAlign: 'left' }}>
+                  style={{ display: 'block', marginTop: 4, background: 'rgba(0,0,0,0.2)', border: 'none', color: 'rgb(var(--app-text))', borderRadius: 8, padding: '5px 10px', fontFamily: mono, fontSize: 12, cursor: 'pointer', textAlign: 'left' }}>
                   ⬇ {f.path} · v{f.v} · {f.bytes < 1024 ? `${f.bytes} B` : `${Math.round(f.bytes / 1024)} KB`}
                 </button>
               ))}

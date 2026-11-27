@@ -71,12 +71,16 @@ const IMAGE_KINDS = new Set(['image', 'interior']);
 const COPY: Record<Lang, {
   title: string; tabs: Record<Tab, string>; empty: string; emptyFav: string; favFailed: string; download: string; del: string; edit: string;
   play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
-  plan: string; openPlan: string; closePlan: string; open: string;
+  plan: string; openPlan: string; closePlan: string; open: string; emptyHint: string; createFirst: string; loading: string;
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
     tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', documents: 'დოკუმენტი', favorites: 'ფავორიტი' },
-    empty: 'ჯერ არაფერი შექმენით',
+    // Phase 8.24: the informal „შენ" register the rest of the page uses (was the plural „შექმენით").
+    empty: 'ჯერ არაფერი შეგიქმნია',
+    emptyHint: 'აქ გამოჩნდება ყველა ვიდეო, სურათი და მუსიკა, რასაც შექმნი.',
+    createFirst: 'შექმენი პირველი ნამუშევარი',
+    loading: 'ბიბლიოთეკა იტვირთება…',
     emptyFav: 'რჩეულები ჯერ ცარიელია. ნამუშევარზე ვარსკვლავს დააჭირე და აქ გამოჩნდება.',
     favFailed: 'ვარსკვლავი ვერ შეინახა. სცადე თავიდან.',
     download: 'ჩამოტვირთვა', del: 'წაშლა', edit: 'რედაქტირება ედიტორში', play: 'დაკვრა',
@@ -87,6 +91,9 @@ const COPY: Record<Lang, {
     title: 'Library',
     tabs: { video: 'Video', image: 'Image', music: 'Music', documents: 'Docs', favorites: 'Favorites' },
     empty: 'Nothing created yet',
+    emptyHint: 'Every video, picture and song you make will appear here.',
+    createFirst: 'Create your first work',
+    loading: 'Loading your Library…',
     emptyFav: 'No favorites yet. Tap the star on a work to keep it here.',
     favFailed: 'The star could not be saved. Try again.',
     download: 'Download', del: 'Delete', edit: 'Open in Editor', play: 'Play',
@@ -97,6 +104,9 @@ const COPY: Record<Lang, {
     title: 'Библиотека',
     tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', documents: 'Документы', favorites: 'Избранное' },
     empty: 'Пока ничего не создано',
+    emptyHint: 'Здесь появятся все видео, изображения и музыка, которые вы создадите.',
+    createFirst: 'Создать первую работу',
+    loading: 'Библиотека загружается…',
     emptyFav: 'В избранном пока пусто. Нажмите звезду на работе, и она появится здесь.',
     favFailed: 'Не удалось сохранить отметку. Попробуйте ещё раз.',
     download: 'Скачать', del: 'Удалить', edit: 'Открыть в редакторе', play: 'Воспроизвести',
@@ -282,7 +292,12 @@ export default function LibraryGallery({ locale }: { locale: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-app-muted"><Loader2 className="animate-spin" size={22} /></div>
+        // Phase 8.24: the grid's own shape (same columns, square tiles) instead of a lone spinner, so nothing
+        // jumps when the works land. Announced once; the tiles are aria-hidden.
+        <div role="status" data-testid="library-skeleton" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <span className="sr-only">{t.loading}</span>
+          {Array.from({ length: 8 }, (_, i) => <span key={i} aria-hidden="true" data-skeleton="" className="ag-shimmer block aspect-square rounded-2xl" />)}
+        </div>
       ) : failure ? (
         <LibraryFailed lang={lang} failure={failure} onRetry={reload} retrying={library.isFetching} />
       ) : display.length === 0 && demo ? (
@@ -291,7 +306,14 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           {/* A line icon, not an emoji (docs/DESIGN.md §6) — the copy below says what is empty. */}
           <Inbox size={40} strokeWidth={1.25} aria-hidden="true" className="text-app-muted/70" />
-          <p className="text-[14px] text-app-muted">{isFav ? t.emptyFav : t.empty}</p>
+          <p className="text-[15px] font-semibold text-app-text">{isFav ? t.emptyFav : t.empty}</p>
+          {!isFav && <p className="max-w-[34ch] text-[13.5px] leading-[1.6] text-app-muted">{t.emptyHint}</p>}
+          {!isFav && (
+            <button type="button" data-testid="library-create-first" onClick={() => router.push(`/${locale}/dashboard`)}
+              className="mt-1 inline-flex min-h-[44px] items-center rounded-full bg-app-accent px-5 text-[14px] font-semibold text-white transition hover:brightness-110 active:scale-[0.97]">
+              {t.createFirst}
+            </button>
+          )}
         </div>
       ) : (
         <>

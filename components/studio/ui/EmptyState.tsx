@@ -98,7 +98,8 @@ export function EmptyState({
 
 /** One placeholder block. Pass the real content's size and radius; it is invisible to assistive tech. */
 export function Skeleton({ className = '', style }: { className?: string; style?: CSSProperties }) {
-  return <span aria-hidden="true" data-skeleton="" className={`block bg-app-elevated motion-safe:animate-pulse ${className}`} style={style} />;
+  // Phase 8.24: a light sweep (.ag-shimmer, globals.css) instead of a pulse; still static under reduced motion.
+  return <span aria-hidden="true" data-skeleton="" className={`ag-shimmer block ${className}`} style={style} />;
 }
 
 /** N placeholder rows, announced once as "loading" (role=status) instead of N empty boxes. */

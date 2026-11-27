@@ -37,12 +37,12 @@ describe('EmptyState', () => {
 });
 
 describe('Skeleton', () => {
-  it('is hidden from assistive tech, token-coloured, and pulses only when motion is allowed', () => {
+  it('is hidden from assistive tech, token-coloured, and sweeps only when motion is allowed (.ag-shimmer)', () => {
     const { container } = render(<Skeleton className="h-11 w-full" />);
     const block = container.firstElementChild as HTMLElement;
     expect(block.getAttribute('aria-hidden')).toBe('true');
-    expect(block.className).toContain('bg-app-elevated');
-    expect(block.className).toContain('motion-safe:animate-pulse');
+    // The token colour, the sweep and its prefers-reduced-motion stop all live in `.ag-shimmer` (globals.css).
+    expect(block.className).toContain('ag-shimmer');
     expect(block.className).not.toMatch(/(^|\s)animate-pulse/);
     expect(block.className).toContain('h-11 w-full'); // the caller's final size
   });
