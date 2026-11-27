@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import type { JobStatusResponse } from '@/types/jobs'
+import { getSessionUser } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -22,7 +23,7 @@ export async function GET(
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser()
+    } = await getSessionUser(supabase)
 
     if (authError || !user) {
       return NextResponse.json(

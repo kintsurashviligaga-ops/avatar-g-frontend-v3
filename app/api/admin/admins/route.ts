@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceRoleClient, createSupabaseServerClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, createSupabaseServerClient, getSessionUser } from '@/lib/supabase/server';
 import { isAdmin, adminAllowlist, invalidateAdminAllowlist } from '@/lib/auth/adminGuard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
@@ -26,7 +26,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 async function actorEmail(): Promise<string> {
   try {
-    const { data: { user } } = await createSupabaseServerClient().auth.getUser();
+    const { data: { user } } = await getSessionUser(createSupabaseServerClient());
     return (user?.email ?? '').toLowerCase() || 'unknown-admin';
   } catch { return 'unknown-admin'; }
 }

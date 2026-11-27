@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { structuredLog } from '@/lib/logger'
 import type { CreateJobRequest, CreateJobResponse } from '@/types/jobs'
+import { getSessionUser } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -39,7 +40,7 @@ async function handleCreateJob(request: NextRequest): Promise<NextResponse> {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser()
+    } = await getSessionUser(supabase)
 
     if (authError || !user) {
       return NextResponse.json(

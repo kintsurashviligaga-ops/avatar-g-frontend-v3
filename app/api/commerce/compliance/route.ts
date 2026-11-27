@@ -16,6 +16,7 @@ import {
   getUserAuditLogs,
 } from '@/lib/commerce';
 import { getServerEnv } from '@/lib/env/server';
+import { getSessionUser } from '@/lib/supabase/server';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,7 @@ async function getAuthUser(_request: NextRequest) {
   const {
     data: { user },
     error,
-  } = await supabase.auth.getUser();
+  } = await getSessionUser(supabase);
 
   return { user, error, supabase };
 }
