@@ -481,3 +481,27 @@ describe('empty, demo, unavailable and failed are told apart (§4.2.7)', () => {
     expect(screen.getByTestId('library-demo').textContent).toContain('Это примеры. Войдите, чтобы увидеть свои работы.');
   });
 });
+
+// Phase 7.8: the search used to filter only the 24 works on screen, so an older work „could not be found".
+test('a search goes to the server for the whole Library, from page 1, and says when nothing matches', async () => {
+  jest.useFakeTimers();
+  try {
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    await act(async () => { fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'sunset' } }); });
+    await act(async () => { jest.advanceTimersByTime(350); });
+    const last = new URL(requested[requested.length - 1]!, 'https://x').searchParams;
+    expect(last.get('q')).toBe('sunset');
+    expect(last.get('offset')).toBe('0');
+    expect(await screen.findByText('Nothing matches this search.')).toBeTruthy();
+  } finally { jest.useRealTimers(); }
+});
+
+test('a failed delete says so instead of leaving the card as if nothing happened', async () => {
+  window.confirm = jest.fn(() => true);
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Music$/ })); });
+  global.fetch = jest.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })) as unknown as typeof fetch;
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete' })); });
+  expect(screen.getByTestId('library-del-failed').textContent).toBe('The file could not be deleted. Try again.');
+  expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy(); // the card is still there
+});

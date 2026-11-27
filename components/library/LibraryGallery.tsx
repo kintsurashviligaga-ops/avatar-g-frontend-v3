@@ -70,13 +70,14 @@ const IMAGE_KINDS = new Set(['image', 'interior']);
 
 const COPY: Record<Lang, {
   title: string; tabs: Record<Tab, string>; empty: string; emptyFav: string; favFailed: string; download: string; del: string; edit: string;
-  play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
+  play: string; confirmDel: string; noMatch: string; delFailed: string; prev: string; next: string; page: string; search: string;
   plan: string; openPlan: string; closePlan: string; open: string;
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
     tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', documents: 'დოკუმენტი', favorites: 'ფავორიტი' },
-    empty: 'ჯერ არაფერი შექმენით',
+    empty: 'ჯერ არაფერი შეგიქმნია',
+    noMatch: 'ამ ძიებით ვერაფერი მოიძებნა.', delFailed: 'ფაილი ვერ წაიშალა. სცადე თავიდან.',
     emptyFav: 'რჩეულები ჯერ ცარიელია. ნამუშევარზე ვარსკვლავს დააჭირე და აქ გამოჩნდება.',
     favFailed: 'ვარსკვლავი ვერ შეინახა. სცადე თავიდან.',
     download: 'ჩამოტვირთვა', del: 'წაშლა', edit: 'რედაქტირება ედიტორში', play: 'დაკვრა',
@@ -87,6 +88,7 @@ const COPY: Record<Lang, {
     title: 'Library',
     tabs: { video: 'Video', image: 'Image', music: 'Music', documents: 'Docs', favorites: 'Favorites' },
     empty: 'Nothing created yet',
+    noMatch: 'Nothing matches this search.', delFailed: 'The file could not be deleted. Try again.',
     emptyFav: 'No favorites yet. Tap the star on a work to keep it here.',
     favFailed: 'The star could not be saved. Try again.',
     download: 'Download', del: 'Delete', edit: 'Open in Editor', play: 'Play',
@@ -97,6 +99,7 @@ const COPY: Record<Lang, {
     title: 'Библиотека',
     tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', documents: 'Документы', favorites: 'Избранное' },
     empty: 'Пока ничего не создано',
+    noMatch: 'По этому запросу ничего не найдено.', delFailed: 'Не удалось удалить файл. Попробуйте ещё раз.',
     emptyFav: 'В избранном пока пусто. Нажмите звезду на работе, и она появится здесь.',
     favFailed: 'Не удалось сохранить отметку. Попробуйте ещё раз.',
     download: 'Скачать', del: 'Удалить', edit: 'Открыть в редакторе', play: 'Воспроизвести',
@@ -110,6 +113,9 @@ function fmtDate(iso: string, lang: Lang): string {
     return new Date(iso).toLocaleDateString(lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
   } catch { return ''; }
 }
+
+/** How long after the last keystroke the search goes to the server. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function LibraryGallery({ locale }: { locale: string }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
@@ -132,6 +138,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   }, [searchParams]);
   const [page, setPage] = useState(() => keptView(owner)?.page ?? 0);
   const [searchQuery, setSearchQuery] = useState(() => keptView(owner)?.q ?? '');
+  // The search the server is asked for: a moment after typing stops (below), at once for a view brought back.
+  const [serverQuery, setServerQuery] = useState(() => searchQuery.trim());
   // The account the view above is that of. An account known only after the first render (the session read) gets its
   // view here, in render, while its reads are still off; another account in this browser tab starts fresh.
   const [viewOf, setViewOf] = useState<string | null>(owner);
@@ -141,6 +149,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
       setTab(kept && isTab(kept.tab) ? kept.tab : 'video');
       setPage(kept?.page ?? 0);
       setSearchQuery(kept?.q ?? '');
+      setServerQuery((kept?.q ?? '').trim());
     }
     setViewOf(owner);
   }
@@ -150,6 +159,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [favFailed, setFavFailed] = useState(false);
   const favBusyRef = useRef(new Set<string>());
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [delFailed, setDelFailed] = useState(false);
   // Files being saved: the button spins until the file is out, and a second tap meanwhile starts no second download.
   const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
   const savingRef = useRef(new Set<string>());
@@ -162,7 +172,13 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // The current tab/page; Favorites is a page of the starred works of every kind. A tab seen before comes from the cache
   // at once; leaving a tab mid-request aborts it (#160).
   const isFav = tab === 'favorites';
-  const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], PAGE_SIZE, page * PAGE_SIZE, isFav);
+  // The search goes to the server a moment after typing stops, so it finds a work on any page, not only this one.
+  useEffect(() => {
+    if (searchQuery.trim() === serverQuery) return undefined;
+    const id = window.setTimeout(() => setServerQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [searchQuery, serverQuery]);
+  const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], PAGE_SIZE, page * PAGE_SIZE, isFav, serverQuery);
   const items = library.data?.items ?? NO_ITEMS;
   const loading = library.isPending;
   const demo = library.data?.demo === true;
@@ -195,12 +211,11 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     if (!autoRetriedRef.current) { autoRetriedRef.current = true; reload(); }
   }, [reload]);
 
-  // PHASE 6.3 — client-side search over the loaded items (prompt + kind match); empty query is a no-op so paging
-  // behaviour is unchanged.
+  // The server already searched (serverQuery); this narrows the page on screen at once while the next read is on its way.
   const display = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((it) => (it.prompt ?? '').toLowerCase().includes(q) || (it.kind ?? '').toLowerCase().includes(q));
+    return items.filter((it) => (it.prompt ?? '').toLowerCase().includes(q));
   }, [items, searchQuery]);
   // And how far it was scrolled, once its first read is on screen.
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -210,12 +225,14 @@ export default function LibraryGallery({ locale }: { locale: string }) {
 
   const del = useCallback(async (id: string) => {
     if (!window.confirm(t.confirmDel)) return;
-    setBusyId(id);
+    setBusyId(id); setDelFailed(false);
     try {
       const r = await fetch(`/api/studio/library?id=${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
       // The work's star goes with it (library_favorites cascades), and so does its card on every loaded page.
       if (r.ok && owner) removeLibraryItem(queryClient, owner, id);
-    } catch { /* fail-soft */ } finally { setBusyId(null); }
+      // A refused or failed delete used to change nothing on screen and say nothing, so the file looked undeletable.
+      else setDelFailed(true);
+    } catch { setDelFailed(true); } finally { setBusyId(null); }
   }, [t.confirmDel, owner, queryClient]);
 
   const download = useCallback(async (it: LibraryItem) => {
@@ -259,11 +276,12 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     <div ref={rootRef} className="mx-auto w-full max-w-5xl px-4 py-6">
       <h1 className="mb-4 text-[22px] font-bold tracking-tight text-app-text">{t.title}</h1>
 
-      {/* PHASE 6.3 — search (16px font → no iOS zoom; filters the loaded items by prompt/kind) */}
+      {/* Search (16px font → no iOS zoom): the prompts of the whole Library, within the tab. A new search starts at page 1. */}
       <input
         type="search"
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
+        aria-label={t.search.replace('…', '')}
         placeholder={t.search}
         className="mb-4 w-full rounded-xl border border-app-border/15 bg-app-elevated px-3.5 py-2.5 text-[16px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/40"
       />
@@ -291,12 +309,13 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           {/* A line icon, not an emoji (docs/DESIGN.md §6) — the copy below says what is empty. */}
           <Inbox size={40} strokeWidth={1.25} aria-hidden="true" className="text-app-muted/70" />
-          <p className="text-[14px] text-app-muted">{isFav ? t.emptyFav : t.empty}</p>
+          <p className="text-[14px] text-app-muted">{searchQuery.trim() ? t.noMatch : isFav ? t.emptyFav : t.empty}</p>
         </div>
       ) : (
         <>
           {demo && <DemoNotice lang={lang} />}
           {favFailed && <p role="alert" data-testid="library-fav-failed" className="mb-3 text-[13px] text-red-400">{t.favFailed}</p>}
+          {delFailed && <p role="alert" data-testid="library-del-failed" className="mb-3 text-[13px] text-red-400">{t.delFailed}</p>}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {display.map((it) => {
               const isVideo = VIDEO_KINDS.has(it.kind);
