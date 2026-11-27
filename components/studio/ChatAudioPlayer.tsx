@@ -11,6 +11,7 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Music2, Pause, Play } from 'lucide-react';
+import { AiContentBadge, type AiLabelKind } from './ui/AiContentBadge';
 
 const fmt = (s: number) => (!isFinite(s) || s < 0 ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
@@ -60,7 +61,7 @@ function usePeaks(src: string, n: number): number[] | null {
 }
 
 export const ChatAudioPlayer = memo(function ChatAudioPlayer({
-  src, name, info, locale = 'ka', variant = 'attachment',
+  src, name, info, locale = 'ka', variant = 'attachment', aiLabel,
 }: {
   src: string;
   /** The file's own name (a sent track, an MP3 Agent G made). */
@@ -69,6 +70,8 @@ export const ChatAudioPlayer = memo(function ChatAudioPlayer({
   info?: string;
   locale?: string;
   variant?: 'attachment' | 'result';
+  /** The visible AI label under the title (EU AI Act Art. 50). Set it only on audio we made. */
+  aiLabel?: AiLabelKind;
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
@@ -123,6 +126,7 @@ export const ChatAudioPlayer = memo(function ChatAudioPlayer({
           <Music2 size={13} aria-hidden="true" className="shrink-0 text-app-muted" />
           <span className={`min-w-0 truncate font-medium text-app-text ${big ? 'text-[14px]' : 'text-[13px]'}`} title={title}>{title}</span>
         </div>
+        {aiLabel && <AiContentBadge kind={aiLabel} locale={lang} inline className="mt-1" />}
         <div
           role="slider"
           tabIndex={0}

@@ -42,6 +42,7 @@ import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes, Move3d,
 } from 'lucide-react';
+import { AiContentBadge } from './ui/AiContentBadge';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -388,6 +389,8 @@ const LibraryCard = memo(function LibraryCard({
       {/* Prompt + bottom secondary action row (Copy prompt — kept here so it
           isn't obscured by media controls). */}
       <div className="flex flex-1 flex-col gap-2.5 p-3">
+        {/* Library media is what we generated: the visible AI label (EU AI Act Art. 50). */}
+        <AiContentBadge locale={locale} inline className="self-start" />
         <p className={`line-clamp-2 text-[12px] leading-snug ${item.prompt ? 'text-app-text' : 'italic text-app-muted/70'}`}>
           {item.prompt ?? t.noPrompt}
         </p>

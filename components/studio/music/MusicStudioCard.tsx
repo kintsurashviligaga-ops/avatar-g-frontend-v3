@@ -268,7 +268,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const res = v.result;
   return (
     <div className={shell} data-testid="music-card" data-phase="completed" data-job-id={v.jobId} data-card-state={card.state} ref={rootRef}>
-      <MusicPreviewPlayer src={res.url} title={r.prompt} durationSec={res.durationSec} locale={locale} />
+      <MusicPreviewPlayer src={res.url} title={r.prompt} durationSec={res.durationSec} locale={locale} aiLabel="generated" />
       <p className="mt-1.5 text-[11.5px] text-app-text/60">{c.delivered(Math.round(res.durationSec), res.credits, res.modelId)}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <a data-testid="music-download" data-primary={primary.action} className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} href={downloadHref(res.url, trackFileName(v.jobId, res.mime))} download={trackFileName(v.jobId, res.mime)}><Download className="h-4 w-4" aria-hidden />{c.download}</a>
@@ -284,7 +284,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
       {edit.versions.map((ver) => (
         <div key={ver.jobId} className="mt-2 rounded-xl border border-app-border/10 p-2" data-testid="music-version" data-job-id={ver.jobId} data-duration={ver.durationSec}>
           <p className="text-[11.5px] text-app-text/70">{c.version(ver.label, Math.round(ver.durationSec))}</p>
-          <MusicPreviewPlayer src={ver.url} title={ver.label} durationSec={ver.durationSec} locale={locale} compact />
+          <MusicPreviewPlayer src={ver.url} title={ver.label} durationSec={ver.durationSec} locale={locale} compact aiLabel="generated" />
           <a data-testid="music-version-download" className="mt-1 inline-flex min-h-[44px] items-center text-[12px] text-app-accent underline" href={downloadHref(ver.url, trackFileName(ver.jobId, mimeOfUrl(ver.url), ver.label))} download={trackFileName(ver.jobId, mimeOfUrl(ver.url), ver.label)}>{c.download}</a>
         </div>
       ))}
