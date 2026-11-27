@@ -173,6 +173,19 @@ describe('MusicProducerPanel (mocked routes)', () => {
     await act(async () => { fireEvent.click(screen.getByTestId('mp-create')); });
     expect(screen.getByTestId('mp-error')).toHaveTextContent('Your credits were returned');
   });
+  it('while composing: one paid run per double tap, a placeholder card and a spinner label (8.24)', async () => {
+    let resolve: (v: Awaited<ReturnType<ProducerPost>>) => void = () => {};
+    const post = jest.fn<ReturnType<ProducerPost>, Parameters<ProducerPost>>(() => new Promise((r) => { resolve = r; }));
+    render(<MusicProducerPanel lang="ka" book="v8" post={post} initialSpec={spec} />);
+    const btn = screen.getByTestId('mp-create');
+    act(() => { fireEvent.click(btn); fireEvent.click(btn); });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('mp-composing')).toHaveAttribute('role', 'status');
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    expect(btn).toHaveTextContent('იქმნება…');
+    await act(async () => { resolve({ ok: false, status: 502, json: { ok: false, error: 'provider_unavailable' } }); });
+    expect(screen.queryByTestId('mp-composing')).toBeNull();
+  });
   it('a 1 min song costs ✦11; an empty brief cannot be sent', () => {
     const { rerender } = render(<MusicProducerPanel lang="en" book="v8" post={jest.fn()} initialSpec={{ ...spec, lengthSec: 60 }} />);
     expect(screen.getByTestId('mp-create')).toHaveTextContent('✦11');
