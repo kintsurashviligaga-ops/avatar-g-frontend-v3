@@ -5,9 +5,9 @@
  * straight to the GPU queue. The model price is reserved when queued and refunded on any failure.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { studio3dContext } from '@/lib/studio3d/server/routeAuth';
+import { studio3dContext, STUDIO3D_USER_DAILY } from '@/lib/studio3d/server/routeAuth';
 import { createJob } from '@/lib/studio3d/server/service';
 import { studio3dDeps } from '@/lib/studio3d/server/deps';
 
@@ -25,8 +25,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await studio3dContext((await authedClientFromRequest(req)).user);
   if (!ctx.ok) return ctx.response;
-  const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE, ctx.userId);
   if (limited) return limited;
+  const daily = await checkRateLimitByKey(ctx.userId, STUDIO3D_USER_DAILY);
+  if (daily) return daily;
   let body: unknown;
   try {
     body = await req.json();
