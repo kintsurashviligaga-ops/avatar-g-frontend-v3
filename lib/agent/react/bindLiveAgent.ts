@@ -1029,7 +1029,7 @@ export interface LiveAgentResult extends ReActResult {
 export async function runLiveAgent(
   userGoal: string,
   ctx: AgentContext,
-  opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number },
+  opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number; shield?: boolean },
 ): Promise<LiveAgentResult> {
   const meter = newRunMeter();
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
@@ -1047,12 +1047,15 @@ export async function runLiveAgent(
     maxSteps: opts?.maxSteps,
     systemExtra,
     deadlineMs: opts?.deadlineMs,
+    ...(opts?.shield ? { shield: true } : {}),
   });
   const metrics = meter.finish();
   try {
     structuredLog('info', 'agent_run_metrics', {
       stopReason: result.stopReason, steps: result.steps.length,
       tools: result.steps.filter((st) => st.tool).map((st) => st.tool), ...metrics,
+      // Shield (AGENT_G_SHIELD=1): signal ids and the redaction flag only, never the third-party text.
+      ...(result.shield ? { shieldSignals: result.shield.signals.flatMap((x) => x.signals), shieldRedacted: result.shield.redacted } : {}),
     });
   } catch { /* a log line never breaks a run */ }
   return { ...result, metrics };
