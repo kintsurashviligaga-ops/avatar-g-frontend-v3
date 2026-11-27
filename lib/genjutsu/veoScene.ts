@@ -62,6 +62,8 @@ export interface SceneSubmitInput {
    * (lib/avatar/curatedFace), as the clip's FIRST FRAME instead of references (Veo takes one or the other).
    */
   startImage?: VeoMedia & { kind: 'bytes' };
+  /** The direct clip's second photo as Veo's last frame, with `startImage` only (lib/video/clipLastFrame, flag off). */
+  lastFrame?: VeoMedia & { kind: 'bytes' };
   /** How the first frame fits the aspect when its shape differs (Vertex; Google's default letterboxes it). */
   resizeMode?: VeoResizeMode;
   /** Replaces the VFX scene's negative prompt (the avatar's own). */
@@ -113,7 +115,7 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             ...(input.seed !== undefined ? { seed: input.seed } : {}),
             ...(input.startImage && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
             ...(input.startImage
-              ? { startImage: input.startImage }
+              ? { startImage: input.startImage, ...(input.lastFrame ? { lastFrame: input.lastFrame } : {}) }
               : input.referenceImages && input.referenceImages.length > 0
                 ? { referenceImages: input.referenceImages }
                 : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),

@@ -47,7 +47,7 @@ import { createJob, failJob } from '../../../../lib/orchestrator/jobs';
 import { readClipPrompt } from '../../../../lib/video/clipSpeech';
 import { serviceOffResponse } from '../../../../lib/server/serviceSwitches';
 import { quoteCredits } from '../../../../lib/credits/quote';
-import { DIRECT_CLIP_BODY_MAX_BYTES, DIRECT_CLIP_PHOTO_MAX_BYTES } from '../../../../lib/video/directClip';
+import { DIRECT_CLIP_BODY_MAX_BYTES, DIRECT_CLIP_PHOTO_MAX_BYTES, directClipCredits } from '../../../../lib/video/directClip';
 import { omniClipCredits } from '../../../../lib/credits/priceBook';
 import { submitOmniClip } from '../../../../lib/video/omniClip';
 import { veoModelProblem } from '../../../../lib/veo/engine';
@@ -444,4 +444,45 @@ test('CLIP_ADVANCED on: an Omni clip (10 s) takes neither field — nothing tran
   expect('seed' in sent).toBe(false);
   expect(JSON.stringify(sent)).not.toContain('blur');
   expect(promptToEnglish).not.toHaveBeenCalled();
+});
+
+// ─── Phase 7.5: two photos as the first and last frame (lib/video/clipLastFrame), behind CLIP_LAST_FRAME ──────────────────
+
+test('CLIP_LAST_FRAME off (the default): lastFrame in the body is ignored — two photos stay references', async () => {
+  const res = await POST(post({ prompt: 'a fox', photos: [JPEG, PNG], lastFrame: true }));
+  expect(res.status).toBe(202);
+  const sent = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sent.referenceImages).toHaveLength(2);
+  expect(sent.startImage).toBeUndefined();
+  expect(sent.lastFrame).toBeUndefined();
+});
+
+test('CLIP_LAST_FRAME on: photo 1 is the start, photo 2 the last frame, no references; same 8 s and same price', async () => {
+  process.env.CLIP_LAST_FRAME = '1';
+  const res = await POST(post({ prompt: 'a fox', photos: [JPEG, PNG], lastFrame: true }));
+  expect(res.status).toBe(202);
+  const sent = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sent.startImage).toEqual({ kind: 'bytes', base64: JPEG.split(',')[1], mimeType: 'image/jpeg' });
+  expect(sent.lastFrame).toEqual({ kind: 'bytes', base64: PNG.split(',')[1], mimeType: 'image/png' });
+  expect(sent.referenceImages).toBeUndefined();
+  expect(sent.durationSec).toBe(8);
+  expect(sent.prompt).toContain('end exactly on the last frame');
+  expect((await res.json()).credits).toBe(directClipCredits({ seconds: 8, tier: 'fast', photos: 2 }));
+});
+
+test('CLIP_LAST_FRAME on: without lastFrame two photos are references, as before', async () => {
+  process.env.CLIP_LAST_FRAME = '1';
+  await POST(post({ prompt: 'a fox', photos: [JPEG, PNG] }));
+  const sent = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sent.referenceImages).toHaveLength(2);
+  expect(sent.lastFrame).toBeUndefined();
+});
+
+test('CLIP_LAST_FRAME on: lastFrame with one or three photos, or not a boolean, is refused free', async () => {
+  process.env.CLIP_LAST_FRAME = '1';
+  for (const body of [{ prompt: 'a fox', photos: [JPEG], lastFrame: true }, { prompt: 'a fox', photos: [JPEG, PNG, JPEG], lastFrame: true },
+    { prompt: 'a fox', photos: [JPEG, PNG], lastFrame: 'yes' }]) {
+    expect((await POST(post(body))).status).toBe(400);
+  }
+  expect(deductCredits).not.toHaveBeenCalled();
 });
