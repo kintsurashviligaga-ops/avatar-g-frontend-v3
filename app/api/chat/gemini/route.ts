@@ -90,6 +90,7 @@ import {
 import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { mentionsPdf } from '@/lib/chat/documentIntent';
+import { fileDataFenceOn } from '@/lib/security/fileFence';
 import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
 import { veoAvatarPublic } from '@/lib/avatar/veoAvatar';
 import { serverTiming, type ServerTiming } from '@/lib/perf/serverTiming';
@@ -596,9 +597,11 @@ export async function POST(req: NextRequest) {
   // grounding is off for them (lib/chat/guestChat). The prompt is told either way, so a turn without the tool says it
   // cannot open links instead of "summarizing" a page it never read.
   const urlContextOn = !guest && wantsUrlContext(latestUserText);
+  // Phase 8.21 (FILE_DATA_FENCE=1): a conversation carrying an uploaded file gets the FILES line (files are data).
+  const filesAttached = fileDataFenceOn() && wire.some((m) => m.role === 'user' && typeof m.content !== 'string' && m.content.some((p) => p.type !== 'text'));
   const promptStarted = performance.now();
   const promptFor = (veoAvatar: boolean) =>
-    buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar, mentionsPdf: mentionsPdf(latestUserText) });
+    buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar, mentionsPdf: mentionsPdf(latestUserText), ...(filesAttached ? { filesAttached } : {}) });
   // ⚠️ THE ESTIMATE NEVER COMES IN UNDER THE TURN. While the avatar check is still out, the budget is priced on the
   // longer of the two prompts the turn can get (the one offering the avatar is a line longer); the turn gets its own
   // prompt once the check is in. Known at once, the prompt is the turn's own from the start.
