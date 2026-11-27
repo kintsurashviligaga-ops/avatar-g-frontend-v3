@@ -64,7 +64,7 @@ const T: Record<string, Record<Lang, string>> = {
   saveMemory: { en: 'Save memory', ka: 'დამახსოვრება', ru: 'Запомнить' },
   save: { en: 'Save', ka: 'შენახვა', ru: 'Сохранить' },
   empty: {
-    en: '{T.empty![lang]}',
+    en: 'Nothing remembered yet. Add something above and Agent G will remember it.',
     ka: 'ჯერ არაფერია დამახსოვრებული. დაამატე ზემოთ და Agent G დაიმახსოვრებს.',
     ru: 'Пока ничего нет. Добавьте факт выше, и Agent G его запомнит.',
   },
