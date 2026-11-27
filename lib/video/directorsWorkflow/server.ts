@@ -9,7 +9,8 @@ import { isAdminUser } from '@/lib/admin/guard';
 import { DIRECT_CLIP_SECONDS } from '@/lib/video/directClip';
 import { directorsWorkflowAllowed } from './flag';
 import { validateProject } from './plan';
-import type { DwProject } from './types';
+import type { DwSceneEnglish } from './scenePrompt';
+import type { DwProject, DwScene } from './types';
 
 export function directorsWorkflowOpenTo(user: User | null, env: Record<string, string | undefined> = process.env): boolean {
   return !!user && directorsWorkflowAllowed(isAdminUser(user), env);
@@ -52,4 +53,48 @@ export function parseProject(v: unknown): DwProject | null {
 export function checkProject(v: unknown): { project: DwProject; problems: ReturnType<typeof validateProject> } | null {
   const project = parseProject(v);
   return project ? { project, problems: validateProject(project) } : null;
+}
+
+const SCENE_ENGLISH_PROMPT = `Translate the user's scene notes for a video engine into short, plain English.
+Return JSON only: {"action": string, "camera": string, "looks": {"<id>": string}, "ambience": string, "effects": [string], "music": string|null}.
+Keep names as they are. Never add people, events, dialogue, narration or music the notes do not ask for. Empty in → empty out.
+Notes:
+`;
+
+/**
+ * The scene's own words in English for the engine (action, camera, looks, ambience, effects, music cue). The spoken lines
+ * are NOT sent and never translated. One small Gemini call; on any miss the user's own words are used (an English card
+ * needs nothing, and the engines read Georgian action passably).
+ */
+export async function translateScene(project: DwProject, scene: DwScene, llm: (prompt: string) => Promise<string | null>): Promise<DwSceneEnglish> {
+  const looks = Object.fromEntries(scene.characterIds.map((id) => [id, project.characters.find((c) => c.id === id)?.look ?? '']));
+  const notes = { action: scene.action, camera: scene.camera, looks, ambience: scene.audio.ambience, effects: scene.audio.effects, music: scene.audio.music };
+  // Nothing outside plain ASCII → already English: no call.
+  if (!/[^\x00-\x7F]/.test(JSON.stringify(notes))) return {};
+  const raw = await llm(SCENE_ENGLISH_PROMPT + JSON.stringify(notes)).catch(() => null);
+  if (!raw) return {};
+  let j: unknown;
+  try {
+    j = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+  } catch {
+    return {};
+  }
+  if (!isRec(j)) return {};
+  const out: DwSceneEnglish = {};
+  const str = (v: unknown, max: number) => (typeof v === 'string' && v.length <= max ? v : undefined);
+  const action = str(j.action, 2_000);
+  if (action && action.trim()) out.action = action;
+  const camera = str(j.camera, 400);
+  if (camera !== undefined) out.camera = camera;
+  const ambience = str(j.ambience, 400);
+  if (ambience !== undefined) out.ambience = ambience;
+  if (Array.isArray(j.effects) && j.effects.every((e) => typeof e === 'string' && e.length <= 400)) out.effects = (j.effects as string[]).slice(0, 8);
+  // Music stays OFF unless the card asked for it: the reader can only translate a cue, never add one.
+  if (scene.audio.music !== null) { const m = str(j.music, 400); if (m) out.music = m; }
+  if (isRec(j.looks)) {
+    const l: Record<string, string> = {};
+    for (const id of scene.characterIds) { const v = str(j.looks[id], 600); if (v && v.trim()) l[id] = v; }
+    out.looks = l;
+  }
+  return out;
 }

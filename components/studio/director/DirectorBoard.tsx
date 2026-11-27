@@ -25,7 +25,9 @@ import {
   type DwProblem,
   type DwProject,
   type DwQuote,
+  type DwRuns,
   type DwScene,
+  type DwSceneRun,
 } from '@/lib/video/directorsWorkflow';
 import { DIRECT_CLIP_SECONDS, type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds } from '@/lib/video/directClip';
 
@@ -64,8 +66,35 @@ export function problemText(locale: Lang, p: DwProblem): string {
 const input = 'w-full rounded-xl bg-app-bg px-3 py-2 text-[13px] text-app-text ring-1 ring-app-border/20 placeholder:text-app-muted/70 focus:outline-none focus:ring-app-accent/60';
 const chip = (on: boolean) => `min-h-[36px] rounded-full px-3 text-[12.5px] font-medium ${on ? 'bg-app-accent text-app-bg' : 'bg-app-bg text-app-text ring-1 ring-app-border/20'}`;
 
-function SceneCard({ locale, project, scene, credits, engine, problems, onChange, onMove, onDuplicate, onRemove }: {
+function SceneRunLine({ locale, run, onRerun }: { locale: Lang; run: DwSceneRun; onRerun?: () => void }) {
+  const label: Record<DwSceneRun['state'], string> = {
+    waiting: tr(locale, 'რიგშია', 'Waiting', 'В очереди'),
+    starting: tr(locale, 'იწყება…', 'Starting…', 'Запуск…'),
+    rendering: tr(locale, 'მზადდება…', 'Rendering…', 'Рендер…'),
+    done: tr(locale, 'მზადაა ✓', 'Ready ✓', 'Готово ✓'),
+    failed: run.refunded ? tr(locale, 'ვერ შედგა · თანხა დაბრუნდა', 'Failed · refunded', 'Не удалось · возвращено') : tr(locale, 'ვერ შედგა', 'Failed', 'Не удалось'),
+    blocked: tr(locale, 'ელოდება წინა სცენას', 'Waits for the previous scene', 'Ждёт предыдущую сцену'),
+  };
+  return (
+    <div className="mt-2 rounded-xl bg-app-bg p-2" data-testid="dw-scene-run" data-state={run.state}>
+      <div className="flex items-center gap-2 text-[12.5px] text-app-text">
+        {(run.state === 'starting' || run.state === 'rendering') && <span aria-hidden="true" className="h-3 w-3 animate-spin rounded-full border-2 border-app-accent border-t-transparent" />}
+        <span>{label[run.state]}</span>
+        {(run.state === 'failed' || run.state === 'blocked') && onRerun && (
+          <button type="button" className="ml-auto rounded-full bg-app-elevated px-3 py-1 text-[12px] font-medium text-app-accent" data-testid="dw-rerun" onClick={onRerun}>
+            {tr(locale, 'თავიდან', 'Re-render', 'Повторить')}
+          </button>
+        )}
+      </div>
+      {run.state === 'done' && run.videoUrl && <video className="mt-2 w-full rounded-lg" src={run.videoUrl} controls playsInline preload="metadata" />}
+    </div>
+  );
+}
+
+function SceneCard({ locale, project, scene, credits, engine, problems, run, onRerun, onChange, onMove, onDuplicate, onRemove }: {
   locale: Lang;
+  run?: DwSceneRun;
+  onRerun?: () => void;
   project: DwProject;
   scene: DwScene;
   credits: number;
@@ -156,6 +185,7 @@ function SceneCard({ locale, project, scene, credits, engine, problems, onChange
         </div>
       </div>
 
+      {run && <SceneRunLine locale={locale} run={run} onRerun={onRerun} />}
       {problems.length > 0 && (
         <ul className="mt-2 space-y-0.5" role="alert">
           {problems.map((p, i) => <li key={i} className="text-[12px] text-amber-500">{problemText(locale, p)}</li>)}
@@ -165,8 +195,15 @@ function SceneCard({ locale, project, scene, credits, engine, problems, onChange
   );
 }
 
-export function DirectorBoard({ locale, onClose, onApprove, initial }: {
+export function DirectorBoard({ locale, onClose, onApprove, initial, runs, running, notice, onRerun }: {
   locale: Lang;
+  /** Phase 8.3: each scene's render, shown on its card. */
+  runs?: DwRuns;
+  /** A film is rendering: the approve button waits. */
+  running?: boolean;
+  /** One line under the cards (approve refused, balance short…). */
+  notice?: string | null;
+  onRerun?: (sceneId: string) => void;
   onClose: () => void;
   /** Phase 8.3: start the film for exactly this version and this price. Absent → the button is shown disabled. */
   onApprove?: (project: DwProject, quote: DwQuote) => void;
@@ -211,7 +248,7 @@ export function DirectorBoard({ locale, onClose, onApprove, initial }: {
     edit((p) => (p.characters.length >= DW_MAX_CHARACTERS ? p : { ...p, characters: [...p.characters, { id: newId('c'), name: '', look: '', voice: 'female' }], status: 'draft', version: p.version + 1 }));
   const setFilmResolution = (r: DirectClipResolution) => edit((p) => ({ ...p, resolution: r, status: 'draft', version: p.version + 1 }));
 
-  const canApprove = !!project && !!quote && problems.length === 0 && !!onApprove;
+  const canApprove = !!project && !!quote && problems.length === 0 && !!onApprove && !running;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" role="dialog" aria-modal="true" aria-label={tr(locale, 'რეჟისორის რეჟიმი', "Director's Workflow", 'Режим режиссёра')}>
@@ -275,6 +312,7 @@ export function DirectorBoard({ locale, onClose, onApprove, initial }: {
                   return (
                     <SceneCard key={s.id} locale={locale} project={project} scene={s} credits={q?.credits ?? 0} engine={q?.clip.engine ?? 'veo'}
                       problems={problems.filter((p) => p.sceneId === s.id)}
+                      run={runs?.[s.id]} onRerun={onRerun ? () => onRerun(s.id) : undefined}
                       onChange={(patch) => edit((p) => updateScene(p, s.id, patch))}
                       onMove={(to) => edit((p) => moveScene(p, s.id, to))}
                       onDuplicate={() => edit((p) => duplicateScene(p, s.id))}
@@ -287,6 +325,7 @@ export function DirectorBoard({ locale, onClose, onApprove, initial }: {
                   + {tr(locale, 'სცენა', 'Scene', 'Сцена')}
                 </button>
               )}
+              {notice && <p className="text-[12.5px] text-amber-500" role="status" data-testid="dw-notice">{notice}</p>}
               {boardProblems.map((p, i) => <p key={i} className="text-[12px] text-amber-500" role="alert">{problemText(locale, p)}</p>)}
             </div>
           )}
@@ -304,7 +343,7 @@ export function DirectorBoard({ locale, onClose, onApprove, initial }: {
               </span>
               <button type="button" disabled={!canApprove} onClick={() => project && quote && onApprove?.(project, quote)}
                 className="ml-auto min-h-[44px] rounded-full bg-app-accent px-5 text-[13.5px] font-semibold text-app-bg disabled:opacity-50" data-testid="dw-approve">
-                {tr(locale, `ფილმის შექმნა ✦${quote?.totalCredits ?? 0}`, `Create film ✦${quote?.totalCredits ?? 0}`, `Создать фильм ✦${quote?.totalCredits ?? 0}`)}
+                {running ? tr(locale, 'ფილმი მზადდება…', 'Rendering the film…', 'Фильм рендерится…') : tr(locale, `ფილმის შექმნა ✦${quote?.totalCredits ?? 0}`, `Create film ✦${quote?.totalCredits ?? 0}`, `Создать фильм ✦${quote?.totalCredits ?? 0}`)}
               </button>
             </>
           )}
