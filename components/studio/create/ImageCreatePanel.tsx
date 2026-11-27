@@ -37,9 +37,10 @@ import { TextArea } from '@/components/studio/ui/controls';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON } from '@/components/studio/ui/tokens';
 import { creditsLabel } from '@/lib/credits/quote';
 import {
-  IMAGE_MAX_REFERENCES, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageStyleSwatch,
-  type ImgAspect, type ImgCount,
+  IMAGE_MAX_REFERENCES, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageStyleSwatch,
+  imageAspectsOffered, type ImgAspect, type ImgCount,
 } from '@/lib/studio/imageCreate';
+import { applyQuickEdit, editModeCopy, imageEditModeUiOn, quickEdits } from '@/lib/studio/imageExtras';
 import { DEFAULT_MODEL, catalogueEntry, type ModelRunner } from '@/lib/providers/catalogue';
 import { effectivePick, pickerRows, useModelPick } from '@/lib/studio/modelPick';
 import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
@@ -154,6 +155,9 @@ function DisclosureRow({
 export function ImageCreatePanel(p: ImageCreatePanelProps) {
   const lang = imageLang(p.locale);
   const c = imageCreateCopy(p.locale);
+  // Edit mode (flag, off): an attached picture is already what the route edits; the screen now says so.
+  const editing = imageEditModeUiOn() && p.references.length > 0;
+  const ec = editModeCopy(p.locale);
   const uid = useId();
   const tplId = `${uid}-templates`;
   const advId = `${uid}-advanced`;
@@ -215,7 +219,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   };
 
   // ── picker contents ──────────────────────────────────────────────────────────────────────────────────────────────────────
-  const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => IMG_ASPECTS.map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
+  const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => imageAspectsOffered().map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
   const countOptions = useMemo<PickerOption<ImgCount>[]>(() => IMG_COUNTS.map((n) => ({
     value: n, label: c.countOption(n), glyph: <Layers size={20} />, trailing: creditsLabel(imageCredits(n), p.locale),
   })), [c, p.locale]);
@@ -257,7 +261,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
           ref={setPromptRef}
           value={p.prompt}
           onChange={p.onPrompt}
-          placeholder={c.promptPlaceholder}
+          placeholder={editing ? ec.placeholder : c.promptPlaceholder}
           label={c.promptLabel}
           onSubmit={generate}
           {...(p.onEnhance ? { onEnhance: p.onEnhance, enhanceLabel: c.enhance } : {})}
@@ -284,6 +288,19 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
           extraNote={c.uploadExtra}
         />
       </div>
+      {editing && (
+        <div data-testid="image-edit-mode" className="space-y-2 rounded-2xl bg-app-accent/10 px-4 py-3 ring-1 ring-app-accent/25">
+          <p className="flex items-center gap-2 text-[14px] font-semibold text-app-text"><Wand2 size={16} aria-hidden="true" className="text-app-accent" />{ec.banner}</p>
+          <p className="text-[13px] leading-snug text-app-muted">{ec.hint}</p>
+          <div role="group" aria-label={ec.quick} className="flex flex-wrap gap-2">
+            {quickEdits(p.locale).map((q) => (
+              <button key={q.id} type="button" data-testid={`image-quick-edit-${q.id}`}
+                onClick={() => { p.onPrompt(applyQuickEdit(p.prompt, q)); promptEl.current?.focus(); }}
+                className={`${CHIP_BASE} ${CHIP_OFF}`}>{q.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {p.foreignFileCount > 0 && (
         <div role="alert" data-testid="create-foreign-files" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-app-warning/10 px-4 py-2.5 text-[13px] leading-snug text-app-text ring-1 ring-app-warning/25">
           <span className="min-w-0 flex-1">{c.foreignFiles}</span>
@@ -371,7 +388,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         <div data-create-row="generate">
           <GenerateButton
             service="image.generate"
-            label={c.generate}
+            label={editing ? ec.button : c.generate}
             credits={credits}
             insufficient={insufficient}
             locale={p.locale}
