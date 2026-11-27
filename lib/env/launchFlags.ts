@@ -131,6 +131,21 @@ export const LAUNCH_FLAGS: readonly LaunchFlag[] = [
   { name: 'READ_ALOUD_VOICE_V2', feature: 'Read-aloud voice v2', side: 'server', vocab: '1|true|on|yes', where: '#322' },
   { name: 'SAFETY_IDENTIFIER', feature: 'Safety identifier', side: 'server', vocab: '1', where: '#371', note: 'Also needs SAFETY_IDENTIFIER_SALT.' },
   { name: 'NEXT_PUBLIC_CLIENT_ERROR_REPORTS', feature: 'Client error reports', side: 'client', vocab: '1', where: 'lib/observability/clientErrorReports (#388)', note: '#388 is NOT in the launch merge set yet.' },
+
+  // Phase 8.20 pre-flight (2026-11-27): readers on the combined stack that this list did not have yet.
+  { name: 'AGENT_G_SHIELD', exact: true, feature: 'Agent G injection shield', side: 'server', vocab: '1', where: 'app/api/agent/run/route.ts (#384)' },
+  { name: 'AGENT_G_CONTEXT_V2', exact: true, feature: 'Agent G memory deadline', side: 'server', vocab: '1', where: 'app/api/agent/run/route.ts (#385)' },
+  { name: 'LIVE_AGENT_PLANNER', exact: true, feature: 'Live voice planner', side: 'server', vocab: '1', where: 'app/api/voice/live/route.ts (#386)' },
+  { name: 'NEXT_PUBLIC_AGENT_G_ROUTER_V2', exact: true, feature: 'Agent G router v2', side: 'client', vocab: '1', where: 'components/studio/OmniStudio.tsx (#381)' },
+  { name: 'NEXT_PUBLIC_AGENT_G_COMMANDS', exact: true, feature: 'Agent G credits / undo commands', side: 'client', vocab: '1', where: 'components/studio/OmniStudio.tsx (#382)' },
+  { name: 'NEXT_PUBLIC_CHAT_PIN_GOAL', exact: true, feature: 'Chat goal pin', side: 'client', vocab: '1', where: 'app/api/chat/gemini/route.ts + OmniStudio (#385)', note: 'Read by the server route too; a change needs a redeploy.' },
+  { name: 'IMAGE_EXTRA_RATIOS', feature: 'Image extra ratios', side: 'server', vocab: '1|true|on|yes', twin: 'NEXT_PUBLIC_IMAGE_EXTRA_RATIOS', where: 'lib/studio/imageExtras.ts (#321)' },
+  { name: 'NEXT_PUBLIC_IMAGE_EXTRA_RATIOS', feature: 'Image extra ratios', side: 'client', vocab: '1|true|on|yes', twin: 'IMAGE_EXTRA_RATIOS', where: 'lib/studio/imageExtras.ts (#321)' },
+  { name: 'IMAGE_MULTI_REF', feature: 'Image up to 14 references', side: 'server', vocab: '1|true|on|yes', where: 'lib/studio/imageExtras.ts (#321)' },
+  { name: 'NEXT_PUBLIC_IMAGE_EDIT_MODE', feature: 'Image edit mode', side: 'client', vocab: '1|true|on|yes', where: 'lib/studio/imageExtras.ts (#321)' },
+  { name: 'AI_PROVENANCE_META', exact: true, feature: 'AI provenance metadata (EU AI Act Art. 50)', side: 'server', vocab: '1', where: 'lib/provenance/aiMarking.ts (#403)', note: 'Metadata only, invisible. GG 2026-11-27: may go on at launch.' },
+  { name: 'NEXT_PUBLIC_AI_LABELS', exact: true, feature: 'Visible AI badge / deepfake label', side: 'client', vocab: '1', where: 'components/studio/ui/AiContentBadge.tsx (#404, #405)', note: 'GG 2026-11-27 08:09Z: stays OFF by default.' },
+  { name: 'LEDGER_FAIL_CLOSED', exact: true, feature: 'Ledger fail-closed', side: 'server', vocab: '1', where: 'lib/orchestrator/ledger.ts (#407)', note: 'Production only. Billing: GG card.' },
 ];
 
 const byName = new Map(LAUNCH_FLAGS.map((f) => [f.name, f]));
