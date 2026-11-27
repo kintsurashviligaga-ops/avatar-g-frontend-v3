@@ -14,6 +14,7 @@ import {
   type AutoTaskEvent, type AutoTaskIO, type BrowserOut, type CodeOut, type LiveOut, type PlanOut, type SignedPlanLike,
 } from '@/lib/agent/task/autoTask';
 import { ShotImage } from './PlanStartCard';
+import { taskFailDetail, taskFailLine } from '@/lib/agent/task/failText';
 import { agentScreen, type ScreenStep } from '@/lib/agent/screen/store';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -164,7 +165,7 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
       try { onFinish?.({ answer: e.answer, ...(e.lastUrl ? { lastUrl: e.lastUrl } : {}) }); } catch { /* the card goes on */ }
     } else {
       setThinking(false); setPhase('stopped'); setT1(Date.now());
-      setEnd(e.reason === 'user' ? t.stopped : e.reason === 'time' ? t.time : e.reason === 'rounds' ? t.rounds : `${t.failed}${e.message ? `: ${e.message}` : ''}`);
+      setEnd(e.reason === 'user' ? t.stopped : e.reason === 'time' ? t.time : e.reason === 'rounds' ? t.rounds : taskFailLine(t.failed, e.message, lang));
       try { onFinish?.({ ...(e.lastUrl ? { lastUrl: e.lastUrl } : {}) }); } catch { /* the card goes on */ }
     }
   }
@@ -237,7 +238,7 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
                     {r.live.picture && <img src={r.live.picture} alt="" style={{ display: 'block', width: '100%', height: 'auto' }} />}
                   </div>
                 )}
-                {res && !res.ok && <div style={{ fontSize: 12.5, color: '#fca5a5', paddingLeft: 20 }}>{res.message}</div>}
+                {res && !res.ok && <div style={{ fontSize: 12.5, color: '#fca5a5', paddingLeft: 20 }}>{taskFailDetail(res.message, lang) || t.failed}</div>}
                 {res && res.ok && r.kind === 'code' && (res as { stdout?: string }).stdout && (
                   <pre style={{ margin: '0 0 0 20px', fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6 }}>{(res as { stdout: string }).stdout}</pre>
                 )}
