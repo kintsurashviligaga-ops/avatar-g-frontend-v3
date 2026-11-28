@@ -10,7 +10,7 @@
       "claude/admin-panel-v2-2r0ahk": false
     }
   },
-  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
+  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; export NODE_OPTIONS='--max-old-space-size=4096' && tsc --noEmit && next lint --quiet && BUILD_CHECKS_PASSED=1 next build",
   "installCommand": "npm ci",
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",
@@ -57,9 +57,6 @@
     "app/api/ltx-video/route.ts": {
       "maxDuration": 120
     },
-    "app/api/heygen/**": {
-      "maxDuration": 120
-    },
     "app/api/elevenlabs/**": {
       "maxDuration": 30
     },
@@ -75,13 +72,13 @@
     "app/api/automation/**": {
       "maxDuration": 60
     },
-    "app/api/workflows/**": {
-      "maxDuration": 60
-    },
     "app/api/replicate/**": {
       "maxDuration": 60
     },
     "app/api/video/**": {
+      "maxDuration": 60
+    },
+    "app/api/avatar/veo/route.ts": {
       "maxDuration": 60
     },
     "app/api/avatar/**": {
@@ -127,9 +124,6 @@
       "maxDuration": 300
     },
     "app/api/research/**": {
-      "maxDuration": 60
-    },
-    "app/api/avatar/veo/route.ts": {
       "maxDuration": 60
     },
     "app/api/genjutsu/**": {
