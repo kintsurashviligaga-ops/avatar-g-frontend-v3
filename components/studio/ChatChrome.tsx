@@ -60,6 +60,8 @@ import { type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
+import { pricingV8Active } from '@/lib/credits/priceBook';
+import { v8TopupSuccessText } from '@/lib/billing/v8/sheet';
 import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
@@ -541,6 +543,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       void (async () => {
         const status = await pollBogOrder(bogOrder, { attempts: pay === 'failed' ? 2 : 6, intervalMs: 2000 });
         const notice = paymentReturnMessage(status, pay, locale);
+        // Phase 8.25 — v8: the order reports what the wallet booked (1,000 for 100 ₾), not the bonus granted beside it.
+        if (pricingV8Active(process.env.NEXT_PUBLIC_PRICING_V8) && status?.status === 'completed' && status.kind === 'topup') {
+          const v8Text = v8TopupSuccessText(status.credits, locale);
+          if (v8Text) notice.text = v8Text;
+        }
         if (status?.status === 'completed') {
           track('payment_completed', { rail: 'bog', kind: status.kind });
           void refreshBalance(true);
