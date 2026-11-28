@@ -9,8 +9,9 @@ import { priceList, USER_FACING_IDS, type PriceRow } from '@/lib/billing/margin/
 import { PLANS, TOPUPS, creditGelOf, planUsd, whatYouGet } from '@/lib/billing/margin/packages';
 import type { ServiceId } from '@/lib/billing/margin/cogs';
 import { signInPath } from '@/lib/routing/signIn';
+import { RU_PERK, RU_PLAN_NAME, RU_ROW, RU_SERVICE, RU_UNIT } from './pricingV8Ru';
 
-type L = 'ka' | 'en';
+type L = 'ka' | 'en' | 'ru';
 const T = {
   ka: {
     title: 'ფასები',
@@ -31,6 +32,7 @@ const T = {
     topupsTitle: 'კრედიტის შევსება',
     topupsLead: 'ერთჯერადი გადახდა, გამოწერის გარეშე. შევსებული კრედიტი არ იწურება.',
     bonus: 'ბონუსი',
+    or: 'ან',
     buy: 'ყიდვა',
     tableTitle: 'რა ღირს თითოეული მოქმედება',
     action: 'მოქმედება',
@@ -63,6 +65,7 @@ const T = {
     topupsTitle: 'Top up credits',
     topupsLead: 'One-time payment, no subscription. Top-up credits never expire.',
     bonus: 'bonus',
+    or: 'or',
     buy: 'Buy',
     tableTitle: 'What each action costs',
     action: 'Action',
@@ -76,6 +79,39 @@ const T = {
       'Payments go through Bank of Georgia’s secure page, in lari.',
     ],
   },
+  ru: {
+    title: 'Цены',
+    lead: 'Один кредит на все сервисы: видео, изображения, музыка, голос и живой аватар. Цена, которую вы видите, и есть то, что спишется.',
+    month: '/мес.',
+    credits: 'кредитов',
+    perCredit: 'за кредит',
+    youGet: 'Что вы получите (что-то одно или любая смесь)',
+    videos: 'видео 8 с (720p)',
+    images: 'изображений (1K)',
+    songs: 'песен',
+    avatar: 'мин. живого аватара',
+    tts: 'мин. озвучки текста',
+    rollover: (m: number) => `Неиспользованные кредиты переносятся на ${m} мес.`,
+    free: 'Начать бесплатно',
+    choose: 'Выбрать',
+    popular: 'Популярный',
+    topupsTitle: 'Пополнить кредиты',
+    topupsLead: 'Разовый платёж без подписки. Кредиты пополнения не сгорают.',
+    bonus: 'бонус',
+    or: 'или',
+    buy: 'Купить',
+    tableTitle: 'Сколько стоит каждое действие',
+    action: 'Действие',
+    unit: 'Единица',
+    price: 'Кредиты',
+    fairTitle: 'Без скрытых платежей',
+    fair: [
+      'Кредиты списываются только за готовый результат. Если генерация не удалась, кредиты возвращаются.',
+      'На каждой кнопке цена видна заранее. Никаких доп. налогов, комиссий за карту или скрытых лимитов.',
+      'Тариф можно отменить в любой момент, следующий месяц не списывается.',
+      'Оплата через защищённую страницу Банка Грузии (BOG), в лари.',
+    ],
+  },
 } as const;
 
 const SERVICE: Record<ServiceId, { ka: string; en: string }> = {
@@ -87,11 +123,24 @@ const SERVICE: Record<ServiceId, { ka: string; en: string }> = {
   chat: { ka: 'ჩატი', en: 'Chat' },
 };
 
+/** Russian lives in ./pricingV8Ru (margin rows keep ka + en only); a missing key falls back to English. */
+const planName = (p: { id: string; name: { ka: string; en: string } }, l: L) => (l === 'ru' ? RU_PLAN_NAME[p.id] ?? p.name.en : p.name[l]);
+const perkText = (perk: { ka: string; en: string }, l: L) => (l === 'ru' ? RU_PERK[perk.en] ?? perk.en : perk[l]);
+const rowLabel = (r: PriceRow, l: L) => (l === 'ru' ? RU_ROW[r.id] ?? r.label.en : r.label[l]);
+const rowUnit = (r: PriceRow, l: L) => (l === 'ru' ? RU_UNIT[r.unit.en] ?? r.unit.en : r.unit[l]);
+const serviceName = (s: ServiceId, l: L) => (l === 'ru' ? RU_SERVICE[s] ?? SERVICE[s].en : SERVICE[s][l]);
+
+/** A top-up's credits split into what the lari buy at the base rate (10 per ₾) and the bonus on top. */
+export function topupSplit(p: { priceGel: number; credits: number }): { base: number; bonus: number } {
+  const base = Math.floor(p.priceGel * 10);
+  return { base, bonus: Math.max(0, p.credits - base) };
+}
+
 const fmtGel = (n: number) => `${n % 1 === 0 ? n : n.toFixed(2)} ₾`;
 const card = { border: '1px solid var(--pricing-contour-pop, rgba(255,255,255,0.12))', background: 'rgba(255,255,255,0.025)' } as const;
 
 export function PricingV8({ locale }: { locale: string }) {
-  const l: L = locale === 'ka' ? 'ka' : 'en';
+  const l: L = locale === 'ka' ? 'ka' : locale === 'ru' ? 'ru' : 'en';
   const t = T[l];
   const rows = priceList().filter((r) => USER_FACING_IDS.has(r.id));
   const byService = new Map<ServiceId, PriceRow[]>();
@@ -117,7 +166,7 @@ export function PricingV8({ locale }: { locale: string }) {
                   {t.popular}
                 </span>
               )}
-              <h2 className="text-lg font-semibold">{p.name[l]}</h2>
+              <h2 className="text-lg font-semibold">{planName(p, l)}</h2>
               <p className="mt-2">
                 <span className="text-3xl font-bold tabular-nums">{fmtGel(p.priceGel)}</span>
                 {p.priceGel > 0 && <span style={{ color: 'var(--color-text-secondary)' }}>{t.month}</span>}
@@ -132,21 +181,27 @@ export function PricingV8({ locale }: { locale: string }) {
                 {t.youGet}
               </p>
               <ul className="mt-1.5 space-y-1 text-[13px]">
-                {[
-                  [w.videos8s720, t.videos],
-                  [w.images1k, t.images],
-                  [w.songs, t.songs],
-                  [w.avatarMinutes, t.avatar],
-                  [w.ttsMinutes, t.tts],
-                ].map(([n, label]) => (
-                  <li key={String(label)}>
-                    <span className="font-semibold tabular-nums">{n}</span> {label}
-                  </li>
-                ))}
+                {(
+                  [
+                    [w.videos8s720, t.videos],
+                    [w.images1k, t.images],
+                    [w.songs, t.songs],
+                    [w.avatarMinutes, t.avatar],
+                    [w.ttsMinutes, t.tts],
+                  ] as [number, string][]
+                )
+                  // a plan that cannot afford one clip says nothing about video, rather than "0 videos"
+                  .filter(([n]) => n > 0)
+                  .map(([n, label], i) => (
+                    <li key={label}>
+                      {i > 0 && <span style={{ color: 'var(--color-text-secondary)' }}>{t.or} </span>}
+                      <span className="font-semibold tabular-nums">{n}</span> {label}
+                    </li>
+                  ))}
               </ul>
               <ul className="mt-3 space-y-1 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
                 {p.perks.map((perk) => (
-                  <li key={perk.en}>✓ {perk[l]}</li>
+                  <li key={perk.en}>✓ {perkText(perk, l)}</li>
                 ))}
                 {p.rolloverMonths > 0 && <li>✓ {t.rollover(p.rolloverMonths)}</li>}
               </ul>
@@ -168,8 +223,11 @@ export function PricingV8({ locale }: { locale: string }) {
             <div key={p.id} className="flex items-center justify-between rounded-xl p-4" style={card}>
               <div>
                 <p className="text-lg font-bold tabular-nums">✦ {p.credits.toLocaleString('en-US')}</p>
-                <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-                  {p.bonusPct > 0 ? `+${p.bonusPct} % ${t.bonus}` : ' '}
+                <p className="text-[12px] tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+                  {(() => {
+                    const { base, bonus } = topupSplit(p);
+                    return bonus > 0 ? `${base.toLocaleString('en-US')} + ${bonus.toLocaleString('en-US')} ${t.bonus} (+${p.bonusPct} %)` : ' ';
+                  })()}
                 </p>
               </div>
               <Link href={signup} data-iap-external className="rounded-lg px-3 py-2 text-[14px] font-semibold" style={card}>
@@ -196,14 +254,14 @@ export function PricingV8({ locale }: { locale: string }) {
               <tbody key={service}>
                 <tr>
                   <th colSpan={4} scope="colgroup" className="px-4 pb-1 pt-4 text-left text-[12px] font-semibold uppercase tracking-wide">
-                    {SERVICE[service][l]}
+                    {serviceName(service, l)}
                   </th>
                 </tr>
                 {list.map((r) => (
                   <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <td className="px-4 py-2">{r.label[l]}</td>
+                    <td className="px-4 py-2">{rowLabel(r, l)}</td>
                     <td className="px-4 py-2" style={{ color: 'var(--color-text-secondary)' }}>
-                      {r.unit[l]}
+                      {rowUnit(r, l)}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold tabular-nums">✦ {r.credits}</td>
                     <td className="px-4 py-2 text-right tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
