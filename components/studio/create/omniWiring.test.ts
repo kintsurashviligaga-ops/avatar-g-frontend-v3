@@ -126,7 +126,10 @@ describe('the phone: settings open on demand and the composer remains available 
     // A balance known to be short opens the top-up (never the clip); a guest (balance unknown) goes on to runTool's own
     // sign-in gate. There is no free slot for a clip: it is always priced.
     expect(src).toContain("const short = videoBalanceCredits !== null && videoBalanceCredits < composerQuote;");
-    expect(src).toContain("if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }");
+    // Phase 8.25: with NEXT_PUBLIC_SETTINGS_825 on, the sheet also says how much is missing; off, it opens as before.
+    expect(src).toContain("if (settings825On()) openTopUpShort({ needed: composerQuote, balance: videoBalanceCredits ?? undefined });");
+    expect(src).toContain("else window.dispatchEvent(new CustomEvent('myavatar:open-credits'));");
+    expect(src).toMatch(/if \(short\) \{[\s\S]{0,400}?return;\s*\}\s*runTool\(true, 'composer'\);/);
     expect(src).toMatch(/activeTool === 'video' && mode === 'video' && videoTab === 'cinema'\s*(?:\/\/[^\n]*\n\s*)?\? directClipCredits/);
     // The panel carries no prompt box and no Generate of its own; script, voice details and camera are gone from it.
     const panel = /<ClipCreatePanel([\s\S]*?)\n {12}\/>/.exec(src)?.[1] ?? '';
