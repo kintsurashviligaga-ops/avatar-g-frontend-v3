@@ -12,6 +12,7 @@ import { formatWalletBalance } from '@/lib/billing/gel';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
 import { ConnectionsSection } from './ConnectionsSection';
+import { settings825On } from '@/lib/profile/displayName';
 
 /**
  * Settings — top-level user preferences surface.
@@ -39,11 +40,11 @@ interface Copy {
   profile: { title: string; status: string; signedIn: string; signedOut: string; unknown: string };
   account: { title: string; body: string; button: string };
   usage: { title: string; subtitle: string; loading: string; failed: string; credits: string; resets: string };
-  history: { title: string; subtitle: string; loading: string; empty: string; credits: string };
+  history: { title: string; subtitle: string; loading: string; empty: string; credits: string; failed: string; session: string };
   danger: {
     title: string; description: string; cta: string;
     modalTitle: string; modalBody: string; cancel: string; confirm: string;
-    deleting: string; deleted: string; failed: string;
+    deleting: string; deleted: string; failed: string; session: string;
   };
 }
 
@@ -58,7 +59,7 @@ const COPY: Record<Locale, Copy> = {
       title: 'ბალანსი და მოხმარება', subtitle: 'რამდენი კრედიტი გაქვს ამ პერიოდში.',
       loading: 'იტვირთება…', failed: 'მონაცემები ვერ მოვიდა.', credits: 'კრედიტი', resets: 'განახლდება',
     },
-    history: { title: 'ისტორია', subtitle: 'ბოლო 10 ტრანზაქცია.', loading: 'იტვირთება…', empty: 'ჯერ არ არის ტრანზაქცია.', credits: 'კრედიტი' },
+    history: { title: 'ისტორია', subtitle: 'ბოლო 10 ტრანზაქცია.', loading: 'იტვირთება…', empty: 'ჯერ არ არის ტრანზაქცია.', credits: 'კრედიტი', failed: 'ისტორია ვერ ჩაიტვირთა. სცადე ცოტა ხანში.', session: 'სესიას ვადა გაუვიდა. შედი თავიდან, რომ ისტორია ნახო.' },
     danger: {
       title: 'საშიში ზონა',
       description: 'წაშალე ანგარიში და ყველა მონაცემი სამუდამოდ. ეს მოქმედება შეუქცევადია.',
@@ -66,7 +67,7 @@ const COPY: Record<Locale, Copy> = {
       modalTitle: 'დაადასტურე წაშლა',
       modalBody: 'ნამდვილად გინდა შენი ანგარიშის წაშლა? დაიკარგება ყველა ვიდეო, სურათი, ხმოვანი მონაცემი და ჩატის ისტორია. ეს მოქმედება ვერ დაბრუნდება.',
       cancel: 'გაუქმება', confirm: 'წავშალო',
-      deleting: 'იშლება…', deleted: 'ანგარიში წაშლილია. გადამისამართება…', failed: 'წაშლა ვერ შესრულდა.',
+      deleting: 'იშლება…', deleted: 'ანგარიში წაშლილია. გადამისამართება…', failed: 'წაშლა ვერ შესრულდა.', session: 'სესიას ვადა გაუვიდა. შედი თავიდან და სცადე ხელახლა. ანგარიში არ წაშლილა.',
     },
   },
   en: {
@@ -79,7 +80,7 @@ const COPY: Record<Locale, Copy> = {
       title: 'Balance & usage', subtitle: 'Your credits for this period.',
       loading: 'Loading…', failed: 'Could not load.', credits: 'credits', resets: 'Resets',
     },
-    history: { title: 'History', subtitle: 'Your last 10 transactions.', loading: 'Loading…', empty: 'No transactions yet.', credits: 'credits' },
+    history: { title: 'History', subtitle: 'Your last 10 transactions.', loading: 'Loading…', empty: 'No transactions yet.', credits: 'credits', failed: 'The history could not load. Please try again shortly.', session: 'Your session expired. Sign in again to see your history.' },
     danger: {
       title: 'Danger Zone',
       description: 'Permanently delete your account and all data. This cannot be undone.',
@@ -87,7 +88,7 @@ const COPY: Record<Locale, Copy> = {
       modalTitle: 'Confirm deletion',
       modalBody: 'Are you absolutely sure? All videos, images, voice data and chat history will be permanently removed. This action cannot be undone.',
       cancel: 'Cancel', confirm: 'Delete',
-      deleting: 'Deleting…', deleted: 'Account deleted. Redirecting…', failed: 'Could not delete.',
+      deleting: 'Deleting…', deleted: 'Account deleted. Redirecting…', failed: 'Could not delete.', session: 'Your session expired. Sign in again and retry. Nothing was deleted.',
     },
   },
   ru: {
@@ -100,7 +101,7 @@ const COPY: Record<Locale, Copy> = {
       title: 'Баланс и расход', subtitle: 'Ваши кредиты за этот период.',
       loading: 'Загрузка…', failed: 'Не удалось загрузить.', credits: 'кредитов', resets: 'Обновится',
     },
-    history: { title: 'История', subtitle: 'Последние 10 транзакций.', loading: 'Загрузка…', empty: 'Пока нет транзакций.', credits: 'кред.' },
+    history: { title: 'История', subtitle: 'Последние 10 транзакций.', loading: 'Загрузка…', empty: 'Пока нет транзакций.', credits: 'кред.', failed: 'Историю не удалось загрузить. Попробуйте чуть позже.', session: 'Сессия истекла. Войдите снова, чтобы увидеть историю.' },
     danger: {
       title: 'Опасная зона',
       description: 'Удалить аккаунт и все данные навсегда. Действие необратимо.',
@@ -108,7 +109,7 @@ const COPY: Record<Locale, Copy> = {
       modalTitle: 'Подтвердите удаление',
       modalBody: 'Вы абсолютно уверены? Все видео, изображения, голосовые данные и история чата будут удалены безвозвратно.',
       cancel: 'Отмена', confirm: 'Удалить',
-      deleting: 'Удаление…', deleted: 'Аккаунт удалён. Перенаправление…', failed: 'Не удалось удалить.',
+      deleting: 'Удаление…', deleted: 'Аккаунт удалён. Перенаправление…', failed: 'Не удалось удалить.', session: 'Сессия истекла. Войдите снова и повторите. Ничего не удалено.',
     },
   },
 };
@@ -435,17 +436,22 @@ const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: 
 
 function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
   const [items, setItems] = useState<HistoryItem[] | null>(null);
-  const [state, setState] = useState<'loading' | 'ok' | 'empty'>('loading');
+  // Phase 8.25 (NEXT_PUBLIC_SETTINGS_825=1): a failed or expired load used to read „No transactions yet" — it now says so.
+  const [state, setState] = useState<'loading' | 'ok' | 'empty' | 'failed' | 'session'>('loading');
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const r = await fetch('/api/credits/history?limit=10', { credentials: 'include', cache: 'no-store' });
+        if (settings825On() && !r.ok) {
+          if (!cancelled) { setItems([]); setState(r.status === 401 || r.status === 403 ? 'session' : 'failed'); }
+          return;
+        }
         const j = (await r.json().catch(() => ({}))) as { items?: HistoryItem[] };
         const list = Array.isArray(j.items) ? j.items : [];
         if (!cancelled) { setItems(list); setState(list.length ? 'ok' : 'empty'); }
       } catch {
-        if (!cancelled) { setItems([]); setState('empty'); }
+        if (!cancelled) { setItems([]); setState(settings825On() ? 'failed' : 'empty'); }
       }
     })();
     return () => { cancelled = true; };
@@ -464,6 +470,7 @@ function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
         <div className="flex items-center gap-2 text-sm text-app-muted"><Loader2 size={14} className="animate-spin" /> {t.loading}</div>
       )}
       {state === 'empty' && <div className="text-sm text-app-muted">{t.empty}</div>}
+      {(state === 'failed' || state === 'session') && <div role="status" data-testid="history-error" className="text-sm text-app-muted">{state === 'session' ? t.session : t.failed}</div>}
       {state === 'ok' && items && (
         <ul className="divide-y divide-app-border/30">
           {items.map((it, i) => {
@@ -499,6 +506,11 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
     setBusy(true); setErr(null);
     try {
       const r = await fetch('/api/account/delete', { method: 'POST', credentials: 'include' });
+      if (settings825On() && (r.status === 401 || r.status === 403)) {
+        setErr(t.session); setBusy(false);
+        try { window.dispatchEvent(new CustomEvent('myavatar:auth-required')); } catch { /* SSR */ }
+        return;
+      }
       const j = (await r.json().catch(() => ({}))) as { success?: boolean };
       if (!j.success) { setErr(t.failed); setBusy(false); return; }
       setDone(true);
@@ -507,7 +519,7 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
     } catch {
       setErr(t.failed); setBusy(false);
     }
-  }, [loc, t.failed]);
+  }, [loc, t.failed, t.session]);
 
   return (
     <Card className="border-red-500/20 !ring-red-500/20">

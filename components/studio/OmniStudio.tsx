@@ -1,5 +1,7 @@
 'use client';
 import { ReadAloudControls } from '@/components/voice/experience/ReadAloudControls';
+import { settings825On } from '@/lib/profile/displayName';
+import { openTopUpShort } from '@/lib/billing/shortBalance';
 
 /**
  * OmniStudio (Service Hub — Card B). MyAvatar Smart Assistant (multimodal).
@@ -6242,6 +6244,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (!res.ok || !j.jobId) {
         trackGenerationFailed(service, 'refused');
         end(`⚠️ ${clipFailureText(j, locale)}`, j.error === 'insufficient_credits' ? { topUp: true } : {});
+        // Phase 8.25: a server-side „insufficient credits" opens the top-up sheet with the reason, not only a bubble button.
+        if (j.error === 'insufficient_credits' && settings825On()) openTopUpShort();
         return;
       }
       if (j.taskId) { const task = j.taskId; patchMsgById(bubbleId, (m) => ({ ...m, clipTask: task })); }
@@ -8677,7 +8681,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const runComposer = () => {
     if (composerQuote !== null && activeTool === 'video') {
       const short = videoBalanceCredits !== null && videoBalanceCredits < composerQuote;
-      if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }
+      // Phase 8.25 (NEXT_PUBLIC_SETTINGS_825=1): the sheet says „needs ✦X, you have ✦Y" instead of opening silently.
+      if (short) {
+        if (settings825On()) openTopUpShort({ needed: composerQuote, balance: videoBalanceCredits ?? undefined });
+        else window.dispatchEvent(new CustomEvent('myavatar:open-credits'));
+        return;
+      }
       runTool(true, 'composer');
       return;
     }
@@ -10715,7 +10724,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.topUp && (
                   <button
                     type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
+                    onClick={() => (settings825On() ? openTopUpShort() : window.dispatchEvent(new CustomEvent('myavatar:open-credits')))}
                     className="mt-1 inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90"
                   >
                     <Plus size={14} /> {locale === 'en' ? 'Top up balance' : locale === 'ru' ? 'Пополнить баланс' : 'ბალანსის შევსება'}

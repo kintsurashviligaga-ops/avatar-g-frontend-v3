@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { ledgerRowsToHistory, type CreditHistoryItem, type LedgerRow } from '@/lib/billing/creditHistory';
+import { settings825On } from '@/lib/profile/displayName';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,7 +18,10 @@ export type CreditTxn = CreditHistoryItem;
 export async function GET(req: NextRequest) {
   try {
     const { supabase, user } = await authedClientFromRequest(req);
-    if (!user) return NextResponse.json({ items: [] });
+    // Phase 8.25 (NEXT_PUBLIC_SETTINGS_825=1): say WHY the list is empty, so Settings can show „session expired" or
+    // „could not load" instead of „No transactions yet". `items: []` stays in the body for older clients.
+    const honest = settings825On();
+    if (!user) return honest ? NextResponse.json({ items: [], error: 'unauthenticated' }, { status: 401 }) : NextResponse.json({ items: [] });
 
     const limitRaw = Number(new URL(req.url).searchParams.get('limit'));
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.max(1, Math.min(50, Math.trunc(limitRaw))) : 10;
@@ -29,9 +33,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    if (error || !Array.isArray(data)) return NextResponse.json({ items: [] });
+    if (error || !Array.isArray(data)) return honest ? NextResponse.json({ items: [], error: 'unavailable' }, { status: 503 }) : NextResponse.json({ items: [] });
     return NextResponse.json({ items: ledgerRowsToHistory(data as LedgerRow[]) });
   } catch {
+    if (settings825On()) return NextResponse.json({ items: [], error: 'unavailable' }, { status: 503 });
     return NextResponse.json({ items: [] }); // fail-open
   }
 }

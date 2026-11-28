@@ -84,3 +84,28 @@ test('the Settings history has a label for every action the ledger mapping can p
   const table = src.slice(src.indexOf('const ACTION_LABEL'), src.indexOf('function CreditHistorySection'));
   for (const a of HISTORY_ACTIONS) expect(table).toMatch(new RegExp(`\\n\\s*${a}: \\{ emoji:`));
 });
+
+describe('Phase 8.25 — NEXT_PUBLIC_SETTINGS_825=1 says why the list is empty', () => {
+  afterEach(() => { delete process.env.NEXT_PUBLIC_SETTINGS_825; });
+
+  test('flag off: a signed-out caller still gets 200 { items: [] } (unchanged)', async () => {
+    mockUser = null;
+    const res = await GET(req());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [] });
+  });
+
+  test('flag on: signed out (expired session) → 401, a database error → 503, items [] kept for old clients', async () => {
+    process.env.NEXT_PUBLIC_SETTINGS_825 = '1';
+    mockUser = null;
+    const expired = await GET(req());
+    expect(expired.status).toBe(401);
+    expect(await expired.json()).toEqual({ items: [], error: 'unauthenticated' });
+
+    mockUser = { id: 'u1' };
+    mockResult = { data: null, error: { message: 'paused' } };
+    const down = await GET(req());
+    expect(down.status).toBe(503);
+    expect(await down.json()).toEqual({ items: [], error: 'unavailable' });
+  });
+});

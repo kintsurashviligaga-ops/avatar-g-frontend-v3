@@ -58,6 +58,8 @@ import { twinCopy } from '@/components/twin/copy';
 import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 import { type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { displayNameProblemText, saveDisplayName, settings825On } from '@/lib/profile/displayName';
+import { parseShortBalance, type ShortBalanceDetail } from '@/lib/billing/shortBalance';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
 import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
@@ -274,6 +276,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [userName, setUserName] = useState<string | null>(null);
   const [firstName, setFirstName] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [creditsShort, setCreditsShort] = useState<ShortBalanceDetail | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   // Profile photo (FIX 2): current URL + in-flight upload state + the hidden file input.
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -484,7 +488,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // to spend money, and it offered them no way to. Same bridge as the auth gate: the surface that
   // detects it dispatches, and the component that owns the modal opens it.
   useEffect(() => {
-    const openCredits = () => setCreditsOpen(true);
+    // Phase 8.25 (NEXT_PUBLIC_SETTINGS_825=1): a short-balance opener says why (lib/billing/shortBalance).
+    const openCredits = (e: Event) => {
+      setCreditsShort(settings825On() ? parseShortBalance((e as CustomEvent<unknown>).detail) : null);
+      setCreditsOpen(true);
+    };
     window.addEventListener('myavatar:open-credits', openCredits);
     return () => window.removeEventListener('myavatar:open-credits', openCredits);
   }, []);
@@ -901,6 +909,23 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
   // Save the display name to Supabase user_metadata (#3).
   const saveProfile = useCallback(async () => {
+    // Phase 8.25 (NEXT_PUBLIC_SETTINGS_825=1): updateUser RETURNS its error instead of throwing, so the old path below
+    // closed the dialog and showed a name that was never stored (expired session, network). lib/profile/displayName.
+    if (settings825On()) {
+      setProfileError(null);
+      setSavingProfile(true);
+      const r = await saveDisplayName(createBrowserClient(), displayName);
+      setSavingProfile(false);
+      if (!r.ok) {
+        setProfileError(displayNameProblemText(r.problem, locale));
+        if (r.problem === 'session') { try { window.dispatchEvent(new CustomEvent('myavatar:auth-required')); } catch { /* SSR */ } }
+        return;
+      }
+      setDisplayName(r.value);
+      setUserName(r.value);
+      setProfileOpen(false);
+      return;
+    }
     setSavingProfile(true);
     try {
       await createBrowserClient().auth.updateUser({ data: { name: displayName.trim() } });
@@ -908,7 +933,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       setProfileOpen(false);
     } catch { /* keep modal open on failure */ }
     finally { setSavingProfile(false); }
-  }, [displayName]);
+  }, [displayName, locale]);
 
   // FIX 2 — profile photo upload: read the file as a data URL → POST to /api/profile/avatar
   // (service-role upload to the public `avatars` bucket + profiles.avatar_url) → reflect it
@@ -1477,7 +1502,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                       <p className="truncate text-[14px] font-medium text-app-text">{userName || userEmail}</p>
                     </div>
                   </div>
-                  <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
+                  <button type="button" onClick={() => { setDisplayName(userName ?? ''); setProfileError(null); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
                   <DriveSettingsButton className={drawerRow} onOpen={() => setMenuOpen(false)} />
                   <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow} data-tour={TWIN_ENABLED ? 'twin' : undefined}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
@@ -1536,7 +1561,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         locale={locale}
         balanceGel={balanceGel}
         authed={authed}
-        onClose={() => { setCreditsOpen(false); void refreshBalance(); }}
+        short={creditsShort}
+        onClose={() => { setCreditsOpen(false); setCreditsShort(null); void refreshBalance(); }}
         onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
       />
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
@@ -1569,7 +1595,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadAvatar(f); e.target.value = ''; }} />
             </div>
             <p className="mb-1.5 text-[12px] text-app-muted">{locale === 'en' ? 'Display name' : locale === 'ru' ? 'Отображаемое имя' : 'სახელი'}</p>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
+            <input value={displayName} onChange={(e) => { setDisplayName(e.target.value); setProfileError(null); }} maxLength={60} placeholder={userEmail ?? ''} aria-invalid={profileError ? true : undefined} aria-describedby={profileError ? 'profile-name-error' : undefined} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
+            {profileError && <p id="profile-name-error" role="alert" data-testid="profile-name-error" className="mt-2 text-[12.5px] leading-snug text-app-danger">{profileError}</p>}
             <button type="button" onClick={() => void saveProfile()} disabled={savingProfile} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-2.5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">{savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {locale === 'en' ? 'Save' : locale === 'ru' ? 'Сохранить' : 'შენახვა'}</button>
           </div>
         </div>
