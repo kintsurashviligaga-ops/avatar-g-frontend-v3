@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { cancelRaceGuardOn } from '@/lib/tasks/cancelGuard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,15 +56,37 @@ export async function POST(
   }
 
   // Mark task as failed with cancellation note
-  await supabase
-    .from('agent_g_tasks')
-    .update({
-      status: 'failed',
-      results: { summaryKa: 'დავალება გაუქმდა მომხმარებლის მიერ.', cancelled: true },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', taskId)
-    .eq('user_id', user.id);
+  const patch = {
+    status: 'failed',
+    results: { summaryKa: 'დავალება გაუქმდა მომხმარებლის მიერ.', cancelled: true },
+    updated_at: new Date().toISOString(),
+  };
+
+  if (cancelRaceGuardOn()) {
+    // Phase 8.25 (CANCEL_RACE_GUARD=1): Cancel pressed the second the task finishes. The read above saw `processing`, the
+    // worker then wrote `completed` + its results, and the old unconditional update below overwrote them with
+    // „cancelled" — the finished (and paid) result was lost. Compare-and-set: only a row that is STILL queued/processing
+    // is cancelled; otherwise answer 409 with the status it reached, and nothing is touched.
+    const { data: cancelled, error } = await supabase
+      .from('agent_g_tasks')
+      .update(patch)
+      .eq('id', taskId)
+      .eq('user_id', user.id)
+      .in('status', ['queued', 'processing'])
+      .select('id');
+    if (error) return NextResponse.json({ error: 'unavailable' }, { status: 503 });
+    if (!Array.isArray(cancelled) || cancelled.length === 0) {
+      const { data: now } = await supabase.from('agent_g_tasks').select('status').eq('id', taskId).eq('user_id', user.id).maybeSingle();
+      const reached = (now as { status?: string } | null)?.status ?? 'finished';
+      return NextResponse.json({ error: 'already_finished', status: reached }, { status: 409 });
+    }
+  } else {
+    await supabase
+      .from('agent_g_tasks')
+      .update(patch)
+      .eq('id', taskId)
+      .eq('user_id', user.id);
+  }
 
   // Mark all queued subtasks as failed
   await supabase

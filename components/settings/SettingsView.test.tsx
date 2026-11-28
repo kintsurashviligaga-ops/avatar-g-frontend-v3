@@ -95,3 +95,40 @@ test('a failed delete shows the page\'s own sentence, not the server\'s error te
   expect(await screen.findByText('Could not delete.')).toBeInTheDocument();
   expect(document.body).not.toHaveTextContent('service_role');
 });
+
+describe('Phase 8.25 — NEXT_PUBLIC_SETTINGS_825=1', () => {
+  beforeEach(() => { process.env.NEXT_PUBLIC_SETTINGS_825 = '1'; });
+  afterEach(() => { delete process.env.NEXT_PUBLIC_SETTINGS_825; });
+  const member = () => {
+    replies['/api/credits/balance'] = { status: 200, body: { balance: 0, monthlyAllowance: 280, resetAt: null } };
+  };
+
+  test('a history that failed to load says so instead of „no transactions yet"', async () => {
+    member();
+    replies['/api/credits/history'] = { status: 503, body: { items: [], error: 'unavailable' } };
+    render(<SettingsView locale="ka" />);
+    expect(await screen.findByTestId('history-error')).toHaveTextContent('ისტორია ვერ ჩაიტვირთა. სცადე ცოტა ხანში.');
+    expect(screen.queryByText('ჯერ არ არის ტრანზაქცია.')).not.toBeInTheDocument();
+  });
+
+  test('an expired session on the history says „sign in again"', async () => {
+    member();
+    replies['/api/credits/history'] = { status: 401, body: { items: [], error: 'unauthenticated' } };
+    render(<SettingsView locale="ru" />);
+    expect(await screen.findByTestId('history-error')).toHaveTextContent('Сессия истекла');
+  });
+
+  test('delete with an expired session: no crash, a Georgian sign-in line, the sign-in sheet opens, nothing deleted', async () => {
+    member();
+    replies['/api/credits/history'] = { status: 200, body: { items: [] } };
+    replies['/api/account/delete'] = { status: 401, body: { success: false, error: 'unauthenticated' } };
+    const onAuth = jest.fn();
+    window.addEventListener('myavatar:auth-required', onAuth);
+    render(<SettingsView locale="ka" />);
+    fireEvent.click(await screen.findByRole('button', { name: /ანგარიშის წაშლა/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /წავშალო/ }));
+    expect(await screen.findByText('სესიას ვადა გაუვიდა. შედი თავიდან და სცადე ხელახლა. ანგარიში არ წაშლილა.')).toBeInTheDocument();
+    expect(onAuth).toHaveBeenCalled();
+    window.removeEventListener('myavatar:auth-required', onAuth);
+  });
+});

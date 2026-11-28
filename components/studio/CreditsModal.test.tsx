@@ -176,3 +176,25 @@ test('a real dialog: focus moves into it, Tab stays inside, Escape closes it', a
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+describe('Phase 8.25 — opened because the balance is short', () => {
+  test('leads with „not enough credits", both numbers and the gap', async () => {
+    render(<CreditsModal open locale="ka" balanceGel={0} authed onClose={jest.fn()} onSignIn={jest.fn()} short={{ reason: 'insufficient', needed: 28, balance: 0 }} />);
+    const box = await screen.findByTestId('credits-short');
+    expect(box.getAttribute('role')).toBe('alert');
+    expect(within(box).getByText('კრედიტი არ გყოფნის')).toBeTruthy();
+    expect(box.textContent).toContain('✦28');
+    expect(box.textContent).toContain('აკლია ✦28');
+  });
+
+  test('no reason → no banner (the header pill or Settings opened it)', async () => {
+    renderModal();
+    await screen.findByText('Subscribe · 108 ₾ / mo');
+    expect(screen.queryByTestId('credits-short')).toBeNull();
+  });
+
+  test('signed out → the sign-in gate only, never the banner', () => {
+    render(<CreditsModal open locale="en" balanceGel={null} authed={false} onClose={jest.fn()} onSignIn={jest.fn()} short={{ reason: 'insufficient' }} />);
+    expect(screen.queryByTestId('credits-short')).toBeNull();
+  });
+});

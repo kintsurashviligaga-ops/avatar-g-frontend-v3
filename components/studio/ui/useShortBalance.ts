@@ -8,6 +8,8 @@
 import { useEffect } from 'react';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { gelToCredits } from '@/lib/credits/pricing';
+import { settings825On } from '@/lib/profile/displayName';
+import { openTopUpShort } from '@/lib/billing/shortBalance';
 
 const isGuest = (): boolean => typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
 
@@ -20,6 +22,8 @@ export function useShortBalance(credits: number): boolean {
 }
 
 /** Opens the top-up sheet (ChatChrome listens). */
-export function openTopUp(): void {
+export function openTopUp(detail?: { needed?: number; balance?: number }): void {
+  // Phase 8.25 (NEXT_PUBLIC_SETTINGS_825=1): callers open this because the balance is short — say so in the sheet.
+  if (settings825On()) { openTopUpShort(detail ?? {}); return; }
   try { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); } catch { /* SSR */ }
 }

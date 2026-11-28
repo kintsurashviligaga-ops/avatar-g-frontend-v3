@@ -32,6 +32,7 @@ import {
   type BogPlanSummary,
 } from '@/lib/billing/bogCheckoutClient';
 import { track } from '@/lib/analytics/track';
+import { shortBalanceCopy, type ShortBalanceDetail } from '@/lib/billing/shortBalance';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -46,6 +47,8 @@ interface CreditsModalProps {
   onClose: () => void;
   /** Opens the AuthModal — used by the signed-out gate. */
   onSignIn: () => void;
+  /** Phase 8.25: the sheet opened because a balance is short — lead with why (lib/billing/shortBalance). */
+  short?: ShortBalanceDetail | null;
 }
 
 /** The paid rungs of the pricing page's ladder — the SAME data the /pricing page renders. */
@@ -161,7 +164,7 @@ export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
 /** bogPlans: BOG may also sell this viewer a plan (BOG_SUBSCRIPTION_MODE); when false, plans keep the card rail. */
 type Rails = { bog: boolean; card: boolean; bogPlans: boolean };
 
-export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSignIn }: CreditsModalProps) {
+export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSignIn, short = null }: CreditsModalProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
@@ -340,6 +343,15 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
           </button>
         </div>
 
+        {authed && short && (() => {
+          const c = shortBalanceCopy(short, lang);
+          return (
+            <div role="alert" data-testid="credits-short" className="mx-5 mt-4 rounded-2xl border border-app-warning/40 bg-app-warning/10 px-4 py-3">
+              <p className="text-[14px] font-bold text-app-text">{c.title}</p>
+              <p className="mt-1 text-[12.5px] leading-snug text-app-text/85">{c.body}</p>
+            </div>
+          );
+        })()}
         {!authed ? (
           /* ── Signed-out gate ──────────────────────────────────────────────── */
           <div className="flex flex-col items-center gap-4 px-6 py-8 text-center">
