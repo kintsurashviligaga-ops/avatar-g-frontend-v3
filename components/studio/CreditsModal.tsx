@@ -32,6 +32,8 @@ import {
   type BogPlanSummary,
 } from '@/lib/billing/bogCheckoutClient';
 import { track } from '@/lib/analytics/track';
+import { pricingV8Active } from '@/lib/credits/priceBook';
+import { v8BonusLabel, v8SheetPlans } from '@/lib/billing/v8/sheet';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -50,6 +52,13 @@ interface CreditsModalProps {
 
 /** The paid rungs of the pricing page's ladder — the SAME data the /pricing page renders. */
 const PACKAGES = PRICING_TIERS.filter((t) => t.priceUsd > 0);
+
+/**
+ * Phase 8.25 — v8 prices switch, read literally so the browser bundle inlines it. With it on, PACKAGES (today's ladder)
+ * would put Pro at 129 ₾ under the old Pro bullets, leave out Creator and show today's $; the sheet then lists the four
+ * v8 plans from margin/bogV8 instead, and plans go through BOG only (the old card checkout charges today's prices).
+ */
+const V8 = pricingV8Active(process.env.NEXT_PUBLIC_PRICING_V8);
 
 interface Copy {
   title: string; balance: string; freeVideos: string; pay: string; cardHint: string; secureBog: string; unavailable: string;
@@ -237,7 +246,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
   const noRail = rails !== null && !rails.bog && !rails.card;
   // Plans through BOG only where BOG_SUBSCRIPTION_MODE allows; otherwise a plan uses the card rail (or none).
   const bogPlans = bog && rails?.bogPlans === true;
-  const noPlanRail = rails !== null && !bogPlans && !rails.card;
+  const noPlanRail = rails !== null && !bogPlans && (V8 || !rails.card);
 
   /** The older card checkout, used only when BOG is not live. Returns true when it redirected or handled auth. */
   const legacyCardCheckout = useCallback(async (path: string, body: Record<string, unknown>): Promise<boolean> => {
@@ -248,7 +257,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
     return false;
   }, [onClose, onSignIn]);
 
-  const startPlan = useCallback(async (pkg: { id: PricingTierId; priceUsd: number }) => {
+  const startPlan = useCallback(async (pkg: { id: string; priceUsd: number }) => {
     if (busyId || noPlanRail) return;
     const offer = bogPlanOffer(pkg.id);
     setBusyId(`plan:${pkg.id}`);
@@ -262,6 +271,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         showToast(r.reason === 'already_subscribed' ? t.alreadySubscribed : r.reason === 'limit' ? t.limitReached : t.payError);
         return;
       }
+      if (V8) { setBusyId(null); showToast(t.payError); return; } // v8: never the old card price
       if (await legacyCardCheckout('/api/billing/tier-checkout', { tierId: pkg.id })) return;
       setBusyId(null);
       showToast(t.payError);
@@ -401,6 +411,47 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
 
             {/* Monthly plans. With BOG the price is the ₾ amount BOG charges each month; the $ figure is for reference. */}
             <p className="mb-2 mt-5 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.plansTitle}</p>
+            {V8 ? (
+              <div className="space-y-3" data-testid="v8-plans">
+                {v8SheetPlans(lang).map((p) => {
+                  const isCurrent = Boolean(plan && plan.tier === p.tier);
+                  const busy = busyId === `plan:${p.planId}`;
+                  const disabled = busyId !== null || noPlanRail || isCurrent || rails === null;
+                  const go = () => { if (!disabled) void startPlan({ id: p.planId, priceUsd: Number(p.usd) }); };
+                  return (
+                    <div key={p.planId} role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} onClick={go}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
+                      aria-label={`${p.name} — ${p.amountGel} ₾ ${t.perMonth}`}
+                      className={`relative min-w-0 rounded-2xl border bg-app-elevated p-4 ${isCurrent || p.popular ? 'border-app-accent/40' : 'border-app-border/15'} ${disabled ? '' : 'cursor-pointer active:scale-[0.99]'}`}>
+                      {(p.popular || isCurrent) && (
+                        <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full bg-app-accent px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg">
+                          {isCurrent ? <Check size={10} strokeWidth={3} /> : <Sparkles size={10} strokeWidth={2.6} />} {isCurrent ? t.currentPlan : t.popular}
+                        </span>
+                      )}
+                      <div className="flex min-w-0 items-baseline justify-between gap-3">
+                        <span className="min-w-0 break-words text-[14.5px] font-bold text-app-text">{p.name}</span>
+                        <span className="flex shrink-0 flex-col items-end">
+                          <span className="whitespace-nowrap text-[21px] font-black leading-none tabular-nums text-app-text">{p.amountGel} ₾<span className="ml-1 text-[11px] font-medium text-app-muted">{t.perMonth}</span></span>
+                          <span className="mt-1 text-[10.5px] font-medium tabular-nums text-app-muted">≈ ${p.usd}</span>
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[12px] font-semibold text-app-accent">{t.monthlyCredits(p.credits)}</p>
+                      <ul className="mt-2 space-y-1 text-[12px] leading-snug text-app-text/80" data-testid={`v8-gets-${p.planId}`}>
+                        {p.gets.map((g) => <li key={g}>{g}</li>)}
+                      </ul>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); go(); }} disabled={disabled}
+                        className="mt-3.5 inline-flex min-h-[46px] w-full items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-60">
+                        {busy
+                          ? <><Loader2 size={13} className="animate-spin" /> {t.redirectingBog}</>
+                          : isCurrent
+                            ? <>{plan?.autoRenew ? t.renewsOn(planDate) : t.activeUntil(planDate)}</>
+                            : <>{t.subscribe} · {p.amountGel} ₾ {t.perMonth}</>}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="space-y-3">
               {PACKAGES.map((p) => {
                 const offer = bogPlanOffer(p.id);
@@ -463,10 +514,11 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                 );
               })}
             </div>
+            )}
 
             {/* PAYG top-ups — credits that never expire, no plan needed. */}
             <p className="mb-2 mt-5 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.topupTitle}</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${V8 ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {BOG_TOPUP_PACKS_GEL.map((g) => (
                 <button key={g} type="button" onClick={() => void startTopup(g)} disabled={busyId !== null || noRail || rails === null}
                   aria-label={`${g} ₾ — ${topupCredits(g)} ${t.credits}`}
@@ -475,6 +527,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                     <>
                       <span className="text-[15px] font-bold tabular-nums">{g} ₾</span>
                       <span className="text-[11px] tabular-nums text-app-muted">{topupCredits(g)} {t.credits}</span>
+                      {V8 && v8BonusLabel(g, lang) && <span className="text-[10.5px] font-semibold tabular-nums text-app-accent" data-testid="topup-bonus">{v8BonusLabel(g, lang)}</span>}
                     </>
                   )}
                 </button>
