@@ -202,18 +202,26 @@ const nextConfig = {
       '/api/motion-control/status': ['./node_modules/ffmpeg-static/**'],
     },
   },
+  // ⚠️ TYPES AND LINT BLOCK EVERY DEPLOY (Phase 8.26). From 2026-11-12 Vercel skipped both ("Skipping validation of
+  // types", "Skipping linting") after four builds were SIGKILLed in "Checking validity of types"; CI `verify` was the
+  // only gate, so a push that deployed before CI finished could ship a type or lint error.
+  //
+  // WHY THE CHECKS RUN AS THEIR OWN STEPS ON VERCEL, NOT INSIDE `next build`: measured 2026-11-28 (sum of RSS across the
+  // node process tree, which is what the builder's cgroup enforces), `next build` peaks at 5.1 GB while compiling, and
+  // with both checks inside it 8.5 GB: the parent still holds webpack's heap while the lint and type workers run beside
+  // it. That is over the 8 GB Standard builder, i.e. the SIGKILL again. Run one after the other they peak at ~2.3 GB
+  // (`tsc --noEmit`) and then 5.1 GB (`next build`).
+  //
+  // So vercel.json's buildCommand runs `tsc --noEmit && next lint && BUILD_CHECKS_PASSED=1 next build`. The `&&` chain is
+  // the gate: a type or lint error stops the build before `next build` starts, and the flag below is only ever set by a
+  // step that ran after both checks passed. Everywhere else (CI, local `npm run build`) the flag is unset and `next build`
+  // runs both checks itself. Never set BUILD_CHECKS_PASSED in the Vercel dashboard or anywhere else: it would turn the
+  // gate off silently.
   eslint: {
-    // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: process.env.BUILD_CHECKS_PASSED === '1',
   },
-  // BUILD MEMORY (fourth SIGKILL, 2026-11-12): every Vercel build since 09:37Z was killed in "Checking validity of
-  // types", including a docs-only branch with main's exact code (main itself had built at 09:02Z). The whole-program
-  // type check is the largest single memory step left (a local `tsc --noEmit` needs ~8 GB heap) and it runs on top of
-  // webpack's memory in the 8 GB Standard builder. Vercel sets VERCEL=1, so ONLY Vercel skips it. The type gate is not
-  // lost: CI `verify` runs `npm run typecheck` (tsc --noEmit) AND a full `next build` with this check on every PR and
-  // push to main (.github/workflows/ci.yml). Undo: delete this block.
   typescript: {
-    ignoreBuildErrors: process.env.VERCEL === '1',
+    ignoreBuildErrors: process.env.BUILD_CHECKS_PASSED === '1',
   },
   // Strip console.* in production except error/warn — keeps Sentry-routed
   // reportError() noise out of the browser dev console while preserving
